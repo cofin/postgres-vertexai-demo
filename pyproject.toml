@@ -1,0 +1,247 @@
+[project]
+authors = [{ name = "Cody Fincher", email = "cody.fincher@gmail.com" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development",
+    "Typing :: Typed",
+]
+dependencies = [
+    "litestar[jinja,jwt,cryptography,structlog]",
+    "litestar-oracledb",
+    "litestar-granian[uvloop]",
+    "python-dotenv",
+    "google-cloud-aiplatform>=1.38.0",
+    "google-generativeai>=0.3.2",
+    "vertexai",
+    "numpy",
+]
+description = "Reference application for Oracle 23AI and VertexAI integration."
+keywords = ["litestar", "vertexai", "oracledb", "google"]
+license = { text = "MIT" }
+maintainers = [{ name = "Cody Fincher", email = "cody.fincher@gmail.com" }]
+name = "app"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+version = "0.2.0"
+
+[project.scripts]
+app = "app.__init__:run_cli"
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling", "nodeenv"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build]
+dev-mode-dirs = ["./"]
+include = ["CHANGELOG.md", "/public/**/*", "/app/**/*.sql", "/app/db/**/*.ini"]
+packages = ["app"]
+
+[dependency-groups]
+build = ["bump-my-version"]
+dev = [
+    { include-group = "extras" },
+    { include-group = "lint" },
+    { include-group = "test" },
+    { include-group = "build" },
+]
+extras = []
+lint = ["mypy", "pre-commit", "pyright", "ruff", "slotscheck", "types-click"]
+test = [
+    "aiofiles",
+    "anyio",
+    "coverage",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-databases[valkey,oracle]",
+    "pytest-mock",
+    "pytest-sugar",
+    "pytest-xdist",
+]
+
+[tool.ruff]
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pycache__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "app/db/migrations/versions/*.py",
+]
+fix = true
+line-length = 120
+src = ["."]
+target-version = "py311"
+
+[tool.ruff.lint]
+fixable = ["ALL"]
+ignore = [
+    "A003",    # flake8-builtins - class attribute {name} is shadowing a python builtin
+    "A005",    # flake8-builtins - module {name} shadows a Python standard-library module
+    "B010",    # flake8-bugbear - do not call setattr with a constant attribute value
+    "D100",    # pydocstyle - missing docstring in public module
+    "D101",    # pydocstyle - missing docstring in public class
+    "D102",    # pydocstyle - missing docstring in public method
+    "D103",    # pydocstyle - missing docstring in public function
+    "D104",    # pydocstyle - missing docstring in public package
+    "D105",    # pydocstyle - missing docstring in magic method
+    "D106",    # pydocstyle - missing docstring in public nested class
+    "D107",    # pydocstyle - missing docstring in __init__
+    "D202",    # pydocstyle - no blank lines allowed after function docstring
+    "D205",    # pydocstyle - 1 blank line required between summary line and description
+    "D415",    # pydocstyle - first line should end with a period, question mark, or exclamation point
+    "E501",    # pydocstyle line too long, handled by black
+    "PLW2901", # pylint - for loop variable overwritten by assignment target
+    "RUF012",  # Ruff-specific rule - annotated with classvar
+    "ANN401",
+    "FBT",
+    "PLR0913", # too many arguments
+    "PT",
+    "TD",
+    "ARG001",  # ignore for now; investigate
+    "ARG002",  # ignore for now; investigate
+    "ARG003",  # ignore for now; investigate
+    "PERF203", # ignore for now; investigate
+    "PD011",   # pandas
+    "PLR0912",
+    "ISC001",
+    "COM812",
+    "CPY001",
+    "PGH003",
+    "FA100",
+    "PLC0415", # import should be at the top of the file
+    "PLR0904", # too many public methods
+    "PLR0917",
+    "PLC2701",
+    "PLW3201",
+    "PLR6301",
+]
+select = ["ALL"]
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
+
+[tool.ruff.lint.pep8-naming]
+classmethod-decorators = [
+    "classmethod",
+    "sqlalchemy.ext.declarative.declared_attr",
+    "sqlalchemy.orm.declared_attr.directive",
+    "sqlalchemy.orm.declared_attr",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["tests", "app", "config"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "D104"]
+"app/db/migrations/versions/*.py" = ["ANN201", "INP001"]
+"docs/**/*.*" = ["S", "B", "DTZ", "A", "ERA", "D", "RET", "E731", "RUF012", "FA100", "ARG001"]
+"docs/conf.py" = ["FIX002", "ARG001", "INP001"]
+"tests/*.py" = ["D103", "S101", "D104", "PLR2004"]
+"tests/**/*.py" = ["D103", "S101", "D104", "PLR2004"]
+"tools/*.py" = ["INP001", "ERA001", "N999"]
+"tools/**/*.*" = ["D", "ARG", "EM", "TRY", "G", "FBT", "INP001", "S603", "S404", "PLR0915"]
+
+[tool.slotscheck]
+strict-imports = false
+
+[tool.codespell]
+ignore-words-list = "alog"
+skip = 'pdm.lock, package-lock.json'
+
+[tool.mypy]
+disallow_any_generics = false
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+disallow_untyped_defs = true
+exclude = '''(?x)(
+^build/
+|^dist/
+|^.venv/
+|^node_modules/
+|^migrations/
+)'''
+implicit_reexport = false
+plugins = []
+strict = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unreachable = true
+warn_unused_configs = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+disallow_untyped_decorators = false
+module = ["tests.*"]
+
+[[tool.mypy.overrides]]
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+module = ["aisoql.*"]
+
+[[tool.mypy.overrides]]
+ignore_missing_imports = true
+module = [
+    "sqlalchemy.*",
+    "saq.*",
+    "uvicorn.*",
+    "aiohttp.*",
+    "jsbeautifier",
+    "jsbeautifier.*",
+    "uvloop",
+    "uvloop.*",
+    "nodeenv",
+    "vertexai",
+    "vertexai.*",
+    "sklearn",
+    "sklearn.*",
+]
+
+[[tool.mypy.overrides]]
+ignore_errors = true
+module = ["app.db.migrations.*"]
+
+[tool.pytest.ini_options]
+addopts = ["-ra", "--ignore", "app/db/migrations"]
+filterwarnings = [
+    "ignore::DeprecationWarning:pkg_resources",
+    "ignore::DeprecationWarning:google.*",
+    "ignore::PendingDeprecationWarning",
+    "ignore::UserWarning:sqlalchemy.*",
+]
+testpaths = ["tests"]
+
+[tool.pyright]
+exclude = ["scripts", "docs"]
+include = ["app", "tests"]
+reportMissingImports = "information"
