@@ -15,25 +15,28 @@ classifiers = [
 ]
 dependencies = [
     "litestar[jinja,jwt,cryptography,structlog]",
-    "litestar-oracledb",
     "litestar-granian[uvloop]",
+    "sqlspec[asyncpg,performance,mypyc]",
+    "google-adk",
+    "pgvector",
     "python-dotenv",
-    "google-cloud-aiplatform>=1.38.0",
-    "google-generativeai>=0.3.2",
+    "google-cloud-aiplatform",
+    "google-generativeai",
     "vertexai",
-    "numpy",
+    "msgspec",
+    "rich-click",
 ]
-description = "Reference application for Oracle 23AI and VertexAI integration."
-keywords = ["litestar", "vertexai", "oracledb", "google"]
+description = "Cymbal Coffee AI Agent Application using PostgreSQL and Vertex AI."
+keywords = ["litestar", "vertexai", "postgresql", "google", "agent", "coffee"]
 license = { text = "MIT" }
 maintainers = [{ name = "Cody Fincher", email = "cody.fincher@gmail.com" }]
 name = "app"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
-version = "0.2.0"
+version = "0.3.0"
 
 [project.scripts]
-app = "app.__init__:run_cli"
+app = "app.__main__:run_cli"
 
 [build-system]
 build-backend = "hatchling.build"
@@ -64,7 +67,7 @@ test = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
-    "pytest-databases[valkey,oracle]",
+    "pytest-databases[valkey,postgres]",
     "pytest-mock",
     "pytest-sugar",
     "pytest-xdist",
@@ -193,6 +196,7 @@ exclude = '''(?x)(
 )'''
 implicit_reexport = false
 plugins = []
+python_version = "3.12"
 strict = true
 warn_redundant_casts = true
 warn_return_any = true

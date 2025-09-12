@@ -111,5 +111,21 @@
   ],
   "sqltools.useNodeRuntime": true,
   "python.analysis.extraPaths": ["${workspaceFolder}"],
-  "geminicodeassist.enable": true
+  "geminicodeassist.enable": true,
+  "sqltools.format": {
+
+    "linesBetweenQueries": 2,
+    "reservedWordCase": "null",
+    "language": "pl/sql"
+  },
+  "SQL-Formatter-VSCode.linesBetweenQueries": 2,
+  "SQL-Formatter-VSCode.expressionWidth": 180,
+  "SQL-Formatter-VSCode.indentStyle": "standard",
+  "SQL-Formatter-VSCode.dialect": "postgresql",
+  "SQL-Formatter-VSCode.paramTypes": {
+    "positional":true, "numbered":[":","$"], "named": [":", "$"]
+  },
+  "SQL-Formatter-VSCode.functionCase": "lower",
+  "SQL-Formatter-VSCode.identifierCase": "lower",
+  "SQL-Formatter-VSCode.dataTypeCase": "lower"
 }
