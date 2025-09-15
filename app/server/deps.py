@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from app.config import db, sqlspec
 from app.services.cache import CacheService
@@ -32,7 +32,6 @@ def create_service_provider(service_cls: type[T]) -> Callable[..., AsyncGenerato
     return provider
 
 
-# Create service providers from the factory
 provide_product_service = create_service_provider(ProductService)
 provide_chat_service = create_service_provider(ChatService)
 provide_cache_service = create_service_provider(CacheService)
@@ -47,10 +46,10 @@ async def provide_vertex_ai_service() -> AsyncGenerator[VertexAIService, None]:
 
 
 # ADK Orchestrator provider
-async def provide_adk_orchestrator():
+async def provide_adk_orchestrator() -> AsyncGenerator[Any, None]:
     """Provide ADK orchestrator with all required services."""
     from app.agents.orchestrator import create_orchestrator
-    
+
     async with sqlspec.provide_session(db) as session:
         orchestrator = create_orchestrator(session)
         yield orchestrator

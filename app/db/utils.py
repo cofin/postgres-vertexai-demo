@@ -10,7 +10,7 @@ from app.utils.fixtures import FixtureExporter, FixtureLoader
 # Table loading order - tables with no dependencies first, then ordered by dependencies
 COFFEE_SHOP_TABLES = [
     # Core tables without dependencies
-    "products",
+    "product",
     # Session and user-related tables
     "chat_session",
     "chat_conversation",

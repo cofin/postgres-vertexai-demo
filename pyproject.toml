@@ -21,10 +21,10 @@ dependencies = [
     "pgvector",
     "python-dotenv",
     "google-cloud-aiplatform",
-    "google-generativeai",
     "vertexai",
     "msgspec",
     "rich-click",
+    "numpy>=2.3.3",
 ]
 description = "Cymbal Coffee AI Agent Application using PostgreSQL and Vertex AI."
 keywords = ["litestar", "vertexai", "postgresql", "google", "agent", "coffee"]

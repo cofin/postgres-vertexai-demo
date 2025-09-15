@@ -8,7 +8,6 @@ to provide intelligent responses.
 from __future__ import annotations
 
 import time
-import uuid
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -482,7 +481,7 @@ class CoffeeAssistantAgent:
                     "count": 0,
                 }
 
-            history = await chat_service.get_conversation_history(session_id=uuid.UUID(session_id), limit=10)
+            history = await chat_service.get_conversation_history(session_id=UUID(session_id), limit=10)
 
             return {
                 "session_id": session_id,

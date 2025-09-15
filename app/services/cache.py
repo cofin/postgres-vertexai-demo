@@ -5,10 +5,12 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+import numpy as np
 from sqlspec import sql
 
 from app.config import sqlspec
 from app.schemas import EmbeddingCache, ResponseCache
+from app.schemas.base import SerializedEmbedding
 from app.services.base import SQLSpecService
 
 
@@ -101,13 +103,36 @@ class CacheService(SQLSpecService):
             Cached embedding or None if not found
         """
         text_hash = self._hash_text(text)
-        return await self.driver.select_one_or_none(
+
+        # Get raw result first (embedding will be numpy array from pgvector)
+        result = await self.driver.select_one_or_none(
             sql.select(
                 "id", "text_hash", "embedding", "model", "hit_count", "last_accessed", "created_at"
             ).from_("embedding_cache").where_eq(
                 "text_hash", text_hash
-            ).where_eq("model", model_name),
-            schema_type=EmbeddingCache,
+            ).where_eq("model", model_name)
+        )
+
+        if result is None:
+            return None
+
+        # Convert numpy array to SerializedEmbedding
+        if isinstance(result["embedding"], np.ndarray):
+            serialized_embedding = SerializedEmbedding.pack(result["embedding"])
+        else:
+            # Fallback for other types
+            embedding_array = np.array(result["embedding"], dtype=np.float32)
+            serialized_embedding = SerializedEmbedding.pack(embedding_array)
+
+        # Create EmbeddingCache with SerializedEmbedding
+        return EmbeddingCache(
+            id=result["id"],
+            text_hash=result["text_hash"],
+            embedding=serialized_embedding,
+            model=result["model"],
+            hit_count=result.get("hit_count", 0),
+            last_accessed=result.get("last_accessed"),
+            created_at=result.get("created_at"),
         )
 
     async def set_cached_embedding(
@@ -128,12 +153,15 @@ class CacheService(SQLSpecService):
         """
         text_hash = self._hash_text(text)
 
+        # Convert list[float] to numpy array for storage
+        embedding_array = np.array(embedding, dtype=np.float32)
+
         return await self.driver.select_one(
             sql.insert("embedding_cache").columns(
                 "text_hash", "embedding", "model"
             ).values(
                 text_hash=text_hash,
-                embedding=embedding,
+                embedding=embedding_array,
                 model=model_name,
             ).on_conflict("text_hash").do_update(
                 embedding=sql.raw("EXCLUDED.embedding"),
@@ -157,12 +185,33 @@ class CacheService(SQLSpecService):
         Raises:
             ValueError: If cache entry not found
         """
-        return await self.get_or_404(
+        # Get raw result first
+        result = await self.driver.select_one_or_none(
             sql.select(
                 "id", "text_hash", "embedding", "model", "hit_count", "last_accessed", "created_at"
-            ).from_("embedding_cache").where_eq("id", cache_id),
-            schema_type=EmbeddingCache,
-            error_message=f"Embedding cache entry {cache_id} not found",
+            ).from_("embedding_cache").where_eq("id", cache_id)
+        )
+
+        if result is None:
+            raise ValueError(f"Embedding cache entry {cache_id} not found")
+
+        # Convert numpy array to SerializedEmbedding
+        if isinstance(result["embedding"], np.ndarray):
+            serialized_embedding = SerializedEmbedding.pack(result["embedding"])
+        else:
+            # Fallback for other types
+            embedding_array = np.array(result["embedding"], dtype=np.float32)
+            serialized_embedding = SerializedEmbedding.pack(embedding_array)
+
+        # Create EmbeddingCache with SerializedEmbedding
+        return EmbeddingCache(
+            id=result["id"],
+            text_hash=result["text_hash"],
+            embedding=serialized_embedding,
+            model=result["model"],
+            hit_count=result.get("hit_count", 0),
+            last_accessed=result.get("last_accessed"),
+            created_at=result.get("created_at"),
         )
 
     async def cleanup_expired_responses(self) -> int:
@@ -223,14 +272,38 @@ class CacheService(SQLSpecService):
         Returns:
             List of embedding cache entries
         """
-        return await self.driver.select(
+        # Get raw results first
+        results = await self.driver.select(
             sql.select(
                 "id", "text_hash", "embedding", "model", "hit_count", "last_accessed", "created_at"
             ).from_("embedding_cache").where_eq(
                 "model", model_name
-            ).order_by("created_at DESC").limit(limit),
-            schema_type=EmbeddingCache,
+            ).order_by("created_at DESC").limit(limit)
         )
+
+        # Convert each result to EmbeddingCache with SerializedEmbedding
+        embedding_caches = []
+        for result in results:
+            # Convert numpy array to SerializedEmbedding
+            if isinstance(result["embedding"], np.ndarray):
+                serialized_embedding = SerializedEmbedding.pack(result["embedding"])
+            else:
+                # Fallback for other types
+                embedding_array = np.array(result["embedding"], dtype=np.float32)
+                serialized_embedding = SerializedEmbedding.pack(embedding_array)
+
+            embedding_cache = EmbeddingCache(
+                id=result["id"],
+                text_hash=result["text_hash"],
+                embedding=serialized_embedding,
+                model=result["model"],
+                hit_count=result.get("hit_count", 0),
+                last_accessed=result.get("last_accessed"),
+                created_at=result.get("created_at"),
+            )
+            embedding_caches.append(embedding_cache)
+
+        return embedding_caches
 
     async def delete_cached_embedding(self, text_hash: str, model_name: str) -> None:
         """Delete a cached embedding.
@@ -292,14 +365,38 @@ class CacheService(SQLSpecService):
         Returns:
             List of embedding cache entries
         """
-        return await self.driver.select(
+        # Get raw results first
+        results = await self.driver.select(
             sql.select(
                 "id", "text_hash", "embedding", "model", "hit_count", "last_accessed", "created_at"
             ).from_("embedding_cache").where_in(
                 "text_hash", text_hashes
-            ).where_eq("model", model_name),
-            schema_type=EmbeddingCache,
+            ).where_eq("model", model_name)
         )
+
+        # Convert each result to EmbeddingCache with SerializedEmbedding
+        embedding_caches = []
+        for result in results:
+            # Convert numpy array to SerializedEmbedding
+            if isinstance(result["embedding"], np.ndarray):
+                serialized_embedding = SerializedEmbedding.pack(result["embedding"])
+            else:
+                # Fallback for other types
+                embedding_array = np.array(result["embedding"], dtype=np.float32)
+                serialized_embedding = SerializedEmbedding.pack(embedding_array)
+
+            embedding_cache = EmbeddingCache(
+                id=result["id"],
+                text_hash=result["text_hash"],
+                embedding=serialized_embedding,
+                model=result["model"],
+                hit_count=result.get("hit_count", 0),
+                last_accessed=result.get("last_accessed"),
+                created_at=result.get("created_at"),
+            )
+            embedding_caches.append(embedding_cache)
+
+        return embedding_caches
 
     # Keep the old method name for backward compatibility
     async def invalidate_cache_by_key(self, cache_key: str) -> None:

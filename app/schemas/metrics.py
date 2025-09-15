@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from datetime import datetime
+from uuid import UUID
 
-import msgspec
-
-if TYPE_CHECKING:
-    from datetime import datetime
-    from uuid import UUID
+from app.schemas.base import CamelizedBaseStruct
 
 __all__ = ("SearchMetrics",)
 
 
-class SearchMetrics(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class SearchMetrics(CamelizedBaseStruct, omit_defaults=True):
     """Search metrics data schema."""
 
-    id: UUID
+    id: int
     session_id: UUID | None = None
     query_text: str | None = None
     intent: str | None = None

@@ -5,10 +5,20 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from app.schemas.base import CamelizedBaseStruct
+
+__all__ = (
+    "IntentClassification",
+    "IntentExemplar",
+    "IntentExemplarCreate",
+    "IntentExemplarUpdate",
+    "IntentResult",
+    "IntentSearchResult",
+    "IntentStats",
+)
 
 
-class IntentExemplar(BaseModel):
+class IntentExemplar(CamelizedBaseStruct, omit_defaults=True):
     """Schema for intent exemplar records."""
 
     id: int
@@ -21,7 +31,7 @@ class IntentExemplar(BaseModel):
     updated_at: datetime
 
 
-class IntentResult(BaseModel):
+class IntentResult(CamelizedBaseStruct, omit_defaults=True):
     """Result of intent classification."""
 
     intent: str
@@ -31,17 +41,17 @@ class IntentResult(BaseModel):
     fallback_used: bool = False
 
 
-class IntentClassification(BaseModel):
+class IntentClassification(CamelizedBaseStruct, omit_defaults=True, kw_only=True):
     """Schema for storing intent classification in chat conversations."""
 
     intent: str
     confidence: float
-    exemplar_match: str | None = None
     threshold_used: float
+    exemplar_match: str | None = None
     processing_time_ms: int | None = None
 
 
-class IntentExemplarCreate(BaseModel):
+class IntentExemplarCreate(CamelizedBaseStruct, omit_defaults=True):
     """Schema for creating intent exemplars."""
 
     intent: str
@@ -50,7 +60,7 @@ class IntentExemplarCreate(BaseModel):
     confidence_threshold: float = 0.7
 
 
-class IntentExemplarUpdate(BaseModel):
+class IntentExemplarUpdate(CamelizedBaseStruct, omit_defaults=True):
     """Schema for updating intent exemplars."""
 
     phrase: str | None = None
@@ -58,7 +68,7 @@ class IntentExemplarUpdate(BaseModel):
     confidence_threshold: float | None = None
 
 
-class IntentSearchResult(BaseModel):
+class IntentSearchResult(CamelizedBaseStruct, omit_defaults=True):
     """Schema for intent similarity search results."""
 
     intent: str
@@ -68,7 +78,7 @@ class IntentSearchResult(BaseModel):
     usage_count: int = 0
 
 
-class IntentStats(BaseModel):
+class IntentStats(CamelizedBaseStruct, omit_defaults=True):
     """Schema for intent classification statistics."""
 
     total_exemplars: int

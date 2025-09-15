@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import gzip
 from collections.abc import Mapping
+from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +52,7 @@ class FixtureProcessor:
         return []  # Return empty list if data is not a list
 
     def prepare_record(self, record: dict[str, Any]) -> Mapping[str, Any]:
-        """Prepare a record for insertion by handling None values properly.
+        """Prepare a record for insertion by handling None values and data types properly.
 
         Args:
             record: Raw fixture record
@@ -58,8 +60,26 @@ class FixtureProcessor:
         Returns:
             Processed record ready for insertion
         """
-        # Exclude None values to let database handle defaults
-        return {key: value for key, value in record.items() if value is not None}
+        prepared = {}
+        for key, value in record.items():
+            if value is None:
+                continue  # Exclude None values to let database handle defaults
+
+            # Handle data type conversions for common cases
+            if key == "price" and isinstance(value, str):
+                # Convert price string to Decimal for database
+                prepared[key] = Decimal(value)
+            elif key in ("created_at", "updated_at") and isinstance(value, str):
+                # Convert ISO timestamp strings to datetime objects
+                if value.endswith("+00:00"):
+                    # Handle timezone aware timestamps
+                    prepared[key] = datetime.fromisoformat(value.replace("+00:00", "+00:00"))
+                else:
+                    prepared[key] = datetime.fromisoformat(value)
+            else:
+                prepared[key] = value
+
+        return prepared
 
     def get_fixture_files(self, table_order: list[str] | None = None) -> list[Path]:
         """Get all available fixture files sorted by dependency order.
@@ -144,7 +164,7 @@ class FixtureLoader:
         return results
 
     async def _load_table_fixtures(self, table_name: str, fixture_file: Path) -> dict[str, Any]:
-        """Load fixtures for a specific table.
+        """Load fixtures for a specific table using upsert.
 
         Args:
             table_name: Name of the table
@@ -156,10 +176,9 @@ class FixtureLoader:
         fixture_data = self.processor.load_fixture_data(fixture_file)
 
         if not fixture_data:
-            return {"loaded": 0, "skipped": 0, "failed": 0, "total": 0}
+            return {"upserted": 0, "failed": 0, "total": 0}
 
-        loaded = 0
-        skipped = 0
+        upserted = 0
         failed = 0
         total = len(fixture_data)
         first_error = None
@@ -168,22 +187,24 @@ class FixtureLoader:
             try:
                 processed_record = dict(self.processor.prepare_record(record))
 
-                # Check if record already exists (if it has an id field)
-                if "id" in processed_record and await self._record_exists(table_name, processed_record["id"]):
-                    skipped += 1
-                    continue
-
-                # Insert the record using SQLSpec
-                insert_query = sql.insert(table_name).values(**processed_record)
+                # Use upsert (INSERT ... ON CONFLICT DO UPDATE) with SQLSpec
+                # This will insert new records or update existing ones based on id
+                insert_query = (
+                    sql.insert(table_name)
+                    .values(**processed_record)
+                    .on_conflict("id")
+                    .do_update(**processed_record)
+                )
                 await self.driver.execute(insert_query)
-                loaded += 1
+                upserted += 1
 
             except Exception as e:  # noqa: BLE001
                 failed += 1
                 if first_error is None:
+                    # Include more debug info in error message
                     first_error = str(e)
 
-        return {"loaded": loaded, "skipped": skipped, "failed": failed, "total": total, "error": first_error}
+        return {"upserted": upserted, "failed": failed, "total": total, "error": first_error}
 
     async def _record_exists(self, table_name: str, record_id: str | int) -> bool:
         """Check if a record already exists in the table.

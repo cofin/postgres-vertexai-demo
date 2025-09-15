@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import msgspec
+from app.schemas.base import CamelizedBaseStruct
 
 __all__ = ("VectorDemoRequest",)
 
 
-class VectorDemoRequest(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class VectorDemoRequest(CamelizedBaseStruct, omit_defaults=True):
     """Vector search demo request."""
 
     query: str

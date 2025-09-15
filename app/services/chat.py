@@ -179,17 +179,14 @@ class ChatService(SQLSpecService):
         )
 
         # Convert to chat messages
-        messages: list[ChatMessage] = []
-        for conv in conversations:
-            messages.append(
-                ChatMessage(
-                    role=conv.role,
-                    content=conv.content,
-                    timestamp=conv.created_at,
-                )
+        return [
+            ChatMessage(
+                role=conv.role,
+                content=conv.content,
+                timestamp=conv.created_at,
             )
-
-        return messages
+            for conv in conversations
+        ]
 
     async def cleanup_old_sessions(self, days_old: int = 30) -> int:
         """Clean up old chat sessions.

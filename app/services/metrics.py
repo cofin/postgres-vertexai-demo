@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
 from sqlspec import sql
 
 from app.config import sqlspec
 from app.schemas import SearchMetrics
 from app.services.base import SQLSpecService
+
+if TYPE_CHECKING:
+    from uuid import UUID
 
 
 class MetricsService(SQLSpecService):
@@ -46,12 +48,20 @@ class MetricsService(SQLSpecService):
             Created search metric
         """
         metric_id = await self.driver.select_value(
-            sql.insert("search_metrics").columns(
-                "session_id", "query_text", "intent", "confidence_score",
-                "vector_search_results", "vector_search_time_ms",
-                "llm_response_time_ms", "total_response_time_ms",
-                "embedding_cache_hit", "intent_exemplar_used"
-            ).values(
+            sql.insert("search_metrics")
+            .columns(
+                "session_id",
+                "query_text",
+                "intent",
+                "confidence_score",
+                "vector_search_results",
+                "vector_search_time_ms",
+                "llm_response_time_ms",
+                "total_response_time_ms",
+                "embedding_cache_hit",
+                "intent_exemplar_used",
+            )
+            .values(
                 session_id=session_id,
                 query_text=query_text,
                 intent=intent,
@@ -62,7 +72,8 @@ class MetricsService(SQLSpecService):
                 total_response_time_ms=total_response_time_ms,
                 embedding_cache_hit=embedding_cache_hit,
                 intent_exemplar_used=intent_exemplar_used,
-            ).returning("id")
+            )
+            .returning("id")
         )
 
         return await self.get_search_metric(metric_id)
@@ -81,10 +92,21 @@ class MetricsService(SQLSpecService):
         """
         return await self.get_or_404(
             sql.select(
-                "id", "session_id", "query_text", "intent", "confidence_score",
-                "vector_search_results", "vector_search_time_ms", "llm_response_time_ms",
-                "total_response_time_ms", "embedding_cache_hit", "intent_exemplar_used", "created_at"
-            ).from_("search_metrics").where_eq("id", metric_id),
+                "id",
+                "session_id",
+                "query_text",
+                "intent",
+                "confidence_score",
+                "vector_search_results",
+                "vector_search_time_ms",
+                "llm_response_time_ms",
+                "total_response_time_ms",
+                "embedding_cache_hit",
+                "intent_exemplar_used",
+                "created_at",
+            )
+            .from_("search_metrics")
+            .where_eq("id", metric_id),
             schema_type=SearchMetrics,
             error_message=f"Search metric {metric_id} not found",
         )
@@ -101,12 +123,23 @@ class MetricsService(SQLSpecService):
         """
         return await self.driver.select(
             sql.select(
-                "id", "session_id", "query_text", "intent", "confidence_score",
-                "vector_search_results", "vector_search_time_ms", "llm_response_time_ms",
-                "total_response_time_ms", "embedding_cache_hit", "intent_exemplar_used", "created_at"
-            ).from_("search_metrics").where_eq(
-                "session_id", session_id
-            ).order_by("created_at DESC").limit(limit),
+                "id",
+                "session_id",
+                "query_text",
+                "intent",
+                "confidence_score",
+                "vector_search_results",
+                "vector_search_time_ms",
+                "llm_response_time_ms",
+                "total_response_time_ms",
+                "embedding_cache_hit",
+                "intent_exemplar_used",
+                "created_at",
+            )
+            .from_("search_metrics")
+            .where_eq("session_id", session_id)
+            .order_by("created_at DESC")
+            .limit(limit),
             schema_type=SearchMetrics,
         )
 

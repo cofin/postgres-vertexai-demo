@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from datetime import datetime
+from typing import Any
+from uuid import UUID
 
-import msgspec
-
-if TYPE_CHECKING:
-    from datetime import datetime
-    from uuid import UUID
+from app.schemas.base import CamelizedBaseStruct
 
 __all__ = (
     "ChatConversation",
@@ -20,7 +18,7 @@ __all__ = (
 )
 
 
-class ChatSession(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class ChatSession(CamelizedBaseStruct, omit_defaults=True):
     """Chat session data schema."""
 
     id: UUID
@@ -32,17 +30,17 @@ class ChatSession(msgspec.Struct, gc=False, array_like=True, omit_defaults=True)
     updated_at: datetime | None = None
 
 
-class ChatSessionCreate(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class ChatSessionCreate(CamelizedBaseStruct, omit_defaults=True):
     """Chat session creation schema."""
 
     user_id: str | None = None
     session_data: dict[str, Any] | None = None
 
 
-class ChatConversation(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class ChatConversation(CamelizedBaseStruct, omit_defaults=True):
     """Chat conversation data schema."""
 
-    id: UUID
+    id: int
     session_id: UUID
     role: str  # 'user', 'assistant', or 'system'
     content: str
@@ -51,7 +49,7 @@ class ChatConversation(msgspec.Struct, gc=False, array_like=True, omit_defaults=
     created_at: datetime | None = None
 
 
-class ChatConversationCreate(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class ChatConversationCreate(CamelizedBaseStruct, omit_defaults=True):
     """Chat conversation creation schema."""
 
     session_id: UUID
@@ -61,7 +59,7 @@ class ChatConversationCreate(msgspec.Struct, gc=False, array_like=True, omit_def
     intent_classification: dict[str, Any] | None = None
 
 
-class ChatMessage(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class ChatMessage(CamelizedBaseStruct, omit_defaults=True):
     """Chat message for UI."""
 
     role: str  # "user" or "assistant"
@@ -69,7 +67,7 @@ class ChatMessage(msgspec.Struct, gc=False, array_like=True, omit_defaults=True)
     timestamp: datetime | None = None
 
 
-class ChatMessageRequest(msgspec.Struct, gc=False, omit_defaults=True):
+class ChatMessageRequest(CamelizedBaseStruct, omit_defaults=True):
     """Chat message request from frontend."""
 
     message: str

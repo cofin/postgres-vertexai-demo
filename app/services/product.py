@@ -33,9 +33,10 @@ class ProductService(SQLSpecService):
         }
 
         product_id = await self.driver.select_value(
-            sql.insert("products").columns(
-                "name", "description", "price", "category", "sku", "in_stock", "metadata"
-            ).values(**product_data).returning("id")
+            sql.insert("products")
+            .columns("name", "description", "price", "category", "sku", "in_stock", "metadata")
+            .values(**product_data)
+            .returning("id")
         )
 
         return await self.get_product(product_id)
@@ -54,9 +55,19 @@ class ProductService(SQLSpecService):
         """
         return await self.get_or_404(
             sql.select(
-                "id", "name", "description", "price", "category", "sku",
-                "in_stock", "metadata", "created_at", "updated_at"
-            ).from_("products").where_eq("id", product_id),
+                "id",
+                "name",
+                "description",
+                "price",
+                "category",
+                "sku",
+                "in_stock",
+                "metadata",
+                "created_at",
+                "updated_at",
+            )
+            .from_("products")
+            .where_eq("id", product_id),
             schema_type=Product,
             error_message=f"Product {product_id} not found",
         )
@@ -89,10 +100,8 @@ class ProductService(SQLSpecService):
             update_data["metadata"] = data.metadata
 
         if update_data:
-            update_data["updated_at"] = sql.raw("NOW()")
-            await self.driver.execute(
-                sql.update("products").set(**update_data).where_eq("id", product_id)
-            )
+            update_data["updated_at"] = "NOW()"
+            await self.driver.execute(sql.update("product").set(**update_data).where_eq("id", product_id))
 
         return await self.get_product(product_id)
 
@@ -102,7 +111,7 @@ class ProductService(SQLSpecService):
         Args:
             product_id: Product ID to delete
         """
-        await self.driver.execute(sql.delete("products").where_eq("id", product_id))
+        await self.driver.execute(sql.delete("product").where_eq("id", product_id))
 
     async def list_products(self, *filters: StatementFilter) -> OffsetPagination[Product]:
         """List products with pagination and filtering.
@@ -115,18 +124,24 @@ class ProductService(SQLSpecService):
         """
         return await self.paginate(
             sql.select(
-                "id", "name", "description", "price", "category", "sku",
-                "in_stock", "metadata", "created_at", "updated_at"
-            ).from_("products").order_by("created_at DESC"),
+                "id",
+                "name",
+                "description",
+                "price",
+                "category",
+                "sku",
+                "in_stock",
+                "metadata",
+                "created_at",
+                "updated_at",
+            )
+            .from_("product")
+            .order_by("created_at DESC"),
             *filters,
-            schema_type=Product
+            schema_type=Product,
         )
 
-    async def search_products_by_text(
-        self,
-        search_term: str,
-        limit: int = 10
-    ) -> list[Product]:
+    async def search_products_by_text(self, search_term: str, limit: int = 10) -> list[Product]:
         """Search products by text using full-text search.
 
         Args:
@@ -143,11 +158,7 @@ class ProductService(SQLSpecService):
             schema_type=Product,
         )
 
-    async def search_products_by_category(
-        self,
-        category: str,
-        limit: int = 10
-    ) -> list[Product]:
+    async def search_products_by_category(self, category: str, limit: int = 10) -> list[Product]:
         """Search products by category.
 
         Args:
@@ -159,19 +170,27 @@ class ProductService(SQLSpecService):
         """
         return await self.driver.select(
             sql.select(
-                "id", "name", "description", "price", "category", "sku",
-                "in_stock", "metadata", "created_at", "updated_at"
-            ).from_("products").where_eq(
-                "category", category
-            ).where_eq("in_stock", True).order_by("name").limit(limit),
+                "id",
+                "name",
+                "description",
+                "price",
+                "category",
+                "sku",
+                "in_stock",
+                "metadata",
+                "created_at",
+                "updated_at",
+            )
+            .from_("product")
+            .where_eq("category", category)
+            .where_eq("in_stock", True)
+            .order_by("name")
+            .limit(limit),
             schema_type=Product,
         )
 
     async def vector_similarity_search(
-        self,
-        query_embedding: list[float],
-        similarity_threshold: float = 0.7,
-        limit: int = 5
+        self, query_embedding: list[float], similarity_threshold: float = 0.7, limit: int = 5
     ) -> list[ProductSearchResult]:
         """Search products using vector similarity.
 
@@ -191,11 +210,7 @@ class ProductService(SQLSpecService):
             schema_type=ProductSearchResult,
         )
 
-    async def update_product_embedding(
-        self,
-        product_id: int,
-        embedding: list[float]
-    ) -> None:
+    async def update_product_embedding(self, product_id: int, embedding: list[float]) -> None:
         """Update product embedding vector.
 
         Args:
@@ -203,9 +218,7 @@ class ProductService(SQLSpecService):
             embedding: Embedding vector (768 dimensions)
         """
         await self.driver.execute(
-            sql.update("products")
-            .set(embedding=embedding, updated_at=sql.raw("NOW()"))
-            .where_eq("id", product_id)
+            sql.update("product").set(embedding=embedding, updated_at=sql.raw("NOW()")).where_eq("id", product_id)
         )
 
     async def get_products_without_embeddings(self, limit: int = 100) -> list[Product]:

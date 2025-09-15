@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import click
 import structlog
@@ -32,6 +32,53 @@ if TYPE_CHECKING:
 
 
 logger = structlog.get_logger()
+
+# Constants
+MAX_ERROR_LENGTH = 200
+MAX_PHRASE_DISPLAY = 40
+
+
+def _display_intent_result(console: Console, result: Any) -> None:
+    """Display the primary intent classification result."""
+    console.print("[bold]Primary Result:[/bold]")
+    console.print(f"  Intent: [bold cyan]{result.intent}[/bold cyan]")
+    console.print(f"  Confidence: [bold]{result.confidence:.2%}[/bold]")
+    console.print(f"  Matched phrase: [dim]{result.exemplar_phrase}[/dim]")
+    console.print(f"  Embedding cached: {'✓' if result.embedding_cache_hit else '✗'}")
+    console.print(f"  Fallback used: {'✓' if result.fallback_used else '✗'}")
+    console.print()
+
+
+def _display_alternatives(console: Console, alternative_results: list[Any]) -> None:
+    """Display alternative intent classification results."""
+    if alternative_results:
+        from rich.table import Table
+
+        table = Table(show_header=True, header_style="bold blue")
+        table.add_column("Intent", style="cyan", width=20)
+        table.add_column("Confidence", width=12)
+        table.add_column("Threshold", width=12)
+        table.add_column("Example Phrase", style="dim", width=50)
+
+        for alt in alternative_results:
+            confidence_str = f"{alt.similarity:.1%}"
+            threshold_str = f"{alt.confidence_threshold:.1%}"
+
+            if alt.similarity >= alt.confidence_threshold:
+                confidence_str = f"[bold green]{confidence_str}[/bold green]"
+            else:
+                confidence_str = f"[dim]{confidence_str}[/dim]"
+
+            table.add_row(
+                alt.intent,
+                confidence_str,
+                threshold_str,
+                alt.phrase[:MAX_PHRASE_DISPLAY] + "..." if len(alt.phrase) > MAX_PHRASE_DISPLAY else alt.phrase,
+            )
+
+        console.print("[bold]Alternative Matches:[/bold]")
+        console.print(table)
+        console.print()
 
 
 # Fixtures commands
@@ -87,7 +134,7 @@ def _display_fixture_list() -> None:
             size_mb = size_bytes / 1024 / 1024
             size = f"{size_mb:.1f} MB" if size_mb > 1 else f"{size_bytes} B"
             status = "[green]Ready[/green]"
-        except Exception as e:
+        except (OSError, PermissionError) as e:
             records = "[dim]N/A[/dim]"
             size = "[dim]N/A[/dim]"
             status = f"[red]Error: {e}[/red]"
@@ -143,14 +190,12 @@ def _display_fixture_results(results: dict) -> None:
     console = get_console()
     table = Table(show_header=True, header_style="bold blue")
     table.add_column("Table", style="cyan", width=25)
-    table.add_column("Loaded", justify="right", width=8)
-    table.add_column("Skipped", justify="right", width=8)
+    table.add_column("Upserted", justify="right", width=8)
     table.add_column("Failed", justify="right", width=8)
     table.add_column("Total", justify="right", width=8)
-    table.add_column("Status", width=30)
+    table.add_column("Status", width=100)
 
-    total_loaded = 0
-    total_skipped = 0
+    total_upserted = 0
     total_failed = 0
     total_records = 0
 
@@ -158,38 +203,34 @@ def _display_fixture_results(results: dict) -> None:
         row_data = _process_fixture_result(table_name, result)
         table.add_row(*row_data["row"])
 
-        total_loaded += row_data["loaded"]
-        total_skipped += row_data["skipped"]
+        total_upserted += row_data["upserted"]
         total_failed += row_data["failed"]
         total_records += row_data["total"]
 
     console.print(table)
     console.print()
-    _print_fixture_summary(total_loaded, total_skipped, total_failed, total_records)
+    _print_fixture_summary(total_upserted, total_failed, total_records)
 
 
 def _process_fixture_result(table_name: str, result: dict | int | str) -> dict:
     """Process individual fixture result for display."""
     if isinstance(result, dict):
-        loaded = result.get("loaded", 0)
-        skipped = result.get("skipped", 0)
+        upserted = result.get("upserted", 0)
         failed = result.get("failed", 0)
         total = result.get("total", 0)
         error = result.get("error")
 
-        status = _get_fixture_status(loaded, skipped, failed, error)
+        status = _get_fixture_status(upserted, failed, error)
 
         return {
             "row": [
                 table_name,
-                str(loaded) if loaded > 0 else "[dim]0[/dim]",
-                str(skipped) if skipped > 0 else "[dim]0[/dim]",
+                str(upserted) if upserted > 0 else "[dim]0[/dim]",
                 str(failed) if failed > 0 else "[dim]0[/dim]",
                 str(total),
                 status,
             ],
-            "loaded": loaded,
-            "skipped": skipped,
+            "upserted": upserted,
             "failed": failed,
             "total": total,
         }
@@ -197,46 +238,49 @@ def _process_fixture_result(table_name: str, result: dict | int | str) -> dict:
         # Legacy format
         status = "[green]✓ Success[/green]" if result > 0 else "[yellow]⚠ No new records[/yellow]"
         return {
-            "row": [table_name, str(result), "[dim]-[/dim]", "[dim]-[/dim]", "[dim]-[/dim]", status],
-            "loaded": result,
-            "skipped": 0,
+            "row": [table_name, str(result), "[dim]0[/dim]", "[dim]-[/dim]", status],
+            "upserted": result,
             "failed": 0,
             "total": 0,
         }
     # Error case
     status = f"[red]✗ {result}[/red]"
     return {
-        "row": [table_name, "[dim]0[/dim]", "[dim]0[/dim]", "[dim]0[/dim]", "[dim]0[/dim]", status],
-        "loaded": 0,
-        "skipped": 0,
+        "row": [table_name, "[dim]0[/dim]", "[dim]0[/dim]", "[dim]0[/dim]", status],
+        "upserted": 0,
         "failed": 0,
         "total": 0,
     }
 
 
-def _get_fixture_status(loaded: int, skipped: int, failed: int, error: str | None) -> str:
+def _get_fixture_status(upserted: int, failed: int, error: str | None) -> str:
     """Get status text for fixture result."""
-    if loaded > 0:
-        return f"[green]✓ Loaded {loaded} new[/green]"
-    if skipped > 0 and failed == 0:
-        return "[yellow]⚠ All records exist[/yellow]"
+    if upserted > 0 and failed == 0:
+        return f"[green]✓ {upserted} upserted[/green]"
+    if upserted > 0 and failed > 0:
+        return f"[yellow]⚠ {upserted} upserted, {failed} failed[/yellow]"
     if failed > 0:
         status = f"[red]✗ {failed} failed[/red]"
         if error:
-            # Show abbreviated error if available
-            if len(error) > 40:
-                error = error[:37] + "..."
-            status += f"\n[dim]{error}[/dim]"
+            # Show more detailed error information
+            # Extract PostgreSQL error code if present
+            if "[42P01]" in error or ("relation" in error.lower() and "does not exist" in error.lower()):
+                status += "\n[dim]PostgreSQL SQL syntax error[/dim]"
+                status += "\n[dim][42P01]: Table does not exist[/dim]"
+            elif len(error) > MAX_ERROR_LENGTH:
+                # Show first part of error with ellipsis
+                status += f"\n[dim]{error[:197]}...[/dim]"
+            else:
+                status += f"\n[dim]{error}[/dim]"
         return status
     return "[dim]Empty fixture[/dim]"
 
 
-def _print_fixture_summary(total_loaded: int, total_skipped: int, total_failed: int, total_records: int) -> None:
+def _print_fixture_summary(total_upserted: int, total_failed: int, total_records: int) -> None:
     """Print fixture loading summary."""
     console = get_console()
     console.print("[bold]Summary:[/bold]")
-    console.print(f"  • [green]Loaded: {total_loaded}[/green]")
-    console.print(f"  • [yellow]Skipped: {total_skipped}[/yellow] (already exist)")
+    console.print(f"  • [green]Upserted: {total_upserted}[/green]")
     if total_failed > 0:
         console.print(f"  • [red]Failed: {total_failed}[/red]")
     console.print(f"  • [dim]Total records in fixtures: {total_records}[/dim]")
@@ -709,8 +753,6 @@ def test_intent(query: str, alternatives: bool) -> None:
     """Test intent classification for a query."""
 
     async def _test_intent() -> None:
-        from rich.table import Table
-
         from app.server.deps import create_service_provider
         from app.services.embedding import EmbeddingService
         from app.services.exemplar import ExemplarService
@@ -741,43 +783,11 @@ def test_intent(query: str, alternatives: bool) -> None:
                     result = await intent_service.classify_intent(query)
                     alternative_results = []
 
-            # Display primary result
-            console.print("[bold]Primary Result:[/bold]")
-            console.print(f"  Intent: [bold cyan]{result.intent}[/bold cyan]")
-            console.print(f"  Confidence: [bold]{result.confidence:.2%}[/bold]")
-            console.print(f"  Matched phrase: [dim]{result.exemplar_phrase}[/dim]")
-            console.print(f"  Embedding cached: {'✓' if result.embedding_cache_hit else '✗'}")
-            console.print(f"  Fallback used: {'✓' if result.fallback_used else '✗'}")
-            console.print()
+            # Display results using helper functions
+            _display_intent_result(console, result)
 
-            # Display alternatives if requested
-            if alternatives and alternative_results:
-                table = Table(show_header=True, header_style="bold blue")
-                table.add_column("Intent", style="cyan", width=20)
-                table.add_column("Confidence", justify="right", width=12)
-                table.add_column("Threshold", justify="right", width=12)
-                table.add_column("Phrase", width=40)
-
-                for alt in alternative_results:
-                    confidence_str = f"{alt.similarity:.2%}"
-                    threshold_str = f"{alt.confidence_threshold:.2%}"
-
-                    # Highlight if it meets threshold
-                    if alt.similarity >= alt.confidence_threshold:
-                        confidence_str = f"[bold green]{confidence_str}[/bold green]"
-                    else:
-                        confidence_str = f"[dim]{confidence_str}[/dim]"
-
-                    table.add_row(
-                        alt.intent,
-                        confidence_str,
-                        threshold_str,
-                        alt.phrase[:40] + "..." if len(alt.phrase) > 40 else alt.phrase,
-                    )
-
-                console.print("[bold]Alternative Matches:[/bold]")
-                console.print(table)
-                console.print()
+            if alternatives:
+                _display_alternatives(console, alternative_results)
 
         finally:
             await service_gen.aclose()

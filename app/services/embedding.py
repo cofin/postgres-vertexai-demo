@@ -18,7 +18,7 @@ logger = structlog.get_logger()
 
 class EmbeddingService(SQLSpecService):
     """Service for managing embeddings with caching.
-    
+
     Inherits from SQLSpecService to use SQLSpec patterns for database operations.
     Manages both embedding generation and caching with two-tier architecture.
     """
@@ -65,14 +65,18 @@ class EmbeddingService(SQLSpecService):
             # Check database cache
             cached = await self.cache_service.get_cached_embedding(text, model_name)
             if cached:
+                # Unpack SerializedEmbedding to numpy array, then convert to list
+                embedding_array = cached.embedding.unpack()
+                embedding_list = embedding_array.tolist()
+
                 # Store in memory cache for next time
-                self._memory_cache[cache_key] = cached.embedding_data
+                self._memory_cache[cache_key] = embedding_list
                 logger.debug(
                     "Using database cached embedding",
                     text_length=len(text),
                     model=model_name,
                 )
-                return cached.embedding_data
+                return embedding_list
 
         # Generate new embedding
         embedding = await self.vertex_ai.get_text_embedding(text)
@@ -82,8 +86,10 @@ class EmbeddingService(SQLSpecService):
             try:
                 # Store in both memory and database cache
                 cache_key = f"{text}:{model_name}"
-                self._memory_cache[cache_key] = embedding
-                await self.cache_service.set_cached_embedding(text, embedding, model_name)
+                # Ensure embedding is a list (defensive against numpy arrays)
+                embedding_list = embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding)
+                self._memory_cache[cache_key] = embedding_list
+                await self.cache_service.set_cached_embedding(text, embedding_list, model_name)
                 logger.debug(
                     "Cached new embedding",
                     text_length=len(text),
@@ -176,8 +182,10 @@ class EmbeddingService(SQLSpecService):
                     try:
                         # Store in both memory and database cache
                         cache_key = f"{text}:{model_name}"
-                        self._memory_cache[cache_key] = embedding
-                        await self.cache_service.set_cached_embedding(text, embedding, model_name)
+                        # Ensure embedding is a list (defensive against numpy arrays)
+                        embedding_list = embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding)
+                        self._memory_cache[cache_key] = embedding_list
+                        await self.cache_service.set_cached_embedding(text, embedding_list, model_name)
                     except Exception as e:  # noqa: BLE001
                         logger.warning(
                             "Failed to cache embedding",

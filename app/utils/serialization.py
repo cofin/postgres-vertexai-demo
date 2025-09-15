@@ -1,7 +1,7 @@
 """High-performance serialization utilities using msgspec.
 
 Based on upstream utils/serialization.py but optimized for our SQLSpec-based architecture.
-Provides fast JSON encoding/decoding with support for common data types.
+Provides fast JSON encoding/decoding with support for common data types including numpy arrays.
 """
 
 from __future__ import annotations
@@ -100,3 +100,68 @@ def convert_date_to_iso(dt: datetime.date) -> str:
         ISO formatted date string
     """
     return dt.isoformat()
+
+
+# NumPy Array Serialization Support
+def numpy_array_predicate(type_: type[Any]) -> bool:
+    """Check if type is a numpy array.
+
+    Args:
+        type_: Type to check
+
+    Returns:
+        True if type is a numpy array type
+    """
+    import numpy as np
+    return type_ is np.ndarray or (hasattr(type_, "__origin__") and str(type_).startswith("numpy.ndarray"))
+
+
+def numpy_array_enc_hook(arr: Any) -> Any:
+    """Convert numpy array to list for serialization.
+
+    Args:
+        arr: Numpy array to convert
+
+    Returns:
+        List representation of the numpy array
+    """
+
+    import numpy as np
+    if isinstance(arr, np.ndarray):
+        return arr.tolist()
+    return arr
+
+
+def numpy_array_dec_hook(obj: Any) -> Any:
+    """Convert list back to numpy array for deserialization.
+
+    Args:
+        obj: Object to convert (expected to be a list)
+
+    Returns:
+        Numpy array if obj is a list, otherwise obj unchanged
+    """
+
+    if isinstance(obj, list):
+        import numpy as np
+        return np.array(obj, dtype=np.float32)
+    return obj
+
+
+def general_dec_hook(type_: type[Any], obj: Any) -> Any:
+    """General decoder hook for custom types.
+
+    Args:
+        type_: Target type for conversion
+        obj: Object to convert
+
+    Returns:
+        Converted object
+
+    Raises:
+        NotImplementedError: For unsupported types
+    """
+    if numpy_array_predicate(type_):
+        return numpy_array_dec_hook(obj)
+    msg = f"Encountered unknown type: {type_!s}"
+    raise NotImplementedError(msg)

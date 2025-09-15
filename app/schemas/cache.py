@@ -1,11 +1,9 @@
 """Cache-related schemas."""
 
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Any
 
-import msgspec
+from app.schemas.base import CamelizedBaseStruct, SerializedEmbedding
 
 __all__ = (
     "EmbeddingCache",
@@ -13,7 +11,7 @@ __all__ = (
 )
 
 
-class ResponseCache(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class ResponseCache(CamelizedBaseStruct, omit_defaults=True):
     """Response cache data schema."""
 
     id: int  # Changed from UUID to int to match migration (serial primary key)
@@ -23,12 +21,12 @@ class ResponseCache(msgspec.Struct, gc=False, array_like=True, omit_defaults=Tru
     created_at: datetime | None = None
 
 
-class EmbeddingCache(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class EmbeddingCache(CamelizedBaseStruct, omit_defaults=True):
     """Embedding cache data schema."""
 
     id: int  # Changed from UUID to int to match migration (serial primary key)
     text_hash: str
-    embedding: list[float]  # Changed to match database column name
+    embedding: SerializedEmbedding  # Msgspec-compatible numpy array wrapper
     model: str  # This matches the database column name
     hit_count: int = 0
     last_accessed: datetime | None = None

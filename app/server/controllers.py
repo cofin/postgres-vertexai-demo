@@ -28,7 +28,6 @@ if TYPE_CHECKING:
 
     from app import schemas as s
     from app.agents.orchestrator import ADKOrchestrator
-    from app.services.chat import ChatService
     from app.services.embedding import EmbeddingService
     from app.services.metrics import MetricsService
     from app.services.product import ProductService
@@ -101,7 +100,6 @@ class CoffeeChatController(Controller):
         request: HTMXRequest,
     ) -> HTMXTemplate:
         """Handle both full page and HTMX partial requests using the ADK agent system."""
-        from app.agents.orchestrator import ADKOrchestrator
 
         csp_nonce = self.generate_csp_nonce()
         clean_message = self.validate_message(data.message)

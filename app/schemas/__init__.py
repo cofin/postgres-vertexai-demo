@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.schemas.base import BaseStruct, CamelizedBaseStruct, Message
 from app.schemas.cache import EmbeddingCache, ResponseCache
 from app.schemas.chat import (
     ChatConversation,
@@ -25,6 +26,8 @@ from app.schemas.product import Product, ProductCreate, ProductSearchResult, Pro
 from app.schemas.vector_demo import VectorDemoRequest
 
 __all__ = (
+    "BaseStruct",
+    "CamelizedBaseStruct",
     "ChatConversation",
     "ChatConversationCreate",
     "ChatMessage",
@@ -39,6 +42,7 @@ __all__ = (
     "IntentResult",
     "IntentSearchResult",
     "IntentStats",
+    "Message",
     "Product",
     "ProductCreate",
     "ProductSearchResult",

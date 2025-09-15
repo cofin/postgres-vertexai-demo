@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
+from sqlspec import sql
 
 from app.config import sqlspec
 from app.schemas import (
@@ -35,7 +36,6 @@ class ExemplarService(SQLSpecService):
         Returns:
             Created intent exemplar
         """
-        from sqlspec import sql
 
         exemplar_id = await self.driver.select_value(
             sql.insert("intent_exemplar")
@@ -63,7 +63,6 @@ class ExemplarService(SQLSpecService):
         Raises:
             ValueError: If exemplar not found
         """
-        from sqlspec import sql
 
         return await self.get_or_404(
             sql.select(
@@ -84,7 +83,6 @@ class ExemplarService(SQLSpecService):
         Returns:
             List of intent exemplars
         """
-        from sqlspec import sql
 
         return await self.driver.select(
             sql.select(
@@ -188,7 +186,6 @@ class ExemplarService(SQLSpecService):
         Args:
             exemplar_id: Intent exemplar ID
         """
-        from sqlspec import sql
 
         await self.driver.execute(sql.delete("intent_exemplar").where_eq("id", exemplar_id))
 
@@ -210,7 +207,12 @@ class ExemplarService(SQLSpecService):
         Returns:
             List of similar intent exemplars with similarity scores
         """
-        if target_intent:
+        logger.debug(
+            "search_similar_intents called", target_intent=target_intent, min_threshold=min_threshold, limit=limit
+        )
+
+        if target_intent is not None and target_intent != "":
+            logger.debug("Using search-similar-intents-by-intent query")
             return await self.driver.select(
                 sqlspec.get_sql("search-similar-intents-by-intent"),
                 query_embedding=query_embedding,
@@ -219,7 +221,9 @@ class ExemplarService(SQLSpecService):
                 limit=limit,
                 schema_type=IntentSearchResult,
             )
-        
+
+        logger.debug("Using search-similar-intents query")
+        # Try removing schema_type to see if that's the issue
         return await self.driver.select(
             sqlspec.get_sql("search-similar-intents"),
             query_embedding=query_embedding,
@@ -299,7 +303,7 @@ class ExemplarService(SQLSpecService):
                         logger.debug("Loaded exemplars", count=count)
 
                 except Exception as e:
-                    logger.error(
+                    logger.exception(
                         "Failed to load exemplar",
                         intent=intent,
                         phrase=phrase[:50],
@@ -358,15 +362,10 @@ class ExemplarService(SQLSpecService):
         Returns:
             Number of deleted exemplars
         """
-        result = await self.driver.execute(
-            sqlspec.get_sql("clean-unused-exemplars"),
-            days_old=days_old,
-        )
-
-        deleted_count = result.get_data()
-        if isinstance(deleted_count, int):
-            logger.info("Cleaned unused exemplars", deleted_count=deleted_count)
-            return deleted_count
+        result = await self.driver.select_value_or_none(sqlspec.get_sql("clean-unused-exemplars"), days_old=days_old)
+        if result is not None:
+            logger.info("Cleaned unused exemplars", deleted_count=result)
+            return result  # type: ignore[no-any-return]
 
         return 0
 

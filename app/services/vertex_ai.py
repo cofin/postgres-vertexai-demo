@@ -31,7 +31,7 @@ class VertexAIService:
             )
             self._initialized = True
             logger.info(
-                "Vertex AI initialized",
+                "Vertex AI initialized (private deployment)",
                 project=self.settings.vertex_ai.PROJECT_ID,
                 location=self.settings.vertex_ai.LOCATION,
             )
@@ -182,23 +182,24 @@ class VertexAIService:
             return response
 
     def _get_embedding_sync(self, text: str, model: str) -> list[float]:
-        """Synchronous embedding generation."""
+        """Synchronous embedding generation using Vertex AI (private deployment)."""
         from vertexai.language_models import TextEmbeddingModel
 
+        # This uses your private Vertex AI deployment, not public endpoints
         embedding_model = TextEmbeddingModel.from_pretrained(model)
         embeddings = embedding_model.get_embeddings([text])
 
-        return embeddings[0].values
+        return list(embeddings[0].values)
 
     def _get_batch_embeddings_sync(self, texts: Sequence[str], model: str) -> list[list[float]]:
-        """Synchronous batch embedding generation."""
+        """Synchronous batch embedding generation using Vertex AI (private deployment)."""
         from vertexai.language_models import TextEmbeddingModel
 
+        # This uses your private Vertex AI deployment, not public endpoints
         embedding_model = TextEmbeddingModel.from_pretrained(model)
-        text_list = list(texts)
-        embeddings = embedding_model.get_embeddings(text_list)  # type: ignore[arg-type]
+        embeddings = embedding_model.get_embeddings(list(texts))
 
-        return [embedding.values for embedding in embeddings]
+        return [list(embedding.values) for embedding in embeddings]
 
     def _generate_chat_response_sync(
         self,

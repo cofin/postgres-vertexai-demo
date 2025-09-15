@@ -4,4 +4,4 @@ from app.agents.adk_core import CoffeeAssistantAgent
 from app.agents.orchestrator import ADKOrchestrator
 from app.agents.tools import ToolRegistry
 
-__all__ = ["CoffeeAssistantAgent", "ADKOrchestrator", "ToolRegistry"]
+__all__ = ["ADKOrchestrator", "CoffeeAssistantAgent", "ToolRegistry"]

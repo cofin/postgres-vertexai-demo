@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
+from uuid import UUID
 
+import numpy as np
 from litestar.plugins import CLIPluginProtocol, InitPluginProtocol
 
 if TYPE_CHECKING:
@@ -41,7 +44,6 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         Returns:
             The configured app config.
         """
-        from uuid import UUID
 
         from litestar.contrib.jinja import JinjaTemplateEngine
         from litestar.enums import RequestEncodingType
@@ -60,6 +62,11 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         from app.server import plugins
         from app.server.controllers import CoffeeChatController
         from app.server.exceptions import exception_handlers
+        from app.utils.serialization import (
+            general_dec_hook,
+            numpy_array_enc_hook,
+            numpy_array_predicate,
+        )
 
         settings = get_settings()
         self.app_name = settings.app.NAME
@@ -128,6 +135,9 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
             "ConnectionT": ConnectionT,
             "PoolT": PoolT,
             "UUID": UUID,
+            "datetime": datetime,
         })
 
+        app_config.type_encoders = {np.ndarray: numpy_array_enc_hook}
+        app_config.type_decoders = [(numpy_array_predicate, general_dec_hook)]
         return app_config

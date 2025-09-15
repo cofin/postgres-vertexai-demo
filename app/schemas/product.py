@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from datetime import datetime
+from typing import Any
 
-import msgspec
-
-if TYPE_CHECKING:
-    from datetime import datetime
+from app.schemas.base import CamelizedBaseStruct
 
 __all__ = (
     "Product",
@@ -17,7 +15,7 @@ __all__ = (
 )
 
 
-class Product(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class Product(CamelizedBaseStruct, omit_defaults=True):
     """Product data schema."""
 
     id: int
@@ -32,7 +30,7 @@ class Product(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
     updated_at: datetime | None = None
 
 
-class ProductCreate(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class ProductCreate(CamelizedBaseStruct, omit_defaults=True):
     """Product creation schema."""
 
     name: str
@@ -44,7 +42,7 @@ class ProductCreate(msgspec.Struct, gc=False, array_like=True, omit_defaults=Tru
     metadata: dict[str, Any] | None = None
 
 
-class ProductUpdate(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class ProductUpdate(CamelizedBaseStruct, omit_defaults=True):
     """Product update schema."""
 
     name: str | None = None
@@ -56,7 +54,7 @@ class ProductUpdate(msgspec.Struct, gc=False, array_like=True, omit_defaults=Tru
     metadata: dict[str, Any] | None = None
 
 
-class ProductSearchResult(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class ProductSearchResult(CamelizedBaseStruct, omit_defaults=True):
     """Product search result with similarity score."""
 
     id: int
