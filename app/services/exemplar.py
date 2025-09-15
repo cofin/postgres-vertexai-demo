@@ -7,7 +7,6 @@ from typing import Any
 import structlog
 from sqlspec import sql
 
-from app.config import sqlspec
 from app.schemas import (
     IntentExemplar,
     IntentExemplarCreate,
@@ -214,7 +213,34 @@ class ExemplarService(SQLSpecService):
         if target_intent is not None and target_intent != "":
             logger.debug("Using search-similar-intents-by-intent query")
             return await self.driver.select(
-                sqlspec.get_sql("search-similar-intents-by-intent"),
+                """
+                WITH
+                    query_embedding AS (
+                        SELECT
+                            intent,
+                            phrase,
+                            1 - (embedding <=> :query_embedding) AS similarity,
+                            confidence_threshold,
+                            usage_count
+                        FROM
+                            intent_exemplar
+                    )
+                SELECT
+                    intent,
+                    phrase,
+                    similarity,
+                    confidence_threshold,
+                    usage_count
+                FROM
+                    query_embedding
+                WHERE
+                    intent = :target_intent
+                    AND similarity > :min_threshold
+                ORDER BY
+                    similarity DESC
+                LIMIT
+                    :limit
+                """,
                 query_embedding=query_embedding,
                 min_threshold=min_threshold,
                 target_intent=target_intent,
@@ -225,7 +251,33 @@ class ExemplarService(SQLSpecService):
         logger.debug("Using search-similar-intents query")
         # Try removing schema_type to see if that's the issue
         return await self.driver.select(
-            sqlspec.get_sql("search-similar-intents"),
+            """
+            WITH
+                query_embedding AS (
+                    SELECT
+                        intent,
+                        phrase,
+                        1 - (embedding <=> :query_embedding) AS similarity,
+                        confidence_threshold,
+                        usage_count
+                    FROM
+                        intent_exemplar
+                )
+            SELECT
+                intent,
+                phrase,
+                similarity,
+                confidence_threshold,
+                usage_count
+            FROM
+                query_embedding
+            WHERE
+                similarity > :min_threshold
+            ORDER BY
+                similarity DESC
+            LIMIT
+                :limit
+            """,
             query_embedding=query_embedding,
             min_threshold=min_threshold,
             limit=limit,
@@ -320,7 +372,16 @@ class ExemplarService(SQLSpecService):
             Intent statistics
         """
         # Get basic stats
-        stats = await self.driver.select_one_or_none(sqlspec.get_sql("get-intent-stats"))
+        stats = await self.driver.select_one_or_none(
+            """
+            SELECT
+                count(*) as total_exemplars,
+                count(DISTINCT intent) as intents_count,
+                avg(usage_count) as average_usage
+            FROM
+                intent_exemplar
+            """
+        )
 
         if not stats:
             return IntentStats(
@@ -332,7 +393,22 @@ class ExemplarService(SQLSpecService):
 
         # Get top intents
         top_intents_raw = await self.driver.select(
-            sqlspec.get_sql("get-top-intents"),
+            """
+            SELECT
+                intent,
+                count(*) as exemplar_count,
+                sum(usage_count) as total_usage,
+                avg(confidence_threshold) as avg_threshold
+            FROM
+                intent_exemplar
+            GROUP BY
+                intent
+            ORDER BY
+                total_usage DESC,
+                exemplar_count DESC
+            LIMIT
+                :limit
+            """,
             limit=10,
         )
 
@@ -362,7 +438,15 @@ class ExemplarService(SQLSpecService):
         Returns:
             Number of deleted exemplars
         """
-        result = await self.driver.select_value_or_none(sqlspec.get_sql("clean-unused-exemplars"), days_old=days_old)
+        result = await self.driver.select_value_or_none(
+            """
+            DELETE FROM intent_exemplar
+            WHERE
+                usage_count = 0
+                AND created_at < now() - interval ':days_old days'
+            """,
+            days_old=days_old
+        )
         if result is not None:
             logger.info("Cleaned unused exemplars", deleted_count=result)
             return result  # type: ignore[no-any-return]

@@ -61,9 +61,7 @@ class EmbeddingService(SQLSpecService):
 
         return await self.vertex_ai.get_batch_embeddings(texts)
 
-    async def embed_product_descriptions(
-        self, products: list[dict[str, Any]]
-    ) -> list[list[float]]:
+    async def embed_product_descriptions(self, products: list[dict[str, Any]]) -> list[list[float]]:
         """Generate embeddings for product descriptions.
 
         Args:

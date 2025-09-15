@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any
 
 from sqlspec import sql
 
-from app.config import sqlspec
 from app.schemas import (
     ChatConversation,
     ChatConversationCreate,
@@ -33,12 +32,13 @@ class ChatService(SQLSpecService):
             Created session
         """
         session_id = await self.driver.select_value(
-            sql.insert("chat_session").columns(
-                "user_id", "session_data"
-            ).values(
+            sql.insert("chat_session")
+            .columns("user_id", "session_data")
+            .values(
                 user_id=data.user_id,
                 session_data=data.session_data,
-            ).returning("id")
+            )
+            .returning("id")
         )
 
         return await self.get_session(session_id)
@@ -56,9 +56,9 @@ class ChatService(SQLSpecService):
             ValueError: If session not found
         """
         return await self.get_or_404(
-            sql.select(
-                "id", "user_id", "session_data", "last_activity", "expires_at", "created_at", "updated_at"
-            ).from_("chat_session").where_eq("id", session_id),
+            sql.select("id", "user_id", "session_data", "last_activity", "expires_at", "created_at", "updated_at")
+            .from_("chat_session")
+            .where_eq("id", session_id),
             schema_type=ChatSession,
             error_message=f"Session {session_id} not found",
         )
@@ -73,9 +73,9 @@ class ChatService(SQLSpecService):
             Session data or None if not found
         """
         return await self.driver.select_one_or_none(
-            sql.select(
-                "id", "user_id", "session_data", "last_activity", "expires_at", "created_at", "updated_at"
-            ).from_("chat_session").where_eq("user_id", user_id),
+            sql.select("id", "user_id", "session_data", "last_activity", "expires_at", "created_at", "updated_at")
+            .from_("chat_session")
+            .where_eq("user_id", user_id),
             schema_type=ChatSession,
         )
 
@@ -107,15 +107,16 @@ class ChatService(SQLSpecService):
             Created conversation
         """
         conversation_id = await self.driver.select_value(
-            sql.insert("chat_conversation").columns(
-                "session_id", "role", "content", "metadata", "intent_classification"
-            ).values(
+            sql.insert("chat_conversation")
+            .columns("session_id", "role", "content", "metadata", "intent_classification")
+            .values(
                 session_id=data.session_id,
                 role=data.role,
                 content=data.content,
                 metadata=data.metadata,
                 intent_classification=data.intent_classification,
-            ).returning("id")
+            )
+            .returning("id")
         )
 
         return await self.get_conversation(conversation_id)
@@ -133,9 +134,9 @@ class ChatService(SQLSpecService):
             ValueError: If conversation not found
         """
         return await self.get_or_404(
-            sql.select(
-                "id", "session_id", "role", "content", "metadata", "intent_classification", "created_at"
-            ).from_("chat_conversation").where_eq("id", conversation_id),
+            sql.select("id", "session_id", "role", "content", "metadata", "intent_classification", "created_at")
+            .from_("chat_conversation")
+            .where_eq("id", conversation_id),
             schema_type=ChatConversation,
             error_message=f"Conversation {conversation_id} not found",
         )
@@ -151,11 +152,11 @@ class ChatService(SQLSpecService):
             List of conversations ordered by creation time
         """
         return await self.driver.select(
-            sql.select(
-                "id", "session_id", "role", "content", "metadata", "intent_classification", "created_at"
-            ).from_("chat_conversation").where_eq(
-                "session_id", session_id
-            ).order_by("created_at").limit(limit),
+            sql.select("id", "session_id", "role", "content", "metadata", "intent_classification", "created_at")
+            .from_("chat_conversation")
+            .where_eq("session_id", session_id)
+            .order_by("created_at")
+            .limit(limit),
             schema_type=ChatConversation,
         )
 
@@ -170,11 +171,11 @@ class ChatService(SQLSpecService):
             List of chat messages (user and assistant)
         """
         conversations = await self.driver.select(
-            sql.select(
-                "id", "session_id", "role", "content", "metadata", "intent_classification", "created_at"
-            ).from_("chat_conversation").where_eq(
-                "session_id", session_id
-            ).order_by("created_at DESC").limit(limit),
+            sql.select("id", "session_id", "role", "content", "metadata", "intent_classification", "created_at")
+            .from_("chat_conversation")
+            .where_eq("session_id", session_id)
+            .order_by("created_at DESC")
+            .limit(limit),
             schema_type=ChatConversation,
         )
 
@@ -198,11 +199,9 @@ class ChatService(SQLSpecService):
             Number of sessions deleted
         """
         result = await self.driver.execute(
-            sql.delete("chat_session").where(
-                f"created_at < NOW() - INTERVAL '{days_old} days'"
-            )
+            sql.delete("chat_session").where(f"created_at < NOW() - INTERVAL '{days_old} days'")
         )
-        return result.rowcount if hasattr(result, "rowcount") else 0
+        return result.rows_affected
 
     async def get_session_stats(self, session_id: UUID) -> dict[str, Any]:
         """Get statistics for a chat session.
@@ -214,8 +213,34 @@ class ChatService(SQLSpecService):
             Dictionary with session statistics
         """
         stats = await self.driver.select_one_or_none(
-            sqlspec.get_sql("get-session-stats"),
-            session_id=session_id,
+            """
+            SELECT
+              cs.id,
+              cs.user_id,
+              cs.session_data,
+              cs.last_activity,
+              cs.expires_at,
+              cs.created_at,
+              count(cc.id) as message_count,
+              max(cc.created_at) as last_message_at
+            FROM
+              chat_session cs
+              LEFT JOIN chat_conversation cc ON cs.id = cc.session_id
+            WHERE
+              cs.id = :session_id
+              AND (
+                cs.expires_at IS NULL
+                OR cs.expires_at > current_timestamp
+              )
+            GROUP BY
+              cs.id,
+              cs.user_id,
+              cs.session_data,
+              cs.last_activity,
+              cs.expires_at,
+              cs.created_at
+            """,
+            session_id=session_id
         )
 
         return stats or {

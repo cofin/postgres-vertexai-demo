@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any
 
 from sqlspec import sql
 
-from app.config import sqlspec
 from app.schemas import SearchMetrics
 from app.services.base import SQLSpecService
 
@@ -153,7 +152,27 @@ class MetricsService(SQLSpecService):
             Dictionary with metrics summary
         """
         summary = await self.driver.select_one_or_none(
-            sqlspec.get_sql("get-metrics-summary"),
+            """
+            SELECT
+              date (created_at) as date,
+              count(*) as total_queries,
+              count(DISTINCT session_id) as unique_sessions,
+              avg(total_response_time_ms) as avg_response_time_ms,
+              avg(confidence_score) as avg_confidence_score,
+              count(
+                CASE
+                  WHEN confidence_score < 0.7 THEN 1
+                END
+              ) as low_confidence_queries
+            FROM
+              search_metrics
+            WHERE
+              created_at >= current_timestamp - :hours_back * interval '1 hour'
+            GROUP BY
+              date (created_at)
+            ORDER BY
+              date DESC
+            """,
             hours_back=hours_back,
         )
 
@@ -175,7 +194,31 @@ class MetricsService(SQLSpecService):
             Dictionary with performance metrics
         """
         metrics = await self.driver.select_one_or_none(
-            sqlspec.get_sql("get-performance-stats"),
+            """
+            SELECT
+              count(*) as total_queries,
+              avg(vector_search_time_ms) as avg_vector_search_time_ms,
+              avg(llm_response_time_ms) as avg_llm_response_time_ms,
+              avg(total_response_time_ms) as avg_total_response_time_ms,
+              percentile_cont(0.50) WITHIN GROUP (
+                ORDER BY
+                  total_response_time_ms
+              ) as median_response_time_ms,
+              percentile_cont(0.95) WITHIN GROUP (
+                ORDER BY
+                  total_response_time_ms
+              ) as p95_response_time_ms,
+              percentile_cont(0.99) WITHIN GROUP (
+                ORDER BY
+                  total_response_time_ms
+              ) as p99_response_time_ms,
+              min(total_response_time_ms) as min_response_time_ms,
+              max(total_response_time_ms) as max_response_time_ms
+            FROM
+              search_metrics
+            WHERE
+              created_at >= current_timestamp - :hours_back * interval '1 hour'
+            """,
             hours_back=hours_back,
         )
 
@@ -198,7 +241,22 @@ class MetricsService(SQLSpecService):
             List of intent counts and percentages
         """
         return await self.driver.select(
-            sqlspec.get_sql("get-intent-distribution"),
+            """
+            SELECT
+              intent,
+              count(*) as query_count,
+              avg(confidence_score) as avg_confidence,
+              avg(total_response_time_ms) as avg_response_time_ms
+            FROM
+              search_metrics
+            WHERE
+              created_at >= current_timestamp - :hours_back * interval '1 hour'
+              AND intent IS NOT NULL
+            GROUP BY
+              intent
+            ORDER BY
+              query_count DESC
+            """,
             hours_back=hours_back,
         )
 
@@ -215,7 +273,30 @@ class MetricsService(SQLSpecService):
             List of hourly search counts and metrics
         """
         return await self.driver.select(
-            sqlspec.get_sql("get-search-trends"),
+            """
+            SELECT
+              extract(
+                HOUR
+                FROM
+                  created_at
+              ) as hour,
+              count(*) as total_queries,
+              count(DISTINCT session_id) as unique_sessions,
+              avg(total_response_time_ms) as avg_response_time_ms,
+              avg(confidence_score) as avg_confidence_score
+            FROM
+              search_metrics
+            WHERE
+              created_at >= current_timestamp - :hours_back * interval '1 hour'
+            GROUP BY
+              extract(
+                HOUR
+                FROM
+                  created_at
+              )
+            ORDER BY
+              hour
+            """,
             hours_back=hours_back,
         )
 
@@ -229,7 +310,11 @@ class MetricsService(SQLSpecService):
             Number of metrics deleted
         """
         result = await self.driver.execute(
-            sqlspec.get_sql("cleanup-old-metrics"),
+            """
+            DELETE FROM search_metrics
+            WHERE
+              created_at < current_timestamp - :retention_days * interval '1 day'
+            """,
             retention_days=days_old,
         )
         return result.get_affected_count()
@@ -245,7 +330,28 @@ class MetricsService(SQLSpecService):
             List of top queries with counts
         """
         return await self.driver.select(
-            sqlspec.get_sql("get-search-patterns"),
+            """
+            SELECT
+              query_text,
+              count(*) as query_frequency,
+              avg(confidence_score) as avg_confidence,
+              avg(total_response_time_ms) as avg_response_time,
+              count(DISTINCT session_id) as unique_sessions,
+              max(created_at) as last_seen
+            FROM
+              search_metrics
+            WHERE
+              created_at >= current_timestamp - :days_back * interval '1 day'
+              AND query_text IS NOT NULL
+            GROUP BY
+              query_text
+            HAVING
+              count(*) >= :min_frequency
+            ORDER BY
+              query_frequency DESC
+            LIMIT
+              :limit_count
+            """,
             days_back=hours_back // 24,
             min_frequency=1,
             limit_count=limit,
@@ -265,7 +371,27 @@ class MetricsService(SQLSpecService):
             List of slow search metrics
         """
         return await self.driver.select(
-            sqlspec.get_sql("get-slow-queries"),
+            """
+            SELECT
+              id,
+              session_id,
+              query_text,
+              intent,
+              confidence_score,
+              vector_search_time_ms,
+              llm_response_time_ms,
+              total_response_time_ms,
+              created_at
+            FROM
+              search_metrics
+            WHERE
+              total_response_time_ms > :response_time_threshold_ms
+              AND created_at >= current_timestamp - :hours_back * interval '1 hour'
+            ORDER BY
+              total_response_time_ms DESC
+            LIMIT
+              :limit_count
+            """,
             response_time_threshold_ms=min_response_time_ms,
             hours_back=hours_back,
             limit_count=limit,

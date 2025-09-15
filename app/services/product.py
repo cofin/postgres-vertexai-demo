@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from sqlspec import sql
 
-from app.config import sqlspec
 from app.schemas import Product, ProductCreate, ProductSearchResult, ProductUpdate
 from app.services.base import OffsetPagination, SQLSpecService, StatementFilter
 
@@ -152,8 +151,31 @@ class ProductService(SQLSpecService):
             List of matching products
         """
         return await self.driver.select(
-            sqlspec.get_sql("full-text-search"),
-            search_term=search_term,
+            """
+            SELECT
+              id,
+              name,
+              description,
+              price,
+              category,
+              sku,
+              in_stock,
+              metadata,
+              created_at,
+              updated_at,
+              ts_rank(to_tsvector('english', name || ' ' || coalesce(description, '')), plainto_tsquery('english', :query)) as rank
+            FROM
+              product
+            WHERE
+              to_tsvector('english', name || ' ' || coalesce(description, '')) @@ plainto_tsquery('english', :query)
+              AND in_stock = true
+            ORDER BY
+              rank DESC,
+              name
+            LIMIT
+              :limit_count
+            """,
+            query=search_term,
             limit_count=limit,
             schema_type=Product,
         )
@@ -203,7 +225,30 @@ class ProductService(SQLSpecService):
             List of products with similarity scores
         """
         return await self.driver.select(
-            sqlspec.get_sql("vector-similarity-search"),
+            """
+            SELECT
+              id,
+              name,
+              description,
+              price,
+              category,
+              sku,
+              in_stock,
+              metadata,
+              created_at,
+              updated_at,
+              1 - (embedding <=> :query_embedding) as similarity_score
+            FROM
+              product
+            WHERE
+              embedding IS NOT NULL
+              AND in_stock = true
+              AND 1 - (embedding <=> :query_embedding) >= :similarity_threshold
+            ORDER BY
+              embedding <=> :query_embedding
+            LIMIT
+              :limit_count
+            """,
             query_embedding=query_embedding,
             similarity_threshold=similarity_threshold,
             limit_count=limit,

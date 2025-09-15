@@ -21,7 +21,7 @@ dependencies = [
     "pgvector",
     "python-dotenv",
     "google-cloud-aiplatform",
-    "vertexai",
+    "google-genai",
     "msgspec",
     "rich-click",
     "numpy>=2.3.3",

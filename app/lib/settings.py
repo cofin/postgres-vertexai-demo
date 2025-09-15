@@ -64,6 +64,18 @@ class VertexAISettings:
     CHAT_MODEL: str = field(default_factory=get_env("VERTEX_AI_CHAT_MODEL", "gemini-2.5-flash"))
     """Vertex AI chat model."""
 
+    # Context Caching Settings
+    CACHE_TTL_SECONDS: int = field(default_factory=get_env("VERTEX_AI_CACHE_TTL_SECONDS", 3600))
+    """Context cache TTL in seconds (default: 1 hour)."""
+    CACHE_PREFIX: str = field(default_factory=get_env("VERTEX_AI_CACHE_PREFIX", "cymbal-coffee"))
+    """Prefix for cache names."""
+
+    # Streaming Settings
+    STREAM_BUFFER_SIZE: int = field(default_factory=get_env("VERTEX_AI_STREAM_BUFFER_SIZE", 1024))
+    """Buffer size for streaming responses."""
+    STREAM_TIMEOUT_SECONDS: int = field(default_factory=get_env("VERTEX_AI_STREAM_TIMEOUT_SECONDS", 30))
+    """Timeout for streaming responses."""
+
 
 @dataclass
 class AgentSettings:

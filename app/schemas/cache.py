@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from app.schemas.base import CamelizedBaseStruct, SerializedEmbedding
+from app.schemas.base import CamelizedBaseStruct
 
 __all__ = (
     "EmbeddingCache",
@@ -26,7 +26,7 @@ class EmbeddingCache(CamelizedBaseStruct, omit_defaults=True):
 
     id: int  # Changed from UUID to int to match migration (serial primary key)
     text_hash: str
-    embedding: SerializedEmbedding  # Msgspec-compatible numpy array wrapper
+    embedding: list[float]  # Embedding vector as list of floats
     model: str  # This matches the database column name
     hit_count: int = 0
     last_accessed: datetime | None = None

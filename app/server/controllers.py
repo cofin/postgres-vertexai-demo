@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import re
 import secrets
 import time
@@ -130,7 +129,7 @@ class CoffeeChatController(Controller):
                     "user_message": clean_message,
                     "ai_response": agent_response["answer"],
                     "query_id": query_id,
-                    "products": [],  # Products info is embedded in response text for ADK agents
+                    "products": [],
                     "intent": agent_response.get("intent", {}),
                     "csp_nonce": csp_nonce,
                     "agent_used": agent_response.get("agent_used", "ADK"),
@@ -152,11 +151,7 @@ class CoffeeChatController(Controller):
         )
 
     @get(path="/chat/stream/{query_id:str}", name="chat.stream")
-    async def stream_response(
-        self,
-        query_id: str,
-        vertex_ai_service: VertexAIService,
-    ) -> Stream:
+    async def stream_response(self, query_id: str, vertex_ai_service: VertexAIService) -> Stream:
         """Stream AI response using Server-Sent Events."""
         # Validate query_id format
         if not re.match(r"^[a-zA-Z0-9_-]+$", query_id):
@@ -168,20 +163,14 @@ class CoffeeChatController(Controller):
 
         async def generate() -> AsyncGenerator[str, None]:
             try:
-                # Simple streaming demonstration
                 messages = [{"role": "user", "content": "Tell me about coffee recommendations briefly"}]
 
-                # Since we don't have streaming in our basic Vertex AI setup,
-                # we'll simulate streaming by breaking up a response
-                response = await vertex_ai_service.generate_chat_response(messages)
-
-                # Split response into chunks and stream
-                words = response.split()
-                for i in range(0, len(words), 3):
-                    chunk = " ".join(words[i : i + 3]) + " "
-                    safe_chunk = chunk.replace('"', '\\"').replace("\n", "\\n")
-                    yield f"data: {{'chunk': '{safe_chunk}', 'query_id': '{query_id}'}}\n\n"
-                    await asyncio.sleep(0.1)  # Small delay for demo
+                # Use real streaming from Vertex AI service
+                stream = vertex_ai_service.generate_chat_response_stream(messages)
+                async for chunk in stream:
+                    if chunk:  # Only send non-empty chunks
+                        safe_chunk = chunk.replace('"', '\\"').replace("\n", "\\n")
+                        yield f"data: {{'chunk': '{safe_chunk}', 'query_id': '{query_id}'}}\n\n"
 
                 yield f"data: {{'done': true, 'query_id': '{query_id}'}}\n\n"
 
