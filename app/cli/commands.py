@@ -387,9 +387,76 @@ def bulk_embed() -> None:
 def embed_new(limit: int) -> None:
     """Process new/updated products using online embedding API for real-time updates."""
     console = get_console()
-    console.print(
-        f"[yellow]⚠ Online embedding service not yet implemented. Would process up to {limit} products.[/yellow]"
-    )
+    console.rule("[bold blue]Processing Product Embeddings", style="blue")
+    console.print()
+
+    async def _embed_new_products() -> None:
+        from app.server.deps import create_service_provider
+        from app.services.embedding import EmbeddingService
+        from app.services.product import ProductService
+
+        # Create service provider
+        provider = create_service_provider(EmbeddingService)
+        service_gen = provider()
+
+        try:
+            embedding_service = await anext(service_gen)
+            product_service = ProductService(embedding_service.driver)
+
+            # Get products without embeddings
+            with console.status("[bold yellow]Finding products without embeddings...", spinner="dots"):
+                products = await product_service.get_products_without_embeddings(limit)
+
+            if not products:
+                console.print("[green]✓ All products already have embeddings![/green]")
+                return
+
+            console.print(f"[cyan]Found {len(products)} products without embeddings[/cyan]")
+            console.print()
+
+            # Process products in batches
+            success_count = 0
+            error_count = 0
+
+            with console.status("[bold yellow]Generating embeddings...", spinner="dots") as status:
+                for i, product in enumerate(products, 1):
+                    try:
+                        # Update status
+                        status.update(f"[bold yellow]Processing product {i}/{len(products)}: {product.name}...")
+
+                        # Generate embedding for product
+                        combined_text = f"{product.name}: {product.description}"
+                        embedding = await embedding_service.get_text_embedding(combined_text)
+
+                        # Update product with embedding
+                        await product_service.update_product_embedding(product.id, embedding)
+
+                        success_count += 1
+                        logger.debug(
+                            "Updated product embedding",
+                            product_id=product.id,
+                            product_name=product.name,
+                        )
+
+                    except Exception as e:  # noqa: BLE001
+                        error_count += 1
+                        logger.warning(
+                            "Failed to process product embedding",
+                            product_id=product.id,
+                            product_name=product.name,
+                            error=str(e),
+                        )
+
+            # Show results
+            console.print(f"[bold green]✓ Successfully processed {success_count} products[/bold green]")
+            if error_count > 0:
+                console.print(f"[bold red]✗ Failed to process {error_count} products[/bold red]")
+            console.print()
+
+        finally:
+            await service_gen.aclose()
+
+    run_(_embed_new_products)()
 
 
 @database_management_group.command(name="model-info", help="Show information about currently configured AI models.")  # type: ignore[misc]

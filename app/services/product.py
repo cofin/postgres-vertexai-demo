@@ -66,7 +66,7 @@ class ProductService(SQLSpecService):
                 "created_at",
                 "updated_at",
             )
-            .from_("products")
+            .from_("product")
             .where_eq("id", product_id),
             schema_type=Product,
             error_message=f"Product {product_id} not found",
@@ -231,7 +231,21 @@ class ProductService(SQLSpecService):
             List of products without embeddings
         """
         return await self.driver.select(
-            sqlspec.get_sql("products-without-embeddings"),
-            limit_count=limit,
+            sql.select(
+                "id",
+                "name",
+                "description",
+                "price",
+                "category",
+                "sku",
+                "in_stock",
+                "metadata",
+                "created_at",
+                "updated_at",
+            )
+            .from_("product")
+            .where("embedding IS NULL")
+            .order_by("created_at")
+            .limit(limit),
             schema_type=Product,
         )
