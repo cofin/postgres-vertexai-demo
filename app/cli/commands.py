@@ -88,8 +88,6 @@ def _display_alternatives(console: Console, alternative_results: list[Any]) -> N
 def load_fixtures_cmd(tables: str | None, list_fixtures: bool) -> None:
     """Load application fixture data into the database."""
 
-    _console = get_console()
-
     if list_fixtures:
         _display_fixture_list()
         return
@@ -392,16 +390,16 @@ def embed_new(limit: int) -> None:
 
     async def _embed_new_products() -> None:
         from app.server.deps import create_service_provider
-        from app.services.embedding import EmbeddingService
         from app.services.product import ProductService
+        from app.services.vertex_ai import VertexAIService
 
-        # Create service provider
-        provider = create_service_provider(EmbeddingService)
-        service_gen = provider()
+        # Create service providers
+        product_provider = create_service_provider(ProductService)
+        product_service_gen = product_provider()
 
         try:
-            embedding_service = await anext(service_gen)
-            product_service = ProductService(embedding_service.driver)
+            product_service = await anext(product_service_gen)
+            vertex_ai_service = VertexAIService()
 
             # Get products without embeddings
             with console.status("[bold yellow]Finding products without embeddings...", spinner="dots"):
@@ -426,7 +424,7 @@ def embed_new(limit: int) -> None:
 
                         # Generate embedding for product
                         combined_text = f"{product.name}: {product.description}"
-                        embedding = await embedding_service.get_text_embedding(combined_text)
+                        embedding = await vertex_ai_service.get_text_embedding(combined_text)
 
                         # Update product with embedding
                         await product_service.update_product_embedding(product.id, embedding)
@@ -454,7 +452,7 @@ def embed_new(limit: int) -> None:
             console.print()
 
         finally:
-            await service_gen.aclose()
+            await product_service_gen.aclose()
 
     run_(_embed_new_products)()
 
@@ -765,8 +763,8 @@ def populate_intents(force: bool, intent: str | None) -> None:
     async def _populate_intents() -> None:
         from app.lib.intents import INTENT_EXEMPLARS
         from app.server.deps import create_service_provider
-        from app.services.embedding import EmbeddingService
         from app.services.exemplar import ExemplarService
+        from app.services.vertex_ai import VertexAIService
 
         console = get_console()
         console.rule("[bold blue]Populating Intent Exemplars", style="blue")
@@ -785,17 +783,17 @@ def populate_intents(force: bool, intent: str | None) -> None:
             console.print("[dim]Loading exemplars for all intents[/dim]")
         console.print()
 
-        provider = create_service_provider(EmbeddingService)
+        provider = create_service_provider(ExemplarService)
         service_gen = provider()
 
         try:
-            embedding_service = await anext(service_gen)
-            exemplar_service = ExemplarService(embedding_service.driver)
+            exemplar_service = await anext(service_gen)
+            vertex_ai_service = VertexAIService()
 
             with console.status("[bold yellow]Loading intent exemplars...", spinner="dots"):
                 count = await exemplar_service.load_exemplars_bulk(
                     exemplars_to_load,
-                    embedding_service,
+                    vertex_ai_service,
                     default_threshold=0.7,
                 )
 
@@ -821,9 +819,9 @@ def test_intent(query: str, alternatives: bool) -> None:
 
     async def _test_intent() -> None:
         from app.server.deps import create_service_provider
-        from app.services.embedding import EmbeddingService
         from app.services.exemplar import ExemplarService
         from app.services.intent import IntentService
+        from app.services.vertex_ai import VertexAIService
 
         console = get_console()
         console.rule("[bold blue]Testing Intent Classification", style="blue")
@@ -831,16 +829,16 @@ def test_intent(query: str, alternatives: bool) -> None:
         console.print(f"Query: [cyan]{query}[/cyan]")
         console.print()
 
-        provider = create_service_provider(EmbeddingService)
+        provider = create_service_provider(ExemplarService)
         service_gen = provider()
 
         try:
-            embedding_service = await anext(service_gen)
-            exemplar_service = ExemplarService(embedding_service.driver)
+            exemplar_service = await anext(service_gen)
+            vertex_ai_service = VertexAIService()
             intent_service = IntentService(
-                embedding_service.driver,
+                exemplar_service.driver,
                 exemplar_service,
-                embedding_service,
+                vertex_ai_service,
             )
 
             with console.status("[bold yellow]Classifying intent...", spinner="dots"):
@@ -870,19 +868,17 @@ def intent_stats() -> None:
         from rich.table import Table
 
         from app.server.deps import create_service_provider
-        from app.services.embedding import EmbeddingService
         from app.services.exemplar import ExemplarService
 
         console = get_console()
         console.rule("[bold blue]Intent Classification Statistics", style="blue")
         console.print()
 
-        provider = create_service_provider(EmbeddingService)
+        provider = create_service_provider(ExemplarService)
         service_gen = provider()
 
         try:
-            embedding_service = await anext(service_gen)
-            exemplar_service = ExemplarService(embedding_service.driver)
+            exemplar_service = await anext(service_gen)
 
             stats = await exemplar_service.get_intent_stats()
 
@@ -927,7 +923,6 @@ def clear_intents(intent: str | None, unused_only: bool) -> None:
 
     async def _clear_intents() -> None:
         from app.server.deps import create_service_provider
-        from app.services.embedding import EmbeddingService
         from app.services.exemplar import ExemplarService
 
         console = get_console()
@@ -955,12 +950,11 @@ def clear_intents(intent: str | None, unused_only: bool) -> None:
                 console.print("[yellow]Operation cancelled.[/yellow]")
                 return
 
-        provider = create_service_provider(EmbeddingService)
+        provider = create_service_provider(ExemplarService)
         service_gen = provider()
 
         try:
-            embedding_service = await anext(service_gen)
-            exemplar_service = ExemplarService(embedding_service.driver)
+            exemplar_service = await anext(service_gen)
 
             with console.status("[bold yellow]Clearing intent exemplars...", spinner="dots"):
                 if unused_only:
@@ -974,10 +968,92 @@ def clear_intents(intent: str | None, unused_only: bool) -> None:
                     console.print(f"[green]✓ Cleared {len(exemplars)} exemplars for intent '{intent}'[/green]")
                 else:
                     # Clear all intent exemplars
-                    await embedding_service.driver.execute("DELETE FROM intent_exemplar")
+                    await exemplar_service.driver.execute("DELETE FROM intent_exemplar")
                     console.print("[green]✓ Cleared all intent exemplars[/green]")
 
         finally:
             await service_gen.aclose()
 
     run_(_clear_intents)()
+
+
+@database_management_group.command(
+    name="rebuild-vector-indexes", help="Drop and recreate vector indexes for embeddings."
+)  # type: ignore[misc]
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    help="Skip confirmation prompt",
+)
+def rebuild_vector_indexes(force: bool) -> None:
+    """Drop and recreate vector indexes for embeddings.
+
+    This rebuilds the IVFFlat indexes for product embeddings and intent exemplar embeddings.
+    Useful after loading new fixtures or when vector search performance degrades.
+    """
+    console = get_console()
+
+    # Confirm operation unless forced
+    if not force:
+        console.print("[bold red]⚠️  WARNING: This will temporarily drop vector indexes![/bold red]")
+        console.print("Vector searches may be slow during index rebuild.")
+        from rich.prompt import Prompt
+
+        confirm = Prompt.ask(
+            "\n[bold red]Continue with rebuild?[/bold red]",
+            choices=["y", "n"],
+            default="n",
+        )
+        if confirm.lower() != "y":
+            console.print("[yellow]Operation cancelled.[/yellow]")
+            return
+
+    async def _rebuild_vector_indexes() -> None:
+        """Rebuild vector indexes."""
+        from app.config import db
+
+        console.rule("[bold blue]Rebuilding Vector Indexes", style="blue")
+        console.print()
+
+        vector_indexes = [
+            {
+                "name": "product_embedding_ivfflat_idx",
+                "table": "product",
+                "column": "embedding",
+                "create_sql": "CREATE INDEX product_embedding_ivfflat_idx ON product USING ivfflat (embedding vector_cosine_ops)",
+            },
+            {
+                "name": "intent_exemplar_embedding_ivfflat_idx",
+                "table": "intent_exemplar",
+                "column": "embedding",
+                "create_sql": "CREATE INDEX intent_exemplar_embedding_ivfflat_idx ON intent_exemplar USING ivfflat (embedding vector_cosine_ops)",
+            },
+        ]
+
+        async with db.provide_session() as session:
+            for index_info in vector_indexes:
+                index_name = index_info["name"]
+                _table_name = index_info["table"]
+                create_sql = index_info["create_sql"]
+
+                try:
+                    # Drop existing index if it exists
+                    console.print(f"[yellow]Dropping index {index_name}...[/yellow]")
+                    await session.execute(f"DROP INDEX IF EXISTS {index_name}")
+
+                    # Recreate the index
+                    console.print(f"[cyan]Creating index {index_name}...[/cyan]")
+                    await session.execute(create_sql)
+
+                    console.print(f"[green]✓ Successfully rebuilt {index_name}[/green]")
+
+                except Exception as e:  # noqa: BLE001
+                    console.print(f"[red]✗ Failed to rebuild {index_name}: {e}[/red]")
+
+            await session.commit()
+
+        console.print()
+        console.print("[bold green]Vector index rebuild complete![/bold green]")
+
+    run_(_rebuild_vector_indexes)()

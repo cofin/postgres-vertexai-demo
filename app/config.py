@@ -61,6 +61,10 @@ sqlspec = SQLSpec(config=DatabaseConfig(commit_mode="autocommit", config=db))
 # Load SQL files
 sqlspec.load_sql_files(Path(__file__).parent / "db" / "sql")
 
+# Global service locator
+from app.services.locator import ServiceLocator
+service_locator = ServiceLocator()
+
 
 log = StructlogConfig(
     enable_middleware_logging=False,

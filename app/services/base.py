@@ -200,3 +200,64 @@ class SQLSpecService:
         except Exception:
             await self.rollback()
             raise
+
+    async def get_by(
+        self,
+        table: str,
+        schema_type: type[ModelDTOT],
+        columns: list[str] | None = None,
+        **filters: Any,
+    ) -> list[ModelDTOT]:
+        """Generic get method with dynamic filters.
+
+        Args:
+            table: Table name to query
+            schema_type: Schema type for result mapping
+            columns: List of columns to select (defaults to all)
+            **filters: Key-value filters for WHERE clause
+
+        Returns:
+            List of matching records
+        """
+        from sqlspec import sql
+
+        # Build SELECT clause
+        if columns:
+            query = sql.select(*columns)
+        else:
+            # Use explicit column list instead of "*" for better performance
+            query = sql.select()
+
+        query = query.from_(table)
+
+        # Add WHERE filters
+        for key, value in filters.items():
+            if value is None:
+                query = query.where_is_null(key)
+            elif isinstance(value, list):
+                query = query.where_in(key, value)
+            else:
+                query = query.where_eq(key, value)
+
+        return await self.driver.select(query, schema_type=schema_type)
+
+    async def get_one_by(
+        self,
+        table: str,
+        schema_type: type[ModelDTOT],
+        columns: list[str] | None = None,
+        **filters: Any,
+    ) -> ModelDTOT | None:
+        """Get single record by filters.
+
+        Args:
+            table: Table name to query
+            schema_type: Schema type for result mapping
+            columns: List of columns to select (defaults to all)
+            **filters: Key-value filters for WHERE clause
+
+        Returns:
+            Single matching record or None if not found
+        """
+        results = await self.get_by(table, schema_type, columns, **filters)
+        return results[0] if results else None

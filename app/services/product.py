@@ -20,27 +20,9 @@ class ProductService(SQLSpecService):
         Returns:
             Created product
         """
-        # Convert to dict and insert
-        product_data = {
-            "name": data.name,
-            "description": data.description,
-            "price": data.price,
-            "category": data.category,
-            "sku": data.sku,
-            "in_stock": data.in_stock,
-            "metadata": data.metadata,
-        }
+        return await self.upsert_product(data)
 
-        product_id = await self.driver.select_value(
-            sql.insert("products")
-            .columns("name", "description", "price", "category", "sku", "in_stock", "metadata")
-            .values(**product_data)
-            .returning("id")
-        )
-
-        return await self.get_product(product_id)
-
-    async def get_product(self, product_id: int) -> Product:
+    async def get_by_id(self, product_id: int) -> Product:
         """Get a product by ID.
 
         Args:
@@ -52,7 +34,27 @@ class ProductService(SQLSpecService):
         Raises:
             ValueError: If product not found
         """
-        return await self.get_or_404(
+        result = await self.get_one_by(
+            "product",
+            Product,
+            columns=["id", "name", "description", "price", "category", "sku", "in_stock", "metadata", "created_at", "updated_at"],
+            id=product_id,
+        )
+        if result is None:
+            raise ValueError(f"Product {product_id} not found")
+        return result
+
+    async def search_by_name(self, name: str, limit: int = 10) -> list[Product]:
+        """Search products by name using ILIKE pattern matching.
+
+        Args:
+            name: Product name to search for
+            limit: Maximum number of results
+
+        Returns:
+            List of matching products
+        """
+        return await self.driver.select(
             sql.select(
                 "id",
                 "name",
@@ -66,9 +68,11 @@ class ProductService(SQLSpecService):
                 "updated_at",
             )
             .from_("product")
-            .where_eq("id", product_id),
+            .where(f"name ILIKE '%{name}%'")
+            .where_eq("in_stock", True)
+            .order_by("name")
+            .limit(limit),
             schema_type=Product,
-            error_message=f"Product {product_id} not found",
         )
 
     async def update_product(self, product_id: int, data: ProductUpdate) -> Product:
@@ -99,10 +103,45 @@ class ProductService(SQLSpecService):
             update_data["metadata"] = data.metadata
 
         if update_data:
-            update_data["updated_at"] = "NOW()"
+            update_data["updated_at"] = sql.raw("CURRENT_TIMESTAMP")
             await self.driver.execute(sql.update("product").set(**update_data).where_eq("id", product_id))
 
-        return await self.get_product(product_id)
+        return await self.get_by_id(product_id)
+
+    async def upsert_product(self, data: ProductCreate | ProductUpdate) -> Product:
+        """Create or update a product using upsert pattern.
+
+        Args:
+            data: Product creation or update data
+
+        Returns:
+            Created or updated product
+        """
+        return await self.driver.select_one(
+            sql.insert("product")
+            .columns("name", "description", "price", "category", "sku", "in_stock", "metadata")
+            .values(
+                name=data.name,
+                description=data.description,
+                price=data.price,
+                category=data.category,
+                sku=data.sku,
+                in_stock=data.in_stock,
+                metadata=data.metadata,
+            )
+            .on_conflict("sku")  # Assuming sku is unique constraint
+            .do_update(
+                name=sql.raw("EXCLUDED.name"),
+                description=sql.raw("EXCLUDED.description"),
+                price=sql.raw("EXCLUDED.price"),
+                category=sql.raw("EXCLUDED.category"),
+                in_stock=sql.raw("EXCLUDED.in_stock"),
+                metadata=sql.raw("EXCLUDED.metadata"),
+                updated_at=sql.raw("CURRENT_TIMESTAMP"),
+            )
+            .returning("id", "name", "description", "price", "category", "sku", "in_stock", "metadata", "created_at", "updated_at"),
+            schema_type=Product,
+        )
 
     async def delete_product(self, product_id: int) -> None:
         """Delete a product.
@@ -164,16 +203,11 @@ class ProductService(SQLSpecService):
               created_at,
               updated_at,
               ts_rank(to_tsvector('english', name || ' ' || coalesce(description, '')), plainto_tsquery('english', :query)) as rank
-            FROM
-              product
-            WHERE
-              to_tsvector('english', name || ' ' || coalesce(description, '')) @@ plainto_tsquery('english', :query)
+            FROM product
+            WHERE to_tsvector('english', name || ' ' || coalesce(description, '')) @@ plainto_tsquery('english', :query)
               AND in_stock = true
-            ORDER BY
-              rank DESC,
-              name
-            LIMIT
-              :limit_count
+            ORDER BY rank DESC, name
+            LIMIT :limit_count
             """,
             query=search_term,
             limit_count=limit,
@@ -289,7 +323,7 @@ class ProductService(SQLSpecService):
                 "updated_at",
             )
             .from_("product")
-            .where("embedding IS NULL")
+            .where_is_null("embedding")
             .order_by("created_at")
             .limit(limit),
             schema_type=Product,

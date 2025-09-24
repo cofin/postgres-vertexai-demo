@@ -35,20 +35,7 @@ class ExemplarService(SQLSpecService):
         Returns:
             Created intent exemplar
         """
-
-        exemplar_id = await self.driver.select_value(
-            sql.insert("intent_exemplar")
-            .columns("intent", "phrase", "embedding", "confidence_threshold")
-            .values(
-                intent=exemplar_data.intent,
-                phrase=exemplar_data.phrase,
-                embedding=exemplar_data.embedding,
-                confidence_threshold=exemplar_data.confidence_threshold,
-            )
-            .returning("id")
-        )
-
-        return await self.get_exemplar_by_id(exemplar_id)
+        return await self.upsert_exemplar(exemplar_data)
 
     async def get_exemplar_by_id(self, exemplar_id: int) -> IntentExemplar:
         """Get intent exemplar by ID.
@@ -99,8 +86,6 @@ class ExemplarService(SQLSpecService):
         Returns:
             List of all intent exemplars
         """
-        from sqlspec import sql
-
         return await self.driver.select(
             sql.select(
                 "id", "intent", "phrase", "embedding", "confidence_threshold", "usage_count", "created_at", "updated_at"
@@ -119,9 +104,7 @@ class ExemplarService(SQLSpecService):
         Returns:
             Created or updated intent exemplar
         """
-        from sqlspec import sql
-
-        exemplar_id = await self.driver.select_value(
+        return await self.driver.select_one(
             sql.insert("intent_exemplar")
             .columns("intent", "phrase", "embedding", "confidence_threshold")
             .values(
@@ -136,10 +119,11 @@ class ExemplarService(SQLSpecService):
                 confidence_threshold=sql.raw("EXCLUDED.confidence_threshold"),
                 updated_at=sql.raw("CURRENT_TIMESTAMP"),
             )
-            .returning("id")
+            .returning(
+                "id", "intent", "phrase", "embedding", "confidence_threshold", "usage_count", "created_at", "updated_at"
+            ),
+            schema_type=IntentExemplar,
         )
-
-        return await self.get_exemplar_by_id(exemplar_id)
 
     async def update_exemplar(self, exemplar_id: int, update_data: IntentExemplarUpdate) -> IntentExemplar:
         """Update an intent exemplar.
@@ -154,9 +138,6 @@ class ExemplarService(SQLSpecService):
         Raises:
             ValueError: If exemplar not found
         """
-        from sqlspec import sql
-
-        # Build update statement with only provided values
         stmt = sql.update("intent_exemplar").set(updated_at=sql.raw("CURRENT_TIMESTAMP"))
 
         if update_data.phrase is not None:
@@ -214,16 +195,14 @@ class ExemplarService(SQLSpecService):
             logger.debug("Using search-similar-intents-by-intent query")
             return await self.driver.select(
                 """
-                WITH
-                    query_embedding AS (
+                WITH query_embedding AS (
                         SELECT
                             intent,
                             phrase,
                             1 - (embedding <=> :query_embedding) AS similarity,
                             confidence_threshold,
                             usage_count
-                        FROM
-                            intent_exemplar
+                        FROM intent_exemplar
                     )
                 SELECT
                     intent,
@@ -231,15 +210,11 @@ class ExemplarService(SQLSpecService):
                     similarity,
                     confidence_threshold,
                     usage_count
-                FROM
-                    query_embedding
-                WHERE
-                    intent = :target_intent
-                    AND similarity > :min_threshold
-                ORDER BY
-                    similarity DESC
-                LIMIT
-                    :limit
+                FROM query_embedding
+                WHERE intent = :target_intent
+                AND similarity > :min_threshold
+                ORDER BY similarity DESC
+                LIMIT :limit
                 """,
                 query_embedding=query_embedding,
                 min_threshold=min_threshold,
@@ -290,8 +265,6 @@ class ExemplarService(SQLSpecService):
         Args:
             exemplar_id: Intent exemplar ID
         """
-        from sqlspec import sql
-
         await self.driver.execute(
             sql.update("intent_exemplar").set(usage_count=sql.raw("usage_count + 1")).where_eq("id", exemplar_id)
         )
@@ -303,8 +276,6 @@ class ExemplarService(SQLSpecService):
             intent: Intent name
             phrase: Exemplar phrase
         """
-        from sqlspec import sql
-
         await self.driver.execute(
             sql.update("intent_exemplar")
             .set(usage_count=sql.raw("usage_count + 1"))
@@ -336,7 +307,7 @@ class ExemplarService(SQLSpecService):
             logger.debug("Loading exemplars for intent", intent=intent, phrase_count=len(phrases))
 
             # Generate embeddings for all phrases at once
-            embeddings = await embedding_service.get_batch_embeddings(phrases)
+            embeddings = await embedding_service.get_text_embedding(phrases)
 
             # Create exemplars
             for phrase, embedding in zip(phrases, embeddings, strict=False):
@@ -378,8 +349,7 @@ class ExemplarService(SQLSpecService):
                 count(*) as total_exemplars,
                 count(DISTINCT intent) as intents_count,
                 avg(usage_count) as average_usage
-            FROM
-                intent_exemplar
+            FROM intent_exemplar
             """
         )
 
@@ -445,7 +415,7 @@ class ExemplarService(SQLSpecService):
                 usage_count = 0
                 AND created_at < now() - interval ':days_old days'
             """,
-            days_old=days_old
+            days_old=days_old,
         )
         if result is not None:
             logger.info("Cleaned unused exemplars", deleted_count=result)
@@ -462,8 +432,6 @@ class ExemplarService(SQLSpecService):
         Returns:
             List of intent exemplars for the specified intents
         """
-        from sqlspec import sql
-
         return await self.driver.select(
             sql.select(
                 "id", "intent", "phrase", "embedding", "confidence_threshold", "usage_count", "created_at", "updated_at"
@@ -484,8 +452,6 @@ class ExemplarService(SQLSpecService):
         Returns:
             Number of exemplars updated
         """
-        from sqlspec import sql
-
         result = await self.driver.execute(
             sql.update("intent_exemplar")
             .set(confidence_threshold=new_threshold, updated_at=sql.raw("CURRENT_TIMESTAMP"))

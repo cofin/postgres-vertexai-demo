@@ -57,9 +57,9 @@ class VertexAISettings:
     """Google Cloud Project ID for Vertex AI."""
     LOCATION: str = field(default_factory=get_env("VERTEX_AI_LOCATION", "us-central1"))
     """Vertex AI location/region."""
-    EMBEDDING_MODEL: str = field(default_factory=get_env("VERTEX_AI_EMBEDDING_MODEL", "text-embedding-005"))
+    EMBEDDING_MODEL: str = field(default_factory=get_env("VERTEX_AI_EMBEDDING_MODEL", "text-embedding-004"))
     """Vertex AI embedding model."""
-    EMBEDDING_DIMENSIONS: int = field(default_factory=get_env("VERTEX_AI_EMBEDDING_DIMENSIONS", 3072))
+    EMBEDDING_DIMENSIONS: int = field(default_factory=get_env("VERTEX_AI_EMBEDDING_DIMENSIONS", 768))
     """Embedding vector dimensions."""
     CHAT_MODEL: str = field(default_factory=get_env("VERTEX_AI_CHAT_MODEL", "gemini-2.5-flash"))
     """Vertex AI chat model."""
@@ -176,6 +176,8 @@ class AppSettings:
     """Allowed CORS Origins"""
     CSRF_COOKIE_NAME: str = field(default_factory=get_env("CSRF_COOKIE_NAME", "XSRF-TOKEN"))
     """CSRF Cookie Name"""
+    SESSION_MAX_AGE: int = field(default_factory=get_env("SESSION_MAX_AGE", 86400 * 7))
+    """Session cookie max age in seconds (default: 7 days)"""
     CSRF_HEADER_NAME: str = field(default_factory=get_env("CSRF_HEADER_NAME", "X-XSRF-TOKEN"))
     """CSRF Header Name"""
     CSRF_COOKIE_SECURE: bool = field(default_factory=get_env("CSRF_COOKIE_SECURE", False))

@@ -26,8 +26,7 @@ if TYPE_CHECKING:
     from litestar.params import Body
 
     from app import schemas as s
-    from app.agents.orchestrator import ADKOrchestrator
-    from app.services.embedding import EmbeddingService
+    from app.services.adk.orchestrator import ADKOrchestrator
     from app.services.metrics import MetricsService
     from app.services.product import ProductService
     from app.services.vertex_ai import VertexAIService
@@ -41,7 +40,6 @@ class CoffeeChatController(Controller):
         "vertex_ai_service": Provide(deps.provide_vertex_ai_service),
         "product_service": Provide(deps.provide_product_service),
         "chat_service": Provide(deps.provide_chat_service),
-        "embedding_service": Provide(deps.provide_embedding_service),
         "cache_service": Provide(deps.provide_cache_service),
         "metrics_service": Provide(deps.provide_metrics_service),
     }
@@ -103,14 +101,20 @@ class CoffeeChatController(Controller):
         csp_nonce = self.generate_csp_nonce()
         clean_message = self.validate_message(data.message)
         validated_persona = self.validate_persona(data.persona)
-        query_id = str(uuid.uuid4())
+        query_id = str(uuid.uuid4())  # Keep for message fingerprinting
+
+        # Get or create session_id for persistence across requests
+        session_id = request.session.get("session_id")
+        if not session_id:
+            session_id = str(uuid.uuid4())
+            request.session["session_id"] = session_id
 
         try:
-            # Process through ADK orchestrator
+            # Process through ADK orchestrator with persistent session_id
             agent_response = await adk_orchestrator.process_request(
                 query=clean_message,
                 user_id="web_user",
-                session_id=query_id,
+                session_id=session_id,  # Use persistent session_id, not query_id
                 persona=validated_persona,
             )
 
@@ -233,7 +237,7 @@ class CoffeeChatController(Controller):
     async def vector_search_demo(
         self,
         data: Annotated[s.VectorDemoRequest, Body(media_type=RequestEncodingType.URL_ENCODED)],
-        embedding_service: EmbeddingService,
+        vertex_ai_service: VertexAIService,
         product_service: ProductService,
         metrics_service: MetricsService,
         request: HTMXRequest,
@@ -246,7 +250,7 @@ class CoffeeChatController(Controller):
 
         # Time the embedding generation
         embedding_start = time.time()
-        query_embedding = await embedding_service.get_text_embedding(query)
+        query_embedding = await vertex_ai_service.get_text_embedding(query)
         detailed_timings["embedding_ms"] = (time.time() - embedding_start) * 1000
 
         # Time the vector search

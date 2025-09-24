@@ -44,15 +44,13 @@ class CacheService(SQLSpecService):
         Returns:
             Created cache entry
         """
-        expires_at = sql.raw(f"NOW() + INTERVAL '{ttl_minutes} minutes'")
-
         return await self.driver.select_one(
             sql.insert("response_cache")
             .columns("cache_key", "response_data", "expires_at")
             .values(
                 cache_key=cache_key,
                 response_data=response_data,
-                expires_at=expires_at,
+                expires_at=sql.raw(f"NOW() + INTERVAL '{ttl_minutes} minutes'"),
             )
             .on_conflict("cache_key")
             .do_update(
@@ -62,26 +60,6 @@ class CacheService(SQLSpecService):
             )
             .returning("id", "cache_key", "response_data", "expires_at", "created_at"),
             schema_type=ResponseCache,
-        )
-
-    async def get_response_cache_by_id(self, cache_id: int) -> ResponseCache:
-        """Get response cache entry by ID.
-
-        Args:
-            cache_id: Cache entry ID
-
-        Returns:
-            Cache entry
-
-        Raises:
-            ValueError: If cache entry not found
-        """
-        return await self.get_or_404(
-            sql.select("id", "cache_key", "response_data", "expires_at", "created_at")
-            .from_("response_cache")
-            .where_eq("id", cache_id),
-            schema_type=ResponseCache,
-            error_message=f"Cache entry {cache_id} not found",
         )
 
     async def get_cached_embedding(self, text: str, model_name: str) -> EmbeddingCache | None:
@@ -94,13 +72,10 @@ class CacheService(SQLSpecService):
         Returns:
             Cached embedding or None if not found
         """
-        text_hash = self._hash_text(text)
-
-        # Get raw result first (embedding will be numpy array from pgvector)
         return await self.driver.select_one_or_none(
             sql.select("id", "text_hash", "embedding", "model", "hit_count", "last_accessed", "created_at")
             .from_("embedding_cache")
-            .where_eq("text_hash", text_hash)
+            .where_eq("text_hash", self._hash_text(text))
             .where_eq("model", model_name),
             schema_type=EmbeddingCache,
         )
@@ -116,13 +91,11 @@ class CacheService(SQLSpecService):
         Returns:
             Created cache entry
         """
-        text_hash = self._hash_text(text)
-
         return await self.driver.select_one(
             sql.insert("embedding_cache")
             .columns("text_hash", "embedding", "model")
             .values(
-                text_hash=text_hash,
+                text_hash=self._hash_text(text),
                 embedding=embedding,
                 model=model_name,
             )
@@ -135,31 +108,6 @@ class CacheService(SQLSpecService):
             .returning("id", "text_hash", "embedding", "model", "hit_count", "last_accessed", "created_at"),
             schema_type=EmbeddingCache,
         )
-
-    async def get_embedding_cache_by_id(self, cache_id: int) -> EmbeddingCache:
-        """Get embedding cache entry by ID.
-
-        Args:
-            cache_id: Cache entry ID
-
-        Returns:
-            Cache entry
-
-        Raises:
-            ValueError: If cache entry not found
-        """
-        result = await self.driver.select_one_or_none(
-            sql.select("id", "text_hash", "embedding", "model", "hit_count", "last_accessed", "created_at")
-            .from_("embedding_cache")
-            .where_eq("id", cache_id),
-            schema_type=EmbeddingCache,
-        )
-
-        if result is None:
-            error_message = f"Embedding cache entry {cache_id} not found"
-            raise ValueError(error_message)
-
-        return result
 
     async def cleanup_expired_responses(self) -> int:
         """Clean up expired response cache entries.
@@ -194,15 +142,6 @@ class CacheService(SQLSpecService):
         """
         await self.driver.execute(sql.delete("response_cache").where_eq("cache_key", cache_key))
 
-    async def clear_response_cache(self) -> int:
-        """Clear all response cache entries.
-
-        Returns:
-            Number of entries deleted
-        """
-        result = await self.driver.execute(sql.delete("response_cache"))
-        return result.get_count()
-
     async def get_embeddings_by_model(self, model_name: str, limit: int = 100) -> list[EmbeddingCache]:
         """Get all embeddings for a specific model.
 
@@ -232,27 +171,6 @@ class CacheService(SQLSpecService):
         await self.driver.execute(
             sql.delete("embedding_cache").where_eq("text_hash", text_hash).where_eq("model", model_name)
         )
-
-    async def delete_embeddings_by_model(self, model_name: str) -> int:
-        """Delete all cached embeddings for a model.
-
-        Args:
-            model_name: Model name
-
-        Returns:
-            Number of entries deleted
-        """
-        result = await self.driver.execute(sql.delete("embedding_cache").where_eq("model", model_name))
-        return result.rows_affected
-
-    async def clear_embedding_cache(self) -> int:
-        """Clear all embedding cache entries.
-
-        Returns:
-            Number of entries deleted
-        """
-        result = await self.driver.execute(sql.delete("embedding_cache"))
-        return result.rows_affected
 
     async def increment_embedding_hit(self, text_hash: str, model_name: str) -> None:
         """Increment hit count for an embedding.
@@ -289,14 +207,6 @@ class CacheService(SQLSpecService):
             schema_type=EmbeddingCache,
         )
 
-    # Keep the old method name for backward compatibility
-    async def invalidate_cache_by_key(self, cache_key: str) -> None:
-        """Invalidate a cached response by key.
-
-        Args:
-            cache_key: Cache key to invalidate
-        """
-        await self.delete_cached_response(cache_key)
 
     async def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics.

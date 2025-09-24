@@ -11,7 +11,7 @@ from app.schemas import IntentResult, IntentSearchResult
 from app.services.base import SQLSpecService
 
 if TYPE_CHECKING:
-    from app.services.embedding import EmbeddingService
+    from app.services.vertex_ai import VertexAIService
     from app.services.exemplar import ExemplarService
 
 logger = structlog.get_logger()
@@ -28,18 +28,18 @@ class IntentService(SQLSpecService):
         self,
         driver: Any,
         exemplar_service: ExemplarService,
-        embedding_service: EmbeddingService,
+        vertex_ai_service: VertexAIService,
     ) -> None:
         """Initialize intent service.
 
         Args:
             driver: Database driver
             exemplar_service: Service for managing intent exemplars
-            embedding_service: Service for generating embeddings
+            vertex_ai_service: Service for generating embeddings
         """
         super().__init__(driver)
         self.exemplar_service = exemplar_service
-        self.embedding_service = embedding_service
+        self.vertex_ai_service = vertex_ai_service
 
     async def classify_intent(
         self,
@@ -65,7 +65,7 @@ class IntentService(SQLSpecService):
         embedding_cache_hit = False
         if user_embedding is None:
             # This will use the two-tier cache in EmbeddingService
-            user_embedding = await self.embedding_service.get_text_embedding(query)
+            user_embedding = await self.vertex_ai_service.get_text_embedding(query)
             # Note: EmbeddingService handles cache hit tracking internally
         else:
             embedding_cache_hit = True
@@ -160,7 +160,7 @@ class IntentService(SQLSpecService):
         # Get query embedding
         embedding_cache_hit = False
         if user_embedding is None:
-            user_embedding = await self.embedding_service.get_text_embedding(query)
+            user_embedding = await self.vertex_ai_service.get_text_embedding(query)
         else:
             embedding_cache_hit = True
 
@@ -237,7 +237,7 @@ class IntentService(SQLSpecService):
         """
         # Get query embedding
         if user_embedding is None:
-            user_embedding = await self.embedding_service.get_text_embedding(query)
+            user_embedding = await self.vertex_ai_service.get_text_embedding(query)
 
         # Search within specific intent
         similar_intents = await self.exemplar_service.search_similar_intents(
@@ -265,7 +265,7 @@ class IntentService(SQLSpecService):
             "total_exemplars": stats.total_exemplars,
             "intents_count": stats.intents_count,
             "average_usage": stats.average_usage,
-            "embedding_service_available": self.embedding_service.is_available(),
+            "embedding_service_available": self.vertex_ai_service.is_initialized,
             "top_intents": stats.top_intents[:5],
         }
 
@@ -301,7 +301,7 @@ class IntentService(SQLSpecService):
         # Add new exemplars
         count = await self.exemplar_service.load_exemplars_bulk(
             exemplars={intent: new_phrases},
-            embedding_service=self.embedding_service,
+            vertex_ai_service=self.vertex_ai_service,
             default_threshold=confidence_threshold or 0.7,
         )
 
