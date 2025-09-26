@@ -27,6 +27,7 @@ from sqlspec.extensions.litestar import DatabaseConfig, SQLSpec
 
 from app.lib import log as log_conf
 from app.lib.settings import get_settings
+from app.services.locator import ServiceLocator
 
 settings = get_settings()
 
@@ -62,7 +63,6 @@ sqlspec = SQLSpec(config=DatabaseConfig(commit_mode="autocommit", config=db))
 sqlspec.load_sql_files(Path(__file__).parent / "db" / "sql")
 
 # Global service locator
-from app.services.locator import ServiceLocator
 service_locator = ServiceLocator()
 
 

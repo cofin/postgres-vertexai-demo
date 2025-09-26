@@ -1,3 +1,5 @@
+name: cymbal_coffee_pg
+
 services:
   db:
     image: google/alloydbomni:latest

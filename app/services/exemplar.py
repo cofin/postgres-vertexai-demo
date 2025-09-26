@@ -10,7 +10,6 @@ from sqlspec import sql
 from app.schemas import (
     IntentExemplar,
     IntentExemplarCreate,
-    IntentExemplarUpdate,
     IntentSearchResult,
     IntentStats,
 )
@@ -25,40 +24,6 @@ class ExemplarService(SQLSpecService):
     Uses SQLSpec patterns for all database operations.
     Provides CRUD operations and bulk loading for intent exemplars.
     """
-
-    async def create_exemplar(self, exemplar_data: IntentExemplarCreate) -> IntentExemplar:
-        """Create a new intent exemplar.
-
-        Args:
-            exemplar_data: Intent exemplar creation data
-
-        Returns:
-            Created intent exemplar
-        """
-        return await self.upsert_exemplar(exemplar_data)
-
-    async def get_exemplar_by_id(self, exemplar_id: int) -> IntentExemplar:
-        """Get intent exemplar by ID.
-
-        Args:
-            exemplar_id: Intent exemplar ID
-
-        Returns:
-            Intent exemplar
-
-        Raises:
-            ValueError: If exemplar not found
-        """
-
-        return await self.get_or_404(
-            sql.select(
-                "id", "intent", "phrase", "embedding", "confidence_threshold", "usage_count", "created_at", "updated_at"
-            )
-            .from_("intent_exemplar")
-            .where_eq("id", exemplar_id),
-            schema_type=IntentExemplar,
-            error_message=f"Intent exemplar {exemplar_id} not found",
-        )
 
     async def get_exemplars_by_intent(self, intent: str) -> list[IntentExemplar]:
         """Get all exemplars for a specific intent.
@@ -79,86 +44,6 @@ class ExemplarService(SQLSpecService):
             .order_by("usage_count DESC"),
             schema_type=IntentExemplar,
         )
-
-    async def get_all_exemplars(self) -> list[IntentExemplar]:
-        """Get all intent exemplars.
-
-        Returns:
-            List of all intent exemplars
-        """
-        return await self.driver.select(
-            sql.select(
-                "id", "intent", "phrase", "embedding", "confidence_threshold", "usage_count", "created_at", "updated_at"
-            )
-            .from_("intent_exemplar")
-            .order_by("intent", "usage_count DESC"),
-            schema_type=IntentExemplar,
-        )
-
-    async def upsert_exemplar(self, exemplar_data: IntentExemplarCreate) -> IntentExemplar:
-        """Create or update an intent exemplar.
-
-        Args:
-            exemplar_data: Intent exemplar data
-
-        Returns:
-            Created or updated intent exemplar
-        """
-        return await self.driver.select_one(
-            sql.insert("intent_exemplar")
-            .columns("intent", "phrase", "embedding", "confidence_threshold")
-            .values(
-                intent=exemplar_data.intent,
-                phrase=exemplar_data.phrase,
-                embedding=exemplar_data.embedding,
-                confidence_threshold=exemplar_data.confidence_threshold,
-            )
-            .on_conflict("intent", "phrase")
-            .do_update(
-                embedding=sql.raw("EXCLUDED.embedding"),
-                confidence_threshold=sql.raw("EXCLUDED.confidence_threshold"),
-                updated_at=sql.raw("CURRENT_TIMESTAMP"),
-            )
-            .returning(
-                "id", "intent", "phrase", "embedding", "confidence_threshold", "usage_count", "created_at", "updated_at"
-            ),
-            schema_type=IntentExemplar,
-        )
-
-    async def update_exemplar(self, exemplar_id: int, update_data: IntentExemplarUpdate) -> IntentExemplar:
-        """Update an intent exemplar.
-
-        Args:
-            exemplar_id: Intent exemplar ID
-            update_data: Update data
-
-        Returns:
-            Updated intent exemplar
-
-        Raises:
-            ValueError: If exemplar not found
-        """
-        stmt = sql.update("intent_exemplar").set(updated_at=sql.raw("CURRENT_TIMESTAMP"))
-
-        if update_data.phrase is not None:
-            stmt = stmt.set(phrase=update_data.phrase)
-        if update_data.embedding is not None:
-            stmt = stmt.set(embedding=update_data.embedding)
-        if update_data.confidence_threshold is not None:
-            stmt = stmt.set(confidence_threshold=update_data.confidence_threshold)
-
-        result = await self.driver.select_one_or_none(
-            stmt.where_eq("id", exemplar_id).returning(
-                "id", "intent", "phrase", "embedding", "confidence_threshold", "usage_count", "created_at", "updated_at"
-            ),
-            schema_type=IntentExemplar,
-        )
-
-        if result is None:
-            msg = f"Intent exemplar {exemplar_id} not found"
-            raise ValueError(msg)
-
-        return result
 
     async def delete_exemplar(self, exemplar_id: int) -> None:
         """Delete an intent exemplar.
@@ -257,16 +142,6 @@ class ExemplarService(SQLSpecService):
             min_threshold=min_threshold,
             limit=limit,
             schema_type=IntentSearchResult,
-        )
-
-    async def increment_usage(self, exemplar_id: int) -> None:
-        """Increment usage count for an exemplar.
-
-        Args:
-            exemplar_id: Intent exemplar ID
-        """
-        await self.driver.execute(
-            sql.update("intent_exemplar").set(usage_count=sql.raw("usage_count + 1")).where_eq("id", exemplar_id)
         )
 
     async def increment_usage_by_phrase(self, intent: str, phrase: str) -> None:
@@ -422,44 +297,3 @@ class ExemplarService(SQLSpecService):
             return result  # type: ignore[no-any-return]
 
         return 0
-
-    async def get_exemplars_for_intents(self, intent_list: list[str]) -> list[IntentExemplar]:
-        """Get exemplars for multiple intents.
-
-        Args:
-            intent_list: List of intent names
-
-        Returns:
-            List of intent exemplars for the specified intents
-        """
-        return await self.driver.select(
-            sql.select(
-                "id", "intent", "phrase", "embedding", "confidence_threshold", "usage_count", "created_at", "updated_at"
-            )
-            .from_("intent_exemplar")
-            .where_in("intent", intent_list)
-            .order_by("intent", "usage_count DESC"),
-            schema_type=IntentExemplar,
-        )
-
-    async def update_intent_thresholds(self, intent: str, new_threshold: float) -> int:
-        """Update confidence threshold for all exemplars of an intent.
-
-        Args:
-            intent: Intent name
-            new_threshold: New confidence threshold
-
-        Returns:
-            Number of exemplars updated
-        """
-        result = await self.driver.execute(
-            sql.update("intent_exemplar")
-            .set(confidence_threshold=new_threshold, updated_at=sql.raw("CURRENT_TIMESTAMP"))
-            .where_eq("intent", intent)
-        )
-
-        updated_count = result.get_count()
-        logger.info(
-            "Updated intent thresholds", intent=intent, new_threshold=new_threshold, updated_count=updated_count
-        )
-        return updated_count

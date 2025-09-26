@@ -15,7 +15,6 @@ from app.services.base import SQLSpecService
 
 if TYPE_CHECKING:
     from app.services.chat import ChatService
-    from app.services.exemplar import ExemplarService
     from app.services.intent import IntentService
     from app.services.metrics import MetricsService
     from app.services.product import ProductService
@@ -174,10 +173,7 @@ class AgentToolsService(SQLSpecService):
         """
         try:
             # Convert session_id to UUID if it's not already
-            if isinstance(session_id, str):
-                session_uuid = uuid.UUID(session_id)
-            else:
-                session_uuid = session_id
+            session_uuid = uuid.UUID(session_id) if isinstance(session_id, str) else session_id
 
             conversations = await self.chat_service.get_recent_conversations(
                 session_id=session_uuid,

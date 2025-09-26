@@ -91,7 +91,6 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         from app.server.controllers import CoffeeChatController
         from app.server.exceptions import exception_handlers
         from app.services.adk.orchestrator import ADKOrchestrator
-        from app.services.cache import CacheService
         from app.services.chat import ChatService
         from app.services.metrics import MetricsService
         from app.services.product import ProductService
@@ -167,7 +166,6 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
             "Body": Body,
             "s": s,
             "ADKOrchestrator": ADKOrchestrator,
-            "CacheService": CacheService,
             "ChatService": ChatService,
             "MetricsService": MetricsService,
             "ProductService": ProductService,

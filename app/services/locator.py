@@ -3,30 +3,27 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Type, TypeVar
+from typing import Any, TypeVar
 
 from sqlspec.driver import AsyncDriverAdapterBase
 
-from app.services.base import SQLSpecService
 from app.services.vertex_ai import VertexAIService
 
 T = TypeVar("T")
 
 
 class ServiceLocator:
-    """
-    A scalable service locator that uses introspection to automatically
+    """A scalable service locator that uses introspection to automatically
     resolve and inject dependencies based on type hints.
     """
 
     def __init__(self) -> None:
         """Initializes the service locator."""
-        self._cache: dict[Type, Any] = {}
-        self._singletons: set[Type] = {VertexAIService}
+        self._cache: dict[type, Any] = {}
+        self._singletons: set[type] = {VertexAIService}
 
-    def get(self, service_cls: Type[T], session: AsyncDriverAdapterBase | None) -> T:
-        """
-        Get an instance of a service, resolving its dependencies automatically.
+    def get(self, service_cls: type[T], session: AsyncDriverAdapterBase | None) -> T:
+        """Get an instance of a service, resolving its dependencies automatically.
 
         Args:
             service_cls: The class of the service to instantiate.
@@ -58,9 +55,9 @@ class ServiceLocator:
             )
 
         if service_cls == AgentToolsService:
-            from app.services.product import ProductService
             from app.services.chat import ChatService
             from app.services.metrics import MetricsService
+            from app.services.product import ProductService
             return AgentToolsService(
                 driver=session,
                 product_service=self.get(ProductService, session),
@@ -72,17 +69,15 @@ class ServiceLocator:
 
         # 3. Handle Transient (session-scoped) services.
         if session is None:
-            raise ValueError(
-                f"A database session is required to create a transient instance of {service_cls.__name__}"
-            )
+            msg = f"A database session is required to create a transient instance of {service_cls.__name__}"
+            raise ValueError(msg)
 
         return self._create_instance(service_cls, session)
 
     def _create_instance(
-        self, service_cls: Type[T], session: AsyncDriverAdapterBase | None
+        self, service_cls: type[T], session: AsyncDriverAdapterBase | None
     ) -> T:
-        """
-        Creates an instance of a class by inspecting its __init__ method
+        """Creates an instance of a class by inspecting its __init__ method
         and recursively resolving dependencies.
         """
         # Get the constructor signature
@@ -97,10 +92,11 @@ class ServiceLocator:
             param_type = param.annotation
 
             if param_type is inspect.Parameter.empty:
-                raise TypeError(
+                msg = (
                     f"Cannot resolve dependency for '{service_cls.__name__}': "
                     f"Parameter '{param.name}' is missing a type hint."
                 )
+                raise TypeError(msg)
 
             # 3. Inject the database session/driver if type-hinted
             if (

@@ -16,6 +16,7 @@ from litestar.plugins.htmx import (
     HXStopPolling,
 )
 from litestar.response import File, Stream
+from sqlspec.utils.serializers import to_json
 
 from app.server import deps
 
@@ -40,7 +41,6 @@ class CoffeeChatController(Controller):
         "vertex_ai_service": Provide(deps.provide_vertex_ai_service),
         "product_service": Provide(deps.provide_product_service),
         "chat_service": Provide(deps.provide_chat_service),
-        "cache_service": Provide(deps.provide_cache_service),
         "metrics_service": Provide(deps.provide_metrics_service),
     }
 
@@ -131,13 +131,11 @@ class CoffeeChatController(Controller):
                 template_name="partials/chat_response.html",
                 context={
                     "user_message": clean_message,
-                    "ai_response": agent_response["answer"],
+                    "ai_response": agent_response.get("answer", ""),
                     "query_id": query_id,
-                    "products": [],
-                    "intent": agent_response.get("intent", {}),
+                    "products": agent_response.get("products", []),
+                    "debug_info": to_json(agent_response.get("debug_info", {}), as_bytes=False),
                     "csp_nonce": csp_nonce,
-                    "agent_used": agent_response.get("agent_used", "ADK"),
-                    "response_time": agent_response.get("response_time_ms", 0),
                 },
                 trigger_event="chat:response-complete",
                 params={"query_id": query_id, "agent": agent_response.get("agent_used", "ADK")},
@@ -147,8 +145,8 @@ class CoffeeChatController(Controller):
         return HTMXTemplate(
             template_name="coffee_chat.html",
             context={
-                "answer": agent_response["answer"],
-                "products": [],  # Products info is embedded in response text for ADK agents
+                "answer": agent_response.get("answer", ""),
+                "products": agent_response.get("products", []),
                 "csp_nonce": csp_nonce,
                 "agent_used": agent_response.get("agent_used", "ADK"),
             },

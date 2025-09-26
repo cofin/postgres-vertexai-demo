@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, NoReturn
 
 import structlog
+from google import genai
 
 from app.lib.settings import get_settings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
-
-    from google import genai
 
 logger = structlog.get_logger()
 
@@ -49,22 +48,50 @@ class VertexAIService:
             self._genai_client = None
             logger.warning("Vertex AI not initialized: PROJECT_ID not configured")
 
+    def _handle_embedding_error(self, batch_index: int | None = None) -> NoReturn:
+        if batch_index is not None:
+            msg = f"No embeddings returned from Vertex AI for batch starting at index {batch_index}"
+            raise ValueError(msg)
+        msg = "No embeddings returned from API"
+        raise ValueError(msg)
+
+    async def _get_batch_text_embeddings(self, texts: list[str], model_name: str) -> list[list[float]]:
+        """Handle batch embedding generation with rate limiting."""
+        if not texts:
+            return []
+
+        if not self._genai_client:
+            msg = "GenAI client not initialized"
+            raise RuntimeError(msg)
+
+        batch_size = 5
+        embeddings = []
+
+        for i in range(0, len(texts), batch_size):
+            if i > 0:
+                await asyncio.sleep(1)  # Rate limiting
+
+            batch = texts[i : i + batch_size]
+            response = await self._genai_client.aio.models.embed_content(model=model_name, contents=batch)
+
+            if not response.embeddings:
+                self._handle_embedding_error(batch_index=i)
+
+            batch_embeddings = [list(e.values) for e in response.embeddings if e.values is not None]
+            embeddings.extend(batch_embeddings)
+
+        logger.debug(
+            "Generated batch embeddings",
+            batch_count=len(texts),
+            embedding_dimensions=len(embeddings[0]) if embeddings else 0,
+            model=model_name,
+        )
+        return embeddings
+
     async def get_text_embedding(
         self, text: str | list[str], model: str | None = None
     ) -> list[float] | list[list[float]]:
-        """Generate text embedding(s) using Vertex AI.
-
-        Args:
-            text: Text to embed or list of texts for batch processing
-            model: Optional model override
-
-        Returns:
-            Embedding vector for single text, or list of embedding vectors for batch
-
-        Raises:
-            RuntimeError: If Vertex AI not initialized
-            ValueError: If embedding generation fails
-        """
+        """Generate text embedding(s) using Vertex AI."""
         if not self._initialized or not self._genai_client:
             msg = "Vertex AI not initialized"
             raise RuntimeError(msg)
@@ -73,92 +100,25 @@ class VertexAIService:
 
         try:
             if isinstance(text, list):
-                if not text:
-                    return []
+                return await self._get_batch_text_embeddings(text, model_name)
 
-                # Medium-scale approach: batches of 5 with rate limiting
-                batch_size = 5
-                embeddings = []
-
-                for i in range(0, len(text), batch_size):
-                    if i > 0:
-                        await asyncio.sleep(1)  # Rate limiting
-
-                    batch = text[i : i + batch_size]
-                    response = await self._genai_client.aio.models.embed_content(model=model_name, contents=batch)
-
-                    if not response.embeddings:
-
-                        def _raise_batch_error(index: int = i) -> None:
-                            msg = f"No embeddings returned for batch starting at index {index}"
-                            raise ValueError(msg)
-
-                        _raise_batch_error()
-
-                    batch_embeddings = [list(e.values) for e in response.embeddings if e.values is not None]
-                    embeddings.extend(batch_embeddings)
-
-                logger.debug(
-                    "Generated batch embeddings",
-                    batch_count=len(text),
-                    embedding_dimensions=len(embeddings[0]) if embeddings else 0,
-                    model=model_name,
-                )
-            # Single text embedding
+            # At this point, text must be str (not list)
+            if not isinstance(text, str):
+                msg = "Expected string input for single embedding"
+                raise TypeError(msg)
             embedding = await self._get_embedding_async(text, model_name)
-
             logger.debug(
-                "Generated embedding",
+                "Generated single embedding",
                 text_length=len(text),
                 embedding_dimensions=len(embedding),
                 model=model_name,
             )
-
         except Exception as e:
-            if isinstance(text, list):
-                logger.exception(
-                    "Failed to generate batch embeddings",
-                    batch_size=len(text),
-                    model=model_name,
-                    error=str(e),
-                )
-            else:
-                logger.exception(
-                    "Failed to generate embedding",
-                    text=text[:100] + "..." if len(text) > 100 else text,  # noqa: PLR2004
-                    model=model_name,
-                    error=str(e),
-                )
+            logger.exception("Failed to generate embedding", model=model_name, error=str(e))
             msg = f"Failed to generate embedding: {e}"
             raise ValueError(msg) from e
         else:
-            if isinstance(text, list):
-                return embeddings
             return embedding
-
-    async def get_batch_text_embeddings(self, texts: list[str], gcs_input_uri: str, gcs_output_uri: str) -> str:
-        """Generate large-scale batch embeddings using batch_predict.
-
-        This method is designed for processing large datasets (thousands to millions of texts)
-        using Vertex AI's batch prediction capability with GCS storage.
-
-        Args:
-            texts: List of texts to embed (for reference, actual processing uses GCS)
-            gcs_input_uri: GCS URI for input JSONL file
-            gcs_output_uri: GCS URI prefix for output location
-
-        Returns:
-            Batch job resource name for tracking
-
-        Raises:
-            NotImplementedError: This feature requires GCS integration
-        """
-        msg = (
-            "Large-scale batch prediction not yet implemented. "
-            f"For {len(texts)} texts, use get_text_embedding() with rate limiting instead. "
-            "Batch prediction requires GCS bucket setup and JSONL file preparation."
-        )
-        raise NotImplementedError(msg)
 
     async def generate_chat_response_stream(
         self,
@@ -255,13 +215,15 @@ class VertexAIService:
             contents=text,
         )
         if not response.embeddings or len(response.embeddings) == 0:
-            msg = "No embeddings returned from API"
-            raise ValueError(msg)
+            self._handle_embedding_error()
 
-        embedding_values = response.embeddings[0].values
+        # At this point response.embeddings is guaranteed to exist and have at least one element
+        first_embedding = response.embeddings[0]
+        embedding_values = first_embedding.values
         if embedding_values is None:
-            msg = "Embedding values are None"
-            raise ValueError(msg)
+            self._handle_embedding_error()
+
+        # At this point embedding_values is guaranteed to be not None
         return list(embedding_values)
 
     @property
@@ -272,47 +234,3 @@ class VertexAIService:
     def get_embedding_dimensions(self) -> int:
         """Get embedding dimensions for current model."""
         return self.settings.vertex_ai.EMBEDDING_DIMENSIONS
-
-    async def embed_product_descriptions(self, products: list[dict[str, Any]]) -> list[list[float]]:
-        """Generate embeddings for product descriptions.
-
-        Args:
-            products: List of product dicts with 'name' and 'description'
-
-        Returns:
-            List of embedding vectors
-        """
-        # Create combined text for each product
-        texts = []
-        for product in products:
-            combined_text = f"{product['name']}: {product['description']}"
-            if product.get("category"):
-                combined_text += f" (Category: {product['category']})"
-            texts.append(combined_text)
-
-        result = await self.get_text_embedding(texts)
-        # Ensure we return list[list[float]] for batch embedding
-        if isinstance(result, list) and len(result) > 0 and isinstance(result[0], list):
-            return result
-        # This shouldn't happen with batch input, but handle gracefully
-        raise ValueError("Expected batch embedding result but got single embedding")
-
-    async def get_search_embedding(self, query: str) -> list[float]:
-        """Get embedding optimized for similarity search.
-
-        Args:
-            query: Search query text
-
-        Returns:
-            Query embedding vector
-        """
-        # For search queries, we might want to add context
-        search_text = f"Search query: {query}"
-
-        result = await self.get_text_embedding(search_text)
-        # Ensure we return list[float] for single embedding
-        if isinstance(result, list) and len(result) > 0 and isinstance(result[0], float):
-            return result
-        # This shouldn't happen with single input, but handle gracefully
-        msg = "Expected single embedding result but got batch embedding"
-        raise ValueError(msg)

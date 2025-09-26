@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from app.schemas.base import BaseStruct, CamelizedBaseStruct, Message
-from app.schemas.cache import EmbeddingCache, ResponseCache
 from app.schemas.chat import (
     ChatConversation,
     ChatConversationCreate,
@@ -34,7 +33,6 @@ __all__ = (
     "ChatMessageRequest",
     "ChatSession",
     "ChatSessionCreate",
-    "EmbeddingCache",
     "IntentClassification",
     "IntentExemplar",
     "IntentExemplarCreate",
@@ -47,7 +45,6 @@ __all__ = (
     "ProductCreate",
     "ProductSearchResult",
     "ProductUpdate",
-    "ResponseCache",
     "SearchMetrics",
     "VectorDemoRequest",
 )

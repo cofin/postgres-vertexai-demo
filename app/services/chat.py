@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING
 from sqlspec import sql
 
 from app.schemas import (
-    ChatConversation,
-    ChatMessage,
     ChatSession,
 )
 from app.services.base import SQLSpecService
@@ -40,54 +38,5 @@ class ChatService(SQLSpecService):
             schema_type=ChatSession,
             error_message=f"Session {session_id} not found",
         )
-
-    async def get_session_by_user_id(self, user_id: str) -> ChatSession | None:
-        """Get a chat session by user ID.
-
-        Args:
-            user_id: User ID string
-
-        Returns:
-            Session data or None if not found
-        """
-        return await self.driver.select_one_or_none(
-            sql.select("id", "user_id", "session_data", "last_activity", "expires_at", "created_at", "updated_at")
-            .from_("chat_session")
-            .where_eq("user_id", user_id),
-            schema_type=ChatSession,
-        )
-
-
-
-
-
-    async def get_conversation_history(self, session_id: UUID, limit: int = 10) -> list[ChatMessage]:
-        """Get conversation history as chat messages.
-
-        Args:
-            session_id: Session UUID
-            limit: Maximum number of conversation pairs
-
-        Returns:
-            List of chat messages (user and assistant)
-        """
-        conversations = await self.driver.select(
-            sql.select("id", "session_id", "role", "content", "metadata", "intent_classification", "created_at")
-            .from_("chat_conversation")
-            .where_eq("session_id", session_id)
-            .order_by("created_at DESC")
-            .limit(limit),
-            schema_type=ChatConversation,
-        )
-
-        # Convert to chat messages
-        return [
-            ChatMessage(
-                role=conv.role,
-                content=conv.content,
-                timestamp=conv.created_at,
-            )
-            for conv in conversations
-        ]
 
 

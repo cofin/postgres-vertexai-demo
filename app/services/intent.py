@@ -11,8 +11,8 @@ from app.schemas import IntentResult, IntentSearchResult
 from app.services.base import SQLSpecService
 
 if TYPE_CHECKING:
-    from app.services.vertex_ai import VertexAIService
     from app.services.exemplar import ExemplarService
+    from app.services.vertex_ai import VertexAIService
 
 logger = structlog.get_logger()
 
@@ -218,101 +218,3 @@ class IntentService(SQLSpecService):
         )
 
         return primary_result, similar_intents
-
-    async def get_intent_confidence(
-        self,
-        query: str,
-        target_intent: str,
-        user_embedding: list[float] | None = None,
-    ) -> float:
-        """Get confidence score for a specific intent.
-
-        Args:
-            query: User query text
-            target_intent: Intent to check confidence for
-            user_embedding: Pre-computed embedding (optional)
-
-        Returns:
-            Confidence score (0.0 to 1.0)
-        """
-        # Get query embedding
-        if user_embedding is None:
-            user_embedding = await self.vertex_ai_service.get_text_embedding(query)
-
-        # Search within specific intent
-        similar_intents = await self.exemplar_service.search_similar_intents(
-            query_embedding=user_embedding,
-            min_threshold=0.0,  # Get all results
-            limit=1,
-            target_intent=target_intent,
-        )
-
-        if similar_intents:
-            return similar_intents[0].similarity
-
-        return 0.0
-
-    async def validate_intent_setup(self) -> dict[str, Any]:
-        """Validate that intent classification is properly set up.
-
-        Returns:
-            Dictionary with validation results
-        """
-        stats = await self.exemplar_service.get_intent_stats()
-
-        validation_result = {
-            "is_ready": stats.total_exemplars > 0,
-            "total_exemplars": stats.total_exemplars,
-            "intents_count": stats.intents_count,
-            "average_usage": stats.average_usage,
-            "embedding_service_available": self.vertex_ai_service.is_initialized,
-            "top_intents": stats.top_intents[:5],
-        }
-
-        if validation_result["is_ready"]:
-            logger.info("Intent classification is ready", **validation_result)
-        else:
-            logger.warning("Intent classification not ready", **validation_result)
-
-        return validation_result
-
-    async def retrain_intent(
-        self,
-        intent: str,
-        new_phrases: list[str],
-        confidence_threshold: float | None = None,
-    ) -> int:
-        """Retrain an intent with new exemplar phrases.
-
-        Args:
-            intent: Intent name
-            new_phrases: New exemplar phrases
-            confidence_threshold: Optional new confidence threshold
-
-        Returns:
-            Number of new exemplars added
-        """
-        logger.info(
-            "Retraining intent",
-            intent=intent,
-            new_phrases_count=len(new_phrases),
-        )
-
-        # Add new exemplars
-        count = await self.exemplar_service.load_exemplars_bulk(
-            exemplars={intent: new_phrases},
-            vertex_ai_service=self.vertex_ai_service,
-            default_threshold=confidence_threshold or 0.7,
-        )
-
-        # Update threshold if specified
-        if confidence_threshold is not None:
-            await self.exemplar_service.update_intent_thresholds(intent, confidence_threshold)
-
-        logger.info(
-            "Intent retrained successfully",
-            intent=intent,
-            new_exemplars=count,
-        )
-
-        return count

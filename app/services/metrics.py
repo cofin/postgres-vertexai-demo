@@ -89,9 +89,6 @@ class MetricsService(SQLSpecService):
             schema_type=SearchMetrics,
         )
 
-
-
-
     async def get_performance_metrics(self, hours_back: int = 24) -> dict[str, Any]:
         """Get performance metrics for the last N hours.
 

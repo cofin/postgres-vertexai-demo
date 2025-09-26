@@ -692,8 +692,8 @@
                             <div class="metric-label">Avg Response Time</div>
                         </div>
                         <div class="metric-item">
-                            <div class="metric-value">${Math.round(data.avg_oracle_time_ms || 0)}ms</div>
-                            <div class="metric-label">Oracle Vector Time</div>
+                            <div class="metric-value">${Math.round(data.avg_vector_search_time_ms || 0)}ms</div>
+                            <div class="metric-label">Vector Search Time</div>
                         </div>
                         <div class="metric-item">
                             <div class="metric-value">${(data.avg_similarity_score || 0).toFixed(2)}</div>

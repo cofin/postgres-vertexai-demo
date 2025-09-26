@@ -222,11 +222,7 @@ class SQLSpecService:
         from sqlspec import sql
 
         # Build SELECT clause
-        if columns:
-            query = sql.select(*columns)
-        else:
-            # Use explicit column list instead of "*" for better performance
-            query = sql.select()
+        query = sql.select(*columns) if columns else sql.select()
 
         query = query.from_(table)
 

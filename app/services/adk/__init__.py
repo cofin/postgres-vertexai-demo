@@ -15,6 +15,6 @@ from app.services.adk.tool_service import AgentToolsService
 
 __all__ = [
     "ADKOrchestrator",
-    "CoffeeAssistantAgent",
     "AgentToolsService",
+    "CoffeeAssistantAgent",
 ]
