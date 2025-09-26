@@ -7,9 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-import numpy as np
 import structlog
-from litestar.middleware.compression.facade import CompressionFacade
 from litestar.plugins import CLIPluginProtocol, InitPluginProtocol
 
 if TYPE_CHECKING:
@@ -43,10 +41,6 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         settings = get_settings()
         self.app_name = settings.app.NAME
 
-        # Commands are automatically added by importing the commands module
-        # which extends SQLSpec's database group
-        from app.cli import commands  # noqa: F401
-
     @asynccontextmanager
     async def server_lifespan(self, app: Litestar) -> AsyncGenerator[None, None]:
         """Manage server lifespan for ADK agent manager.
@@ -76,8 +70,10 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
             The configured app config.
         """
 
+        import numpy as np
         from litestar.contrib.jinja import JinjaTemplateEngine
         from litestar.enums import RequestEncodingType
+        from litestar.middleware.compression.facade import CompressionFacade
         from litestar.middleware.session.client_side import CookieBackendConfig
         from litestar.openapi import OpenAPIConfig
         from litestar.openapi.plugins import ScalarRenderPlugin
@@ -94,6 +90,12 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         from app.server import plugins
         from app.server.controllers import CoffeeChatController
         from app.server.exceptions import exception_handlers
+        from app.services.adk.orchestrator import ADKOrchestrator
+        from app.services.cache import CacheService
+        from app.services.chat import ChatService
+        from app.services.metrics import MetricsService
+        from app.services.product import ProductService
+        from app.services.vertex_ai import VertexAIService
         from app.utils.serialization import (
             general_dec_hook,
             numpy_array_enc_hook,
@@ -159,12 +161,6 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         ])
 
         # Signature namespace for dependency injection
-        from app.services.adk.orchestrator import ADKOrchestrator
-        from app.services.cache import CacheService
-        from app.services.chat import ChatService
-        from app.services.metrics import MetricsService
-        from app.services.product import ProductService
-        from app.services.vertex_ai import VertexAIService
 
         app_config.signature_namespace.update({
             "RequestEncodingType": RequestEncodingType,

@@ -105,7 +105,7 @@ def _display_fixture_list() -> None:
     from app.utils.fixtures import FixtureProcessor
 
     console = get_console()
-    console.rule("[bold blue]Available Fixture Files", style="blue")
+    console.rule("[bold blue]Available Fixture Files", style="blue", align="left")
     console.print()
 
     fixtures_dir = Path(get_settings().db.FIXTURE_PATH)
@@ -146,7 +146,7 @@ def _display_fixture_list() -> None:
 def _load_fixture_data(tables: str | None) -> None:
     """Load fixture data into database."""
     console = get_console()
-    console.rule("[bold blue]Loading Database Fixtures", style="blue")
+    console.rule("[bold blue]Loading Database Fixtures", style="blue", align="left")
     console.print()
 
     # Parse tables if provided
@@ -187,10 +187,7 @@ def _display_fixture_results(results: dict) -> None:
 
     console = get_console()
     table = Table(show_header=True, header_style="bold blue")
-    table.add_column("Table", style="cyan", width=25)
-    table.add_column("Upserted", justify="right", width=8)
-    table.add_column("Failed", justify="right", width=8)
-    table.add_column("Total", justify="right", width=8)
+    table.add_column("Table", style="cyan", width=35)
     table.add_column("Status", width=100)
 
     total_upserted = 0
@@ -199,7 +196,7 @@ def _display_fixture_results(results: dict) -> None:
 
     for table_name, result in results.items():
         row_data = _process_fixture_result(table_name, result)
-        table.add_row(*row_data["row"])
+        table.add_row(row_data["row"][0], row_data["row"][4])  # Only Table and Status columns
 
         total_upserted += row_data["upserted"]
         total_failed += row_data["failed"]
@@ -305,7 +302,7 @@ def export_fixtures_cmd(tables: str | None, output_dir: str | None, no_compress:
     console = get_console()
 
     try:
-        console.rule("[bold blue]Exporting Database Fixtures", style="blue")
+        console.rule("[bold blue]Exporting Database Fixtures", style="blue", align="left")
         console.print()
 
         # Parse tables if provided
@@ -385,7 +382,7 @@ def bulk_embed() -> None:
 def embed_new(limit: int) -> None:
     """Process new/updated products using online embedding API for real-time updates."""
     console = get_console()
-    console.rule("[bold blue]Processing Product Embeddings", style="blue")
+    console.rule("[bold blue]Processing Product Embeddings", style="blue", align="left")
     console.print()
 
     async def _embed_new_products() -> None:
@@ -767,7 +764,7 @@ def populate_intents(force: bool, intent: str | None) -> None:
         from app.services.vertex_ai import VertexAIService
 
         console = get_console()
-        console.rule("[bold blue]Populating Intent Exemplars", style="blue")
+        console.rule("[bold blue]Populating Intent Exemplars", style="blue", align="left")
         console.print()
 
         # Filter intents if specified
@@ -824,7 +821,7 @@ def test_intent(query: str, alternatives: bool) -> None:
         from app.services.vertex_ai import VertexAIService
 
         console = get_console()
-        console.rule("[bold blue]Testing Intent Classification", style="blue")
+        console.rule("[bold blue]Testing Intent Classification", style="blue", align="left")
         console.print()
         console.print(f"Query: [cyan]{query}[/cyan]")
         console.print()
@@ -871,7 +868,7 @@ def intent_stats() -> None:
         from app.services.exemplar import ExemplarService
 
         console = get_console()
-        console.rule("[bold blue]Intent Classification Statistics", style="blue")
+        console.rule("[bold blue]Intent Classification Statistics", style="blue", align="left")
         console.print()
 
         provider = create_service_provider(ExemplarService)
@@ -928,11 +925,11 @@ def clear_intents(intent: str | None, unused_only: bool) -> None:
         console = get_console()
 
         if unused_only:
-            console.rule("[bold yellow]Clearing Unused Intent Exemplars", style="yellow")
+            console.rule("[bold yellow]Clearing Unused Intent Exemplars", style="yellow", align="left")
         elif intent:
-            console.rule(f"[bold yellow]Clearing Intent: {intent}", style="yellow")
+            console.rule(f"[bold yellow]Clearing Intent: {intent}", style="yellow", align="left")
         else:
-            console.rule("[bold red]Clearing All Intent Exemplars", style="red")
+            console.rule("[bold red]Clearing All Intent Exemplars", style="red", align="left")
 
         console.print()
 
@@ -1013,7 +1010,7 @@ def rebuild_vector_indexes(force: bool) -> None:
         """Rebuild vector indexes."""
         from app.config import db
 
-        console.rule("[bold blue]Rebuilding Vector Indexes", style="blue")
+        console.rule("[bold blue]Rebuilding Vector Indexes", style="blue", align="left")
         console.print()
 
         vector_indexes = [

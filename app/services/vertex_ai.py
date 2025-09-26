@@ -6,13 +6,13 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from google import genai
-from google.cloud import aiplatform
 
 from app.lib.settings import get_settings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
+
+    from google import genai
 
 logger = structlog.get_logger()
 
@@ -22,11 +22,16 @@ class VertexAIService:
 
     def __init__(self) -> None:
         """Initialize Vertex AI service."""
+        from google import genai
+        from google.cloud import aiplatform
+
         self.settings = get_settings()
-        self._genai_client: genai.Client | None
+        self._genai_client: genai.Client | None = None
 
         # Initialize Vertex AI
         if self.settings.vertex_ai.PROJECT_ID:
+            # Lazy import Google Cloud libraries
+
             aiplatform.init(
                 project=self.settings.vertex_ai.PROJECT_ID,
                 location=self.settings.vertex_ai.LOCATION,
@@ -289,9 +294,8 @@ class VertexAIService:
         # Ensure we return list[list[float]] for batch embedding
         if isinstance(result, list) and len(result) > 0 and isinstance(result[0], list):
             return result
-        else:
-            # This shouldn't happen with batch input, but handle gracefully
-            raise ValueError("Expected batch embedding result but got single embedding")
+        # This shouldn't happen with batch input, but handle gracefully
+        raise ValueError("Expected batch embedding result but got single embedding")
 
     async def get_search_embedding(self, query: str) -> list[float]:
         """Get embedding optimized for similarity search.
