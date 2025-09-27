@@ -108,6 +108,45 @@ class ChatSessionService(BaseSessionService):
 
             return adk_session
 
+    async def upsert_session(
+        self,
+        *,
+        app_name: str,
+        user_id: str,
+        session_id: str,
+        state: dict[str, Any] | None = None,
+    ) -> Session:
+        """Create or get an existing ADK session (upsert operation).
+
+        Args:
+            app_name: Application name (stored in session_data)
+            user_id: User identifier
+            session_id: Session identifier
+            state: Initial session state (only used if creating new session)
+
+        Returns:
+            ADK Session object
+        """
+        # First try to get existing session
+        existing_session = await self.get_session(
+            app_name=app_name,
+            user_id=user_id,
+            session_id=session_id
+        )
+
+        if existing_session:
+            logger.debug("Found existing ADK session", session_id=session_id)
+            return existing_session
+
+        # If session doesn't exist, create it
+        logger.info("Creating new ADK session via upsert", app_name=app_name, user_id=user_id, session_id=session_id)
+        return await self.create_session(
+            app_name=app_name,
+            user_id=user_id,
+            session_id=session_id,
+            state=state
+        )
+
     async def get_session(
         self,
         *,

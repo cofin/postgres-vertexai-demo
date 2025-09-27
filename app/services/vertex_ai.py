@@ -19,13 +19,18 @@ logger = structlog.get_logger()
 class VertexAIService:
     """Vertex AI service for embeddings and chat completions."""
 
-    def __init__(self) -> None:
-        """Initialize Vertex AI service."""
+    def __init__(self, cache_service: object | None = None) -> None:
+        """Initialize Vertex AI service.
+
+        Args:
+            cache_service: Optional cache service for embedding caching
+        """
         from google import genai
         from google.cloud import aiplatform
 
         self.settings = get_settings()
         self._genai_client: genai.Client | None = None
+        self._cache_service = cache_service
 
         # Initialize Vertex AI
         if self.settings.vertex_ai.PROJECT_ID:
@@ -106,13 +111,31 @@ class VertexAIService:
             if not isinstance(text, str):
                 msg = "Expected string input for single embedding"
                 raise TypeError(msg)
+
+            # Check cache first if available
+            if self._cache_service and self.settings.cache.EMBEDDING_CACHE_ENABLED:
+                cached = await self._cache_service.get_cached_embedding(text, model_name)
+                if cached:
+                    logger.debug(
+                        "Retrieved cached embedding",
+                        text_length=len(text),
+                        embedding_dimensions=len(cached.embedding),
+                        model=model_name,
+                        hit_count=cached.hit_count,
+                    )
+                    return cached.embedding
+
+            # Generate new embedding
             embedding = await self._get_embedding_async(text, model_name)
-            logger.debug(
-                "Generated single embedding",
-                text_length=len(text),
-                embedding_dimensions=len(embedding),
-                model=model_name,
-            )
+
+            # Cache the result if cache service is available
+            if self._cache_service and self.settings.cache.EMBEDDING_CACHE_ENABLED:
+                try:
+                    await self._cache_service.set_cached_embedding(text, embedding, model_name)
+                    logger.debug("Cached new embedding", text_length=len(text), model=model_name)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("Failed to cache embedding", error=str(e))
+
         except Exception as e:
             logger.exception("Failed to generate embedding", model=model_name, error=str(e))
             msg = f"Failed to generate embedding: {e}"

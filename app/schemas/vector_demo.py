@@ -1,7 +1,5 @@
 """Request schemas for API endpoints."""
 
-from __future__ import annotations
-
 from app.schemas.base import CamelizedBaseStruct
 
 __all__ = ("VectorDemoRequest",)

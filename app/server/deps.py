@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from app.config import db, sqlspec
+from app.services.cache import CacheService
 from app.services.chat import ChatService
 from app.services.metrics import MetricsService
 from app.services.product import ProductService
@@ -33,12 +34,20 @@ def create_service_provider(service_cls: type[T]) -> Callable[..., AsyncGenerato
 provide_product_service = create_service_provider(ProductService)
 provide_chat_service = create_service_provider(ChatService)
 provide_metrics_service = create_service_provider(MetricsService)
+provide_cache_service = create_service_provider(CacheService)
 
 
 # Providers that don't require a database connection directly
 async def provide_vertex_ai_service() -> AsyncGenerator[VertexAIService, None]:
     """Provide Vertex AI service."""
     yield VertexAIService()
+
+
+async def provide_vertex_ai_service_with_cache() -> AsyncGenerator[VertexAIService, None]:
+    """Provide Vertex AI service with cache support."""
+    async with sqlspec.provide_session(db) as session:
+        cache_service = CacheService(session)
+        yield VertexAIService(cache_service=cache_service)
 
 
 # ADK Orchestrator provider

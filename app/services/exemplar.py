@@ -45,6 +45,49 @@ class ExemplarService(SQLSpecService):
             schema_type=IntentExemplar,
         )
 
+    async def upsert_exemplar(self, exemplar_data: IntentExemplarCreate) -> IntentExemplar:
+        """Create or update an intent exemplar.
+
+        Args:
+            exemplar_data: Intent exemplar data
+
+        Returns:
+            Created or updated intent exemplar
+        """
+        # Get result WITHOUT the embedding field to avoid vector type deserialization issues
+        result = await self.driver.select_one(
+            sql.insert("intent_exemplar")
+            .columns("intent", "phrase", "embedding", "confidence_threshold")
+            .values(
+                intent=exemplar_data.intent,
+                phrase=exemplar_data.phrase,
+                embedding=exemplar_data.embedding,
+                confidence_threshold=exemplar_data.confidence_threshold,
+            )
+            .on_conflict("intent", "phrase")
+            .do_update(
+                embedding=sql.raw("EXCLUDED.embedding"),
+                confidence_threshold=sql.raw("EXCLUDED.confidence_threshold"),
+                updated_at=sql.raw("CURRENT_TIMESTAMP"),
+            )
+            .returning(
+                "id", "intent", "phrase", "confidence_threshold", "usage_count", "created_at", "updated_at"
+                # Note: "embedding" field removed from RETURNING to avoid vector deserialization issue
+            )
+        )
+
+        # Manually construct the complete object with the embedding we already have
+        return IntentExemplar(
+            id=result["id"],
+            intent=result["intent"],
+            phrase=result["phrase"],
+            embedding=exemplar_data.embedding,  # Use the embedding we already have
+            confidence_threshold=result["confidence_threshold"],
+            usage_count=result["usage_count"],
+            created_at=result["created_at"],
+            updated_at=result["updated_at"],
+        )
+
     async def delete_exemplar(self, exemplar_id: int) -> None:
         """Delete an intent exemplar.
 

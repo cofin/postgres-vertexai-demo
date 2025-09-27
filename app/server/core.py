@@ -36,6 +36,8 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
 
     def on_cli_init(self, cli: Group) -> None:
         """Configure CLI commands."""
+        # Import commands module to register all CLI commands
+        import app.cli.commands  # noqa: F401
         from app.lib.settings import get_settings
 
         settings = get_settings()

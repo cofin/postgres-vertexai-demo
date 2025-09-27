@@ -11,6 +11,7 @@ from typing import Any
 
 import structlog
 from google.adk import Runner
+from google.genai import types
 
 from app.config import db
 from app.services.adk.agent import CoffeeAssistantAgent  # This now imports the router agent
@@ -49,29 +50,63 @@ class ADKOrchestrator:
         logger.info("Processing request via ADK Runner...", query=query)
 
         try:
-            final_response = await self.runner.process(query=query, session_id=session_id)
-            total_time_ms = int((time.time() - start_time) * 1000)
+            # Ensure session exists using upsert pattern - create if it doesn't exist
+            await self.session_service.upsert_session(
+                app_name="coffee-assistant",
+                user_id=user_id,
+                session_id=session_id,
+                state={}
+            )
 
-            # --- Data Extraction from ADK Response ---
-            # NOTE: The structure of 'final_response' is assumed based on typical agent traces.
-            # This logic will need to be adapted to the actual object structure.
-            agent_used = getattr(final_response, "invoked_agent_name", "ADK Multi-Agent")
+            # Create content object from user query
+            content = types.Content(role='user', parts=[types.Part(text=query)])
+
+            # Run the agent asynchronously with proper ADK API
+            events = self.runner.run_async(
+                user_id=user_id,
+                session_id=session_id,
+                new_message=content
+            )
+
+            # Process events and extract final response
+            final_response_text = ""
+            agent_used = "ADK Multi-Agent"
             intent_details = {}
             search_details = {}
             products_found = []
 
-            # Hypothetical trace inspection
-            if hasattr(final_response, "trace") and final_response.trace:
-                for event in final_response.trace:
-                    if event.tool_name == "classify_intent":
-                        intent_details = event.tool_output
-                    if event.tool_name == "search_products_by_vector":
-                        products_found = event.tool_output
-                        search_details = {
-                            "query": event.tool_input.get("query"),
-                            "sql": "SELECT name, 1 - (embedding <=> ...) FROM product ...", # Representative SQL
-                            "results_count": len(products_found)
-                        }
+            async for event in events:
+                # Look for final response
+                if event.is_final_response():
+                    if event.content and event.content.parts:
+                        final_response_text = event.content.parts[0].text
+                        agent_used = event.author or "ADK Multi-Agent"
+
+                # Extract tool-related information if available
+                function_calls = event.get_function_calls()
+                if function_calls:
+                    for func_call in function_calls:
+                        if func_call.name == "classify_intent":
+                            # Intent classification tool output will be in subsequent events
+                            pass
+                        elif func_call.name == "search_products_by_vector":
+                            # Vector search tool output will be in subsequent events
+                            pass
+
+                function_responses = event.get_function_responses()
+                if function_responses:
+                    for func_response in function_responses:
+                        if func_response.name == "classify_intent":
+                            intent_details = func_response.response or {}
+                        elif func_response.name == "search_products_by_vector":
+                            products_found = func_response.response or []
+                            search_details = {
+                                "query": query,
+                                "sql": "SELECT name, 1 - (embedding <=> ...) FROM product ...",
+                                "results_count": len(products_found) if isinstance(products_found, list) else 0
+                            }
+
+            total_time_ms = int((time.time() - start_time) * 1000)
 
             debug_info = {
                 "intent": intent_details,
@@ -94,7 +129,7 @@ class ADKOrchestrator:
             }
         else:
             return {
-                "answer": final_response.text,
+                "answer": final_response_text,
                 "products": products_found,
                 "agent_used": agent_used,
                 "session_id": session_id,

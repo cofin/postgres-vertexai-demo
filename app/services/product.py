@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlspec import sql
 
-from app.schemas import Product, ProductSearchResult
+from app.schemas import Product, ProductCreate, ProductSearchResult, ProductUpdate
 from app.services.base import SQLSpecService
 
 
@@ -53,6 +53,43 @@ class ProductService(SQLSpecService):
             similarity_threshold=similarity_threshold,
             limit_count=limit,
             schema_type=ProductSearchResult,
+        )
+
+    async def upsert_product(self, data: ProductCreate | ProductUpdate) -> Product:
+        """Create or update a product using upsert pattern.
+
+        Args:
+            data: Product creation or update data
+
+        Returns:
+            Created or updated product
+        """
+        return await self.driver.select_one(
+            sql.insert("product")
+            .columns("name", "description", "price", "category", "sku", "in_stock", "metadata")
+            .values(
+                name=data.name,
+                description=data.description,
+                price=data.price,
+                category=data.category,
+                sku=data.sku,
+                in_stock=data.in_stock,
+                metadata=data.metadata,
+            )
+            .on_conflict("sku")  # Assuming sku is unique constraint
+            .do_update(
+                name=sql.raw("EXCLUDED.name"),
+                description=sql.raw("EXCLUDED.description"),
+                price=sql.raw("EXCLUDED.price"),
+                category=sql.raw("EXCLUDED.category"),
+                in_stock=sql.raw("EXCLUDED.in_stock"),
+                metadata=sql.raw("EXCLUDED.metadata"),
+                updated_at=sql.raw("CURRENT_TIMESTAMP"),
+            )
+            .returning(
+                "id", "name", "description", "price", "category", "sku", "in_stock", "metadata", "created_at", "updated_at"
+            ),
+            schema_type=Product,
         )
 
     async def update_product_embedding(self, product_id: int, embedding: list[float]) -> None:

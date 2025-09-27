@@ -40,7 +40,7 @@ CREATE TABLE chat_session (
 CREATE TABLE chat_conversation (
     id serial PRIMARY KEY,
     session_id uuid REFERENCES chat_session (id) ON DELETE CASCADE,
-    role varchar(20) NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+    role varchar(100) NOT NULL,
     content text NOT NULL,
     metadata jsonb, -- Intent classification, confidence scores, etc.
     intent_classification jsonb, -- Stores intent, confidence, exemplar_match
@@ -61,12 +61,13 @@ CREATE TABLE response_cache (
 -- Embedding cache for vector embeddings
 CREATE TABLE embedding_cache (
     id serial PRIMARY KEY,
-    text_hash varchar(255) UNIQUE NOT NULL, -- Hash of input text
+    text_hash varchar(255) NOT NULL, -- Hash of input text
     embedding vector (768) NOT NULL, -- Cached embedding
     model varchar(100) NOT NULL, -- Model used for embedding
     hit_count integer DEFAULT 0, -- Track cache usage
     last_accessed timestamp with time zone DEFAULT current_timestamp, -- Last access time
-    created_at timestamp with time zone DEFAULT current_timestamp
+    created_at timestamp with time zone DEFAULT current_timestamp,
+    UNIQUE (text_hash, model) -- Allow same text for different models
 );
 
 

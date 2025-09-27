@@ -367,12 +367,114 @@ def export_fixtures_cmd(tables: str | None, output_dir: str | None, no_compress:
 
 # Embedding commands (placeholder - services not implemented yet)
 @database_management_group.command(  # type: ignore[misc]
-    name="bulk-embed", help="Run bulk embedding job for all products using Vertex AI Batch Prediction."
+    name="bulk-embed", help="Run bulk embedding job for all products using Vertex AI."
 )
-def bulk_embed() -> None:
-    """Run bulk embedding job for all products using Vertex AI Batch Prediction."""
+@click.option("--batch-size", default=50, help="Number of products to process in each batch (default: 50)")
+@click.option("--force", "-f", is_flag=True, help="Re-embed all products, even if they already have embeddings")
+def bulk_embed(batch_size: int, force: bool) -> None:
+    """Run bulk embedding job for all products using Vertex AI."""
     console = get_console()
-    console.print("[yellow]⚠ Bulk embedding service not yet implemented.[/yellow]")
+    console.rule("[bold blue]Bulk Product Embedding", style="blue", align="left")
+    console.print()
+
+    async def _bulk_embed_products() -> None:
+        from app.server.deps import create_service_provider, provide_vertex_ai_service_with_cache
+        from app.services.product import ProductService
+
+        # Create service providers
+        product_provider = create_service_provider(ProductService)
+        product_service_gen = product_provider()
+        vertex_ai_service_gen = provide_vertex_ai_service_with_cache()
+
+        try:
+            product_service = await anext(product_service_gen)
+            vertex_ai_service = await anext(vertex_ai_service_gen)
+
+            # Get products to process
+            with console.status("[bold yellow]Finding products to process...", spinner="dots"):
+                if force:
+                    # Get all products
+                    products = await product_service.driver.select(
+                        "SELECT id, name, description, embedding FROM product ORDER BY id"
+                    )
+                    console.print(f"[cyan]Processing ALL {len(products)} products (force mode)[/cyan]")
+                else:
+                    # Get only products without embeddings
+                    products = await product_service.get_products_without_embeddings()
+                    console.print(f"[cyan]Processing {len(products)} products without embeddings[/cyan]")
+
+            if not products:
+                if force:
+                    console.print("[yellow]No products found in database[/yellow]")
+                else:
+                    console.print("[green]✓ All products already have embeddings![/green]")
+                return
+
+            console.print(f"[dim]Batch size: {batch_size}[/dim]")
+            console.print()
+
+            # Process products in batches
+            success_count = 0
+            error_count = 0
+            total_batches = (len(products) + batch_size - 1) // batch_size
+
+            for batch_num in range(total_batches):
+                start_idx = batch_num * batch_size
+                end_idx = min(start_idx + batch_size, len(products))
+                batch = products[start_idx:end_idx]
+
+                console.print(f"[bold]Processing batch {batch_num + 1}/{total_batches} ({len(batch)} products)[/bold]")
+
+                with console.status("[bold yellow]Generating embeddings...", spinner="dots") as status:
+                    for i, product in enumerate(batch):
+                        try:
+                            # Update status
+                            product_name = product.get("name", f"Product {product['id']}")
+                            global_idx = start_idx + i + 1
+                            status.update(f"[bold yellow]Processing {global_idx}/{len(products)}: {product_name}...")
+
+                            # Generate embedding for product
+                            description = product.get("description", "")
+                            combined_text = f"{product_name}: {description}"
+                            embedding = await vertex_ai_service.get_text_embedding(combined_text)
+
+                            # Update product with embedding
+                            await product_service.update_product_embedding(product["id"], embedding)
+
+                            success_count += 1
+                            logger.debug(
+                                "Generated embedding and updated product",
+                                product_id=product["id"],
+                                product_name=product_name,
+                                text_length=len(combined_text),
+                                embedding_dimensions=len(embedding),
+                                model="text-embedding-004",
+                            )
+
+                        except Exception as e:  # noqa: BLE001
+                            error_count += 1
+                            logger.warning(
+                                "Failed to process product embedding",
+                                product_id=product.get("id"),
+                                product_name=product.get("name", "Unknown"),
+                                error=str(e),
+                            )
+
+                console.print(f"[green]✓ Batch {batch_num + 1} complete[/green]")
+                console.print()
+
+            # Show final results
+            console.print("[bold]Final Results:[/bold]")
+            console.print(f"[bold green]✓ Successfully processed: {success_count} products[/bold green]")
+            if error_count > 0:
+                console.print(f"[bold red]✗ Failed to process: {error_count} products[/bold red]")
+            console.print()
+
+        finally:
+            await product_service_gen.aclose()
+            await vertex_ai_service_gen.aclose()
+
+    run_(_bulk_embed_products)()
 
 
 @database_management_group.command(  # type: ignore[misc]
@@ -386,17 +488,17 @@ def embed_new(limit: int) -> None:
     console.print()
 
     async def _embed_new_products() -> None:
-        from app.server.deps import create_service_provider
+        from app.server.deps import create_service_provider, provide_vertex_ai_service_with_cache
         from app.services.product import ProductService
-        from app.services.vertex_ai import VertexAIService
 
         # Create service providers
         product_provider = create_service_provider(ProductService)
         product_service_gen = product_provider()
+        vertex_ai_service_gen = provide_vertex_ai_service_with_cache()
 
         try:
             product_service = await anext(product_service_gen)
-            vertex_ai_service = VertexAIService()
+            vertex_ai_service = await anext(vertex_ai_service_gen)
 
             # Get products without embeddings
             with console.status("[bold yellow]Finding products without embeddings...", spinner="dots"):
@@ -428,9 +530,12 @@ def embed_new(limit: int) -> None:
 
                         success_count += 1
                         logger.debug(
-                            "Updated product embedding",
+                            "Generated embedding and updated product",
                             product_id=product.id,
                             product_name=product.name,
+                            text_length=len(combined_text),
+                            embedding_dimensions=len(embedding),
+                            model="text-embedding-004",
                         )
 
                     except Exception as e:  # noqa: BLE001
@@ -450,6 +555,7 @@ def embed_new(limit: int) -> None:
 
         finally:
             await product_service_gen.aclose()
+            await vertex_ai_service_gen.aclose()
 
     run_(_embed_new_products)()
 
@@ -485,6 +591,120 @@ def model_info() -> None:
             console.print(f"[bold red]✗ Model initialization failed: {e}[/bold red]")
 
     _show_model_info()
+
+
+# Cache commands
+@database_management_group.command(name="clear-cache", help="Clear cache tables in the database.")  # type: ignore[misc]
+@click.option(
+    "--keep-response-cache",
+    is_flag=True,
+    help="Keep response cache",
+)
+@click.option(
+    "--keep-embedding-cache",
+    is_flag=True,
+    help="Keep embedding cache",
+)
+@click.option(
+    "--keep-search-metrics",
+    is_flag=True,
+    help="Keep search metrics",
+)
+@click.option(
+    "--keep-intent-exemplars",
+    is_flag=True,
+    help="Keep intent exemplars",
+)
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    help="Skip confirmation prompt",
+)
+def clear_cache(
+    keep_response_cache: bool,
+    keep_embedding_cache: bool,
+    keep_search_metrics: bool,
+    keep_intent_exemplars: bool,
+    force: bool,
+) -> None:
+    """Clear cache tables in the database.
+
+    By default, clears response_cache, embedding_cache, search_metrics, and intent_exemplar.
+    """
+    console = get_console()
+
+    # Determine which tables to clear
+    tables_to_clear = []
+    if not keep_response_cache:
+        tables_to_clear.append("response_cache")
+    if not keep_embedding_cache:
+        tables_to_clear.append("embedding_cache")
+    if not keep_search_metrics:
+        tables_to_clear.append("search_metrics")
+    if not keep_intent_exemplars:
+        tables_to_clear.append("intent_exemplar")
+
+    if not tables_to_clear:
+        console.print("[yellow]No tables selected for clearing. Use --help to see options.[/yellow]")
+        return
+
+    # Show what will be cleared and confirm
+    if not force and not _confirm_clear(console, tables_to_clear):
+        return
+
+    async def _clear_cache() -> None:
+        """Clear cache tables."""
+        from app.server.deps import create_service_provider
+        from app.services.cache import CacheService
+
+        provider = create_service_provider(CacheService)
+        service_gen = provider()
+
+        try:
+            cache_service = await anext(service_gen)
+
+            for table_name in tables_to_clear:
+                console.print(f"[bold cyan]Clearing {table_name}...[/bold cyan]")
+
+                # Validate table name to prevent SQL injection
+                if table_name not in ["response_cache", "search_metrics", "embedding_cache", "intent_exemplar"]:
+                    console.print(f"[red]✗ Invalid table name: {table_name}[/red]")
+                    continue
+
+                try:
+                    # Count records first
+                    count = await cache_service.driver.select_value(f"SELECT COUNT(*) as count FROM {table_name}")  # noqa: S608
+
+                    # Delete all records
+                    await cache_service.driver.execute(f"DELETE FROM {table_name}")  # noqa: S608
+
+                    console.print(f"[green]✓ Cleared {count} records from {table_name}[/green]")
+                except Exception as e:  # noqa: BLE001
+                    console.print(f"[red]✗ Failed to clear {table_name}: {e}[/red]")
+
+            console.print("\n[bold green]Cache clearing complete![/bold green]")
+
+        finally:
+            await service_gen.aclose()
+
+    run_(_clear_cache)()
+
+
+def _confirm_clear(console: Console, tables: list[str]) -> bool:
+    """Confirm cache clearing with user."""
+    console.print("[bold]Tables to clear:[/bold]")
+    for table in tables:
+        console.print(f"  • {table}")
+    confirm = Prompt.ask(
+        "\n[bold red]Are you sure you want to clear these tables?[/bold red]",
+        choices=["y", "n"],
+        default="n",
+    )
+    if confirm.lower() != "y":
+        console.print("[yellow]Operation cancelled.[/yellow]")
+        return False
+    return True
 
 
 # Data commands
