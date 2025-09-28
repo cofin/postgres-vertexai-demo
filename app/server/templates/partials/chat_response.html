@@ -1,45 +1,54 @@
-<!-- User message -->
+<!-- User message with intent classification -->
 <div class="message user" data-message-id="{{ query_id }}">
     <strong>You:</strong> {{ user_message }}
+    <span class="help-triggers" style="display: inline-flex; gap: 4px; margin-left: 8px;">
+        <button type="button" class="help-trigger"
+                onclick="showTooltip('intent-detection', this)"
+                title="Intent: {{ intent_detected }}"
+                data-intent="{{ intent_detected }}"
+                data-confidence="{{ debug_info.intent.confidence or 0 }}"
+                data-sql="{{ debug_info.intent.sql_query | e }}">
+            {% if intent_detected == "PRODUCT_SEARCH" %}🎯{% elif intent_detected == "STORE_INFO" %}🏪{% else %}💬{% endif %}
+        </button>
+        {% if intent_detected == "PRODUCT_SEARCH" and debug_info and debug_info.search and debug_info.search.results_count > 0 %}
+            <button type="button" class="help-trigger"
+                    onclick="showTooltip('vector-search', this)"
+                    title="Product vector search"
+                    data-sql="{{ debug_info.search.sql | e }}"
+                    data-results="{{ debug_info.search.results_count }}"
+                    data-params="{{ debug_info.search.params | tojson | e }}">
+                🔍
+            </button>
+        {% endif %}
+    </span>
 </div>
 
 <!-- AI response -->
-<div class="message assistant" data-message-id="{{ query_id }}">
+<div class="message assistant" data-message-id="{{ query_id }}"
+     data-from-cache="{{ 'true' if from_cache else 'false' }}"
+     {% if debug_info and debug_info.timings %}data-timings='{{ debug_info.timings | tojson }}'{% endif %}>
     <strong>AI Coffee Expert:</strong> <span class="ai-response-content">{{ ai_response }}</span>
 
-    <!-- Help Triggers with Dynamic Data -->
     <div class="help-triggers" style="display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle;">
-        {% if debug_info.intent and debug_info.intent.intent %}
-            <button type="button" class="help-trigger"
-                    onclick="showTooltip('intent-detection', this)"
-                    title="Intent: {{ debug_info.intent.intent }}"
-                    data-debug-info='{{ debug_info }}'>
-                &#127919; <!-- Target icon -->
-            </button>
+        {% if from_cache %}
+        <button type="button" class="help-trigger cache-hit"
+                onclick="showTooltip('response-cache-hit', this)"
+                title="Response cache hit">
+            ⚡
+        </button>
         {% endif %}
-
-        {% if debug_info.search and debug_info.search.results_count > 0 %}
-            <button type="button" class="help-trigger"
-                    onclick="showTooltip('vector-search', this)"
-                    title="Product Vector Search"
-                    data-debug-info='{{ debug_info }}'>
-                &#128270; <!-- Magnifying glass -->
-            </button>
+        {% if embedding_cache_hit %}
+        <button type="button" class="help-trigger cache-hit"
+                onclick="showTooltip('embedding-cache-hit', this)"
+                title="Embedding cache hit">
+            🧠
+        </button>
         {% endif %}
-
-        {% if debug_info.cache_hit %}
-            <button type="button" class="help-trigger cache-hit"
-                    onclick="showTooltip('embedding-cache-hit', this)"
-                    title="Embedding Cache Hit">
-                &#129504; <!-- Brain icon -->
-            </button>
-        {% endif %}
-
         <button type="button" class="help-trigger"
                 onclick="showTooltip('performance-summary', this)"
                 title="See Performance"
-                data-debug-info='{{ debug_info }}'>
-            &#128202; <!-- Chart icon -->
+                {% if debug_info and debug_info.timings %}data-timings='{{ debug_info.timings | tojson }}'{% endif %}>
+            📊
         </button>
     </div>
 </div>

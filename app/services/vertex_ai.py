@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, NoReturn, overload
+from typing import TYPE_CHECKING, overload
 
 import structlog
 from google import genai
@@ -42,23 +42,15 @@ class VertexAIService:
             )
             # Initialize Google GenAI client
             self._genai_client = genai.Client()
-            self._initialized = True
             logger.info(
                 "Vertex AI initialized (private deployment)",
                 project=self.settings.vertex_ai.PROJECT_ID,
                 location=self.settings.vertex_ai.LOCATION,
             )
         else:
-            self._initialized = False
             self._genai_client = None
             logger.warning("Vertex AI not initialized: PROJECT_ID not configured")
 
-    def _handle_embedding_error(self, batch_index: int | None = None) -> NoReturn:
-        if batch_index is not None:
-            msg = f"No embeddings returned from Vertex AI for batch starting at index {batch_index}"
-            raise ValueError(msg)
-        msg = "No embeddings returned from API"
-        raise ValueError(msg)
 
     async def _get_batch_text_embeddings(self, texts: list[str], model_name: str) -> list[list[float]]:
         """Handle batch embedding generation with rate limiting."""
@@ -80,7 +72,8 @@ class VertexAIService:
             response = await self._genai_client.aio.models.embed_content(model=model_name, contents=batch)
 
             if not response.embeddings:
-                self._handle_embedding_error(batch_index=i)
+                msg = f"No embeddings returned from Vertex AI for batch starting at index {i}"
+                raise ValueError(msg)
 
             batch_embeddings = [list(e.values) for e in response.embeddings if e.values is not None]
             embeddings.extend(batch_embeddings)
@@ -113,21 +106,22 @@ class VertexAIService:
         model: str | None = None,
     ) -> list[float] | list[list[float]]:
         """Generate text embedding(s) using Vertex AI."""
-        if not self._initialized or not self._genai_client:
+        if not self._genai_client:
             msg = "Vertex AI not initialized"
             raise RuntimeError(msg)
 
         model_name = model or self.settings.vertex_ai.EMBEDDING_MODEL
 
+        # Validate input type before try block
+        if isinstance(text, list):
+            return await self._get_batch_text_embeddings(text, model_name)
+
+        # At this point, text must be str (not list)
+        if not isinstance(text, str):
+            msg = "Expected string input for single embedding"
+            raise TypeError(msg)
+
         try:
-            if isinstance(text, list):
-                return await self._get_batch_text_embeddings(text, model_name)
-
-            # At this point, text must be str (not list)
-            if not isinstance(text, str):
-                msg = "Expected string input for single embedding"
-                raise TypeError(msg)
-
             # Check cache first if available
             if self._cache_service and self.settings.cache.EMBEDDING_CACHE_ENABLED:
                 cached = await self._cache_service.get_cached_embedding(text, model_name)
@@ -158,6 +152,67 @@ class VertexAIService:
             raise ValueError(msg) from e
         else:
             return embedding
+
+    async def get_text_embedding_with_cache_status(
+        self,
+        text: str,
+        model: str | None = None,
+    ) -> tuple[list[float], bool]:
+        """Generate text embedding with cache hit status.
+
+        Args:
+            text: Text to embed
+            model: Optional model override
+
+        Returns:
+            Tuple of (embedding vector, cache_hit)
+
+        Raises:
+            RuntimeError: If Vertex AI not initialized
+            ValueError: If embedding generation fails
+        """
+        if not self._initialized or not self._genai_client:
+            msg = "Vertex AI not initialized"
+            raise RuntimeError(msg)
+
+        if not isinstance(text, str):
+            msg = "Expected string input for single embedding"
+            raise TypeError(msg)
+
+        model_name = model or self.settings.vertex_ai.EMBEDDING_MODEL
+        cache_hit = False
+
+        try:
+            # Check cache first if available
+            if self._cache_service and self.settings.cache.EMBEDDING_CACHE_ENABLED:
+                cached = await self._cache_service.get_cached_embedding(text, model_name)
+                if cached:
+                    logger.debug(
+                        "Retrieved cached embedding",
+                        text_length=len(text),
+                        embedding_dimensions=len(cached.embedding),
+                        model=model_name,
+                        hit_count=cached.hit_count,
+                    )
+                    return cached.embedding, True
+
+            # Generate new embedding
+            embedding = await self._get_embedding_async(text, model_name)
+
+            # Cache the result if cache service is available
+            if self._cache_service and self.settings.cache.EMBEDDING_CACHE_ENABLED:
+                try:
+                    await self._cache_service.set_cached_embedding(text, embedding, model_name)
+                    logger.debug("Cached new embedding", text_length=len(text), model=model_name)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("Failed to cache embedding", error=str(e))
+
+        except Exception as e:
+            logger.exception("Failed to generate embedding", model=model_name, error=str(e))
+            msg = f"Failed to generate embedding: {e}"
+            raise ValueError(msg) from e
+        else:
+            return embedding, cache_hit
 
     async def generate_chat_response_stream(
         self,
@@ -257,13 +312,15 @@ class VertexAIService:
             contents=text,
         )
         if not response.embeddings or len(response.embeddings) == 0:
-            self._handle_embedding_error()
+            msg = "No embeddings returned from API"
+            raise ValueError(msg)
 
         # At this point response.embeddings is guaranteed to exist and have at least one element
         first_embedding = response.embeddings[0]
         embedding_values = first_embedding.values
         if embedding_values is None:
-            self._handle_embedding_error()
+            msg = "No embeddings returned from API"
+            raise ValueError(msg)
 
         # At this point embedding_values is guaranteed to be not None
         return list(embedding_values)

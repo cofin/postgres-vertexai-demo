@@ -11,6 +11,20 @@ from typing import Any
 from app.config import db, service_locator, sqlspec
 from app.services.adk.tool_service import AgentToolsService
 
+# Context to store timing data for orchestrator access
+_timing_context: dict[str, Any] = {}
+
+
+def get_and_clear_timing_context() -> dict[str, Any]:
+    """Get and clear the timing context data.
+
+    Returns:
+        The current timing context data
+    """
+    context = _timing_context.copy()
+    _timing_context.clear()
+    return context
+
 
 async def search_products_by_vector(
     query: str,
@@ -32,7 +46,20 @@ async def search_products_by_vector(
     similarity_threshold = similarity_threshold or 0.7
     async with sqlspec.provide_session(db) as session:
         tools_service = service_locator.get(AgentToolsService, session)
-        return await tools_service.search_products_by_vector(query, limit, similarity_threshold)
+        result = await tools_service.search_products_by_vector(query, limit, similarity_threshold)
+
+        # Store timing data for orchestrator access
+        _timing_context["vector_search"] = {
+            "total_ms": result["timing"]["total_ms"],
+            "embedding_ms": result["timing"]["embedding_ms"],
+            "search_ms": result["timing"]["search_ms"],
+            "sql_query": result["sql_query"],
+            "params": result["params"],
+            "results_count": result["results_count"]
+        }
+
+        # Return just the products list for ADK compatibility
+        return result["products"]
 
 
 async def get_product_details(product_id: str) -> dict[str, Any]:
@@ -60,7 +87,15 @@ async def classify_intent(query: str) -> dict[str, Any]:
     """
     async with sqlspec.provide_session(db) as session:
         tools_service = service_locator.get(AgentToolsService, session)
-        return await tools_service.classify_intent(query)
+        result = await tools_service.classify_intent(query)
+
+        # Store timing data for orchestrator access
+        _timing_context["intent_classification"] = {
+            "timing_ms": result["timing_ms"],
+            "sql_query": result["sql_query"]
+        }
+
+        return result
 
 
 async def get_conversation_history(

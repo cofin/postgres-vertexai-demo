@@ -68,7 +68,7 @@ class ChatSessionService(BaseSessionService):
         Returns:
             ADK Session object
         """
-        logger.info("Creating ADK session", app_name=app_name, user_id=user_id, has_initial_state=bool(state))
+        logger.debug("Creating ADK session", app_name=app_name, user_id=user_id, has_initial_state=bool(state))
 
         # Generate session ID if not provided
         session_id = str(uuid.uuid4()) if session_id is None else str(UUID(session_id))
@@ -104,7 +104,7 @@ class ChatSessionService(BaseSessionService):
                 last_update_time=created_session["last_activity"].timestamp(),
             )
 
-            logger.info("ADK session created successfully", session_id=session_id, app_name=app_name)
+            logger.debug("ADK session created successfully", session_id=session_id, app_name=app_name)
 
             return adk_session
 
@@ -113,34 +113,37 @@ class ChatSessionService(BaseSessionService):
         *,
         app_name: str,
         user_id: str,
-        session_id: str,
+        session_id: str | None,
         state: dict[str, Any] | None = None,
     ) -> Session:
-        """Create or get an existing ADK session (upsert operation).
+        """Create or get an existing ADK session.
 
         Args:
             app_name: Application name (stored in session_data)
             user_id: User identifier
-            session_id: Session identifier
+            session_id: Session identifier (generated if None)
             state: Initial session state (only used if creating new session)
 
         Returns:
             ADK Session object
         """
-        # First try to get existing session
+        # Create new session if no ID provided
+        if session_id is None:
+            return await self.create_session(
+                app_name=app_name,
+                user_id=user_id,
+                session_id=None,
+                state=state,
+            )
+
+        # Try to get existing session, create if not found
         existing_session = await self.get_session(
             app_name=app_name,
             user_id=user_id,
             session_id=session_id,
         )
 
-        if existing_session:
-            logger.debug("Found existing ADK session", session_id=session_id)
-            return existing_session
-
-        # If session doesn't exist, create it
-        logger.info("Creating new ADK session via upsert", app_name=app_name, user_id=user_id, session_id=session_id)
-        return await self.create_session(
+        return existing_session or await self.create_session(
             app_name=app_name,
             user_id=user_id,
             session_id=session_id,
@@ -152,7 +155,7 @@ class ChatSessionService(BaseSessionService):
         *,
         app_name: str,
         user_id: str,
-        session_id: str,
+        session_id: str | None,
         config: Any = None,
     ) -> Session | None:
         """Get an existing ADK session with its events.
@@ -167,6 +170,10 @@ class ChatSessionService(BaseSessionService):
             ADK Session object or None if not found
         """
         logger.debug("Getting ADK session", app_name=app_name, user_id=user_id, session_id=session_id)
+
+        # Return None if no session_id provided
+        if session_id is None:
+            return None
 
         # Use SQLSpec's session management
         async with self.db_config.provide_session() as db_session:

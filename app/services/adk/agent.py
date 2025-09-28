@@ -14,6 +14,7 @@ from app.services.adk.prompts import (
     ROUTER_AGENT_INSTRUCTION,
 )
 from app.services.adk.tools import (
+    classify_intent,
     get_product_details,
     search_products_by_vector,
 )
@@ -23,16 +24,16 @@ product_agent = LlmAgent(
     name="ProductAgent",
     description="A specialist for finding, recommending, and comparing coffee products available at Cymbal Coffee.",
     instruction=PRODUCT_AGENT_INSTRUCTION,
-    model="gemini-2.0-flash",
-    tools=[search_products_by_vector, get_product_details],
+    model="gemini-2.5-flash",
+    tools=[classify_intent, search_products_by_vector, get_product_details],
 )
 
 conversation_agent = LlmAgent(
     name="ConversationAgent",
-    description="A specialist for discussing general coffee knowledge, brewing techniques, coffee origins, and engaging in casual conversation.",
+    description="A specialist for discussing general coffee knowledge, brewing techniques, coffee origins, engaging in casual conversation, and making product recommendations when requested.",
     instruction=CONVERSATION_AGENT_INSTRUCTION,
-    model="gemini-2.0-flash",
-    # This agent uses its intrinsic knowledge and needs no external tools initially.
+    model="gemini-2.5-flash",
+    tools=[classify_intent, search_products_by_vector, get_product_details],
 )
 
 # 2. Define the Main Router Agent
@@ -40,7 +41,7 @@ CoffeeAssistantAgent = LlmAgent(
     name="CoffeeAssistantRouter",
     description="The main assistant for Cymbal Coffee. It understands a user's request and routes it to the correct specialist agent.",
     instruction=ROUTER_AGENT_INSTRUCTION,
-    model="gemini-2.0-flash",
+    model="gemini-2.5-flash",
     # The 'sub_agents' parameter is key to the multi-agent architecture.
     sub_agents=[product_agent, conversation_agent],
 )

@@ -127,12 +127,31 @@ class MetricsService(SQLSpecService):
             hours_back=hours_back,
         )
 
-        return metrics or {
+        if metrics:
+            # Map database column names to expected response keys
+            return {
+                "total_searches": metrics.get("total_queries", 0),
+                "avg_search_time_ms": metrics.get("avg_total_response_time_ms", 0.0),
+                "avg_similarity_score": 0.0,  # TODO: Calculate similarity score average
+                "avg_response_time_ms": metrics.get("avg_total_response_time_ms", 0.0),
+                "p50_response_time_ms": metrics.get("median_response_time_ms", 0.0),
+                "p95_response_time_ms": metrics.get("p95_response_time_ms", 0.0),
+                "p99_response_time_ms": metrics.get("p99_response_time_ms", 0.0),
+                "min_response_time_ms": metrics.get("min_response_time_ms", 0.0),
+                "max_response_time_ms": metrics.get("max_response_time_ms", 0.0),
+                "error_rate": 0.0,  # TODO: Calculate error rate
+            }
+
+        return {
+            "total_searches": 0,
+            "avg_search_time_ms": 0.0,
+            "avg_similarity_score": 0.0,
             "avg_response_time_ms": 0.0,
             "p50_response_time_ms": 0.0,
             "p95_response_time_ms": 0.0,
             "p99_response_time_ms": 0.0,
-            "total_searches": 0,
+            "min_response_time_ms": 0.0,
+            "max_response_time_ms": 0.0,
             "error_rate": 0.0,
         }
 

@@ -6,6 +6,7 @@ clean separation between ADK integration and core functionality.
 
 from __future__ import annotations
 
+import time
 import uuid
 from typing import TYPE_CHECKING, Any
 
@@ -66,7 +67,7 @@ class AgentToolsService(SQLSpecService):
         query: str,
         limit: int = 5,
         similarity_threshold: float = 0.7,
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         """Search for coffee products using vector similarity.
 
         Args:
@@ -75,19 +76,27 @@ class AgentToolsService(SQLSpecService):
             similarity_threshold: Minimum similarity score 0.0-1.0 (default 0.7)
 
         Returns:
-            List of matching products with details and similarity scores
+            Dict containing products, timing info, and SQL query used
         """
-        # Generate embedding for query
-        query_embedding = await self.vertex_ai_service.get_text_embedding(query)
+        start_time = time.time()
 
-        # Search for similar products
+        # Time embedding generation
+        embedding_start = time.time()
+        query_embedding = await self.vertex_ai_service.get_text_embedding(query)
+        embedding_ms = (time.time() - embedding_start) * 1000
+
+        # Time vector search
+        search_start = time.time()
         products = await self.product_service.vector_similarity_search(
             query_embedding=query_embedding,
             similarity_threshold=similarity_threshold,
             limit=limit,
         )
+        search_ms = (time.time() - search_start) * 1000
 
-        return [
+        total_ms = (time.time() - start_time) * 1000
+
+        product_list = [
             {
                 "id": str(product.id),
                 "name": product.name,
@@ -98,6 +107,29 @@ class AgentToolsService(SQLSpecService):
             }
             for product in products
         ]
+
+        # Include actual SQL query template for UI display
+        sql_query = """SELECT p.id, p.name, p.description, p.price,
+       1 - (p.embedding <=> %s) as similarity
+FROM product p
+WHERE 1 - (p.embedding <=> %s) > %s
+ORDER BY similarity DESC
+LIMIT %s"""
+
+        return {
+            "products": product_list,
+            "timing": {
+                "total_ms": total_ms,
+                "embedding_ms": embedding_ms,
+                "search_ms": search_ms
+            },
+            "sql_query": sql_query,
+            "params": {
+                "similarity_threshold": similarity_threshold,
+                "limit": limit
+            },
+            "results_count": len(product_list)
+        }
 
     async def get_product_details(self, product_id: str) -> dict[str, Any]:
         """Get detailed information about a specific product by ID or name.
@@ -140,18 +172,33 @@ class AgentToolsService(SQLSpecService):
             query: User's message to classify
 
         Returns:
-            Intent classification results
+            Intent classification results with timing info
         """
+        start_time = time.time()
+
         try:
             result = await self.intent_service.classify_intent(query)
+            total_ms = (time.time() - start_time) * 1000
+
+            # Include actual SQL query for intent classification
+            sql_query = """SELECT intent_type,
+       VECTOR_DISTANCE(embedding, :query_embedding, COSINE) AS similarity
+FROM intent_exemplars
+WHERE VECTOR_DISTANCE(embedding, :query_embedding, COSINE) < 0.3
+ORDER BY similarity
+FETCH FIRST 1 ROW ONLY"""
+
             return {
                 "intent": result.intent,
                 "confidence": float(result.confidence),
                 "exemplar_phrase": result.exemplar_phrase,
                 "embedding_cache_hit": result.embedding_cache_hit,
                 "fallback_used": result.fallback_used,
+                "timing_ms": total_ms,
+                "sql_query": sql_query
             }
         except (ValueError, TypeError, AttributeError) as e:
+            total_ms = (time.time() - start_time) * 1000
             return {
                 "intent": "GENERAL_CONVERSATION",
                 "confidence": 0.5,
@@ -159,6 +206,8 @@ class AgentToolsService(SQLSpecService):
                 "embedding_cache_hit": False,
                 "fallback_used": True,
                 "error": str(e),
+                "timing_ms": total_ms,
+                "sql_query": "-- Error occurred during intent classification"
             }
 
     async def get_conversation_history(

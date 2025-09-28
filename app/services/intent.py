@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from app.schemas import IntentResult, IntentSearchResult
+from app.schemas import IntentResult
 from app.services.base import SQLSpecService
 
 if TYPE_CHECKING:
@@ -62,11 +62,10 @@ class IntentService(SQLSpecService):
         start_time = time.perf_counter()
 
         # Get query embedding
-        embedding_cache_hit = False
         if user_embedding is None:
-            # This will use the two-tier cache in EmbeddingService
-            user_embedding = await self.vertex_ai_service.get_text_embedding(query)
-            # Note: EmbeddingService handles cache hit tracking internally
+            user_embedding, embedding_cache_hit = await self.vertex_ai_service.get_text_embedding_with_cache_status(
+                query
+            )
         else:
             embedding_cache_hit = True
 
@@ -104,7 +103,7 @@ class IntentService(SQLSpecService):
             # Increment usage count for the matched exemplar
             await self.exemplar_service.increment_usage_by_phrase(best_match.intent, best_match.phrase)
 
-            logger.info(
+            logger.debug(
                 "Intent classified successfully",
                 query=query[:100],
                 intent=best_match.intent,
@@ -136,85 +135,3 @@ class IntentService(SQLSpecService):
             embedding_cache_hit=embedding_cache_hit,
             fallback_used=True,
         )
-
-    async def classify_intent_with_alternatives(
-        self,
-        query: str,
-        user_embedding: list[float] | None = None,
-        min_threshold: float = 0.6,
-        max_results: int = 5,
-    ) -> tuple[IntentResult, list[IntentSearchResult]]:
-        """Classify intent and return alternatives.
-
-        Args:
-            query: User query text
-            user_embedding: Pre-computed embedding (optional)
-            min_threshold: Minimum similarity threshold
-            max_results: Maximum number of results to return
-
-        Returns:
-            Tuple of (primary result, alternative matches)
-        """
-        start_time = time.perf_counter()
-
-        # Get query embedding
-        embedding_cache_hit = False
-        if user_embedding is None:
-            user_embedding = await self.vertex_ai_service.get_text_embedding(query)
-        else:
-            embedding_cache_hit = True
-
-        # Search for similar intents
-        similar_intents = await self.exemplar_service.search_similar_intents(
-            query_embedding=user_embedding,
-            min_threshold=min_threshold,
-            limit=max_results,
-        )
-
-        processing_time = int((time.perf_counter() - start_time) * 1000)
-
-        # Determine best intent
-        if not similar_intents:
-            return (
-                IntentResult(
-                    intent="GENERAL_CONVERSATION",
-                    confidence=0.0,
-                    exemplar_phrase="",
-                    embedding_cache_hit=embedding_cache_hit,
-                    fallback_used=True,
-                ),
-                [],
-            )
-
-        # Get the best match
-        best_match = similar_intents[0]
-
-        # Create primary result
-        if best_match.similarity >= best_match.confidence_threshold:
-            await self.exemplar_service.increment_usage_by_phrase(best_match.intent, best_match.phrase)
-
-            primary_result = IntentResult(
-                intent=best_match.intent,
-                confidence=best_match.similarity,
-                exemplar_phrase=best_match.phrase,
-                embedding_cache_hit=embedding_cache_hit,
-                fallback_used=False,
-            )
-        else:
-            primary_result = IntentResult(
-                intent="GENERAL_CONVERSATION",
-                confidence=best_match.similarity,
-                exemplar_phrase=best_match.phrase,
-                embedding_cache_hit=embedding_cache_hit,
-                fallback_used=True,
-            )
-
-        logger.info(
-            "Intent classified with alternatives",
-            query=query[:100],
-            primary_intent=primary_result.intent,
-            alternatives_count=len(similar_intents) - 1,
-            processing_time_ms=processing_time,
-        )
-
-        return primary_result, similar_intents

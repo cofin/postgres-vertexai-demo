@@ -54,38 +54,6 @@ def _display_intent_result(console: Console, result: Any) -> None:
     console.print()
 
 
-def _display_alternatives(console: Console, alternative_results: list[Any]) -> None:
-    """Display alternative intent classification results."""
-    if alternative_results:
-        from rich.table import Table
-
-        table = Table(show_header=True, header_style="bold blue")
-        table.add_column("Intent", style="cyan", width=20)
-        table.add_column("Confidence", width=12)
-        table.add_column("Threshold", width=12)
-        table.add_column("Example Phrase", style="dim", width=50)
-
-        for alt in alternative_results:
-            confidence_str = f"{alt.similarity:.1%}"
-            threshold_str = f"{alt.confidence_threshold:.1%}"
-
-            if alt.similarity >= alt.confidence_threshold:
-                confidence_str = f"[bold green]{confidence_str}[/bold green]"
-            else:
-                confidence_str = f"[dim]{confidence_str}[/dim]"
-
-            table.add_row(
-                alt.intent,
-                confidence_str,
-                threshold_str,
-                alt.phrase[:MAX_PHRASE_DISPLAY] + "..." if len(alt.phrase) > MAX_PHRASE_DISPLAY else alt.phrase,
-            )
-
-        console.print("[bold]Alternative Matches:[/bold]")
-        console.print(table)
-        console.print()
-
-
 @click.command(name="load-fixtures", help="Load application fixture data into the database.")
 @click.option("--tables", "-t", help="Comma-separated list of specific tables to load (loads all if not specified)")
 @click.option("--list", "list_fixtures", is_flag=True, help="List available fixture files")
@@ -372,6 +340,67 @@ def export_fixtures_cmd(tables: str | None, output_dir: str | None, no_compress:
 
 
 # Embedding commands - moved to coffee group
+async def _get_products_to_embed(product_service, console, force: bool):
+    """Get products that need embeddings."""
+    with console.status("[bold yellow]Finding products to process...", spinner="dots"):
+        if force:
+            # Get all products
+            products = await product_service.driver.select(
+                "SELECT id, name, description, embedding FROM product ORDER BY id",
+            )
+            console.print(f"[cyan]Processing ALL {len(products)} products (force mode)[/cyan]")
+        else:
+            # Get only products without embeddings
+            products = await product_service.get_products_without_embeddings()
+            console.print(f"[cyan]Processing {len(products)} products without embeddings[/cyan]")
+    return products
+
+
+async def _process_product_batch(
+    batch, product_service, vertex_ai_service, console, start_idx: int, total_products: int
+) -> tuple[int, int]:
+    """Process a batch of products and return success/error counts."""
+    success_count = 0
+    error_count = 0
+
+    with console.status("[bold yellow]Generating embeddings...", spinner="dots") as status:
+        for i, product in enumerate(batch):
+            try:
+                # Update status
+                product_name = product.get("name", f"Product {product['id']}")
+                global_idx = start_idx + i + 1
+                status.update(f"[bold yellow]Processing {global_idx}/{total_products}: {product_name}...")
+
+                # Generate embedding for product
+                description = product.get("description", "")
+                combined_text = f"{product_name}: {description}"
+                embedding = await vertex_ai_service.get_text_embedding(combined_text)
+
+                # Update product with embedding
+                await product_service.update_product_embedding(product["id"], embedding)
+
+                success_count += 1
+                logger.debug(
+                    "Generated embedding and updated product",
+                    product_id=product["id"],
+                    product_name=product_name,
+                    text_length=len(combined_text),
+                    embedding_dimensions=len(embedding),
+                    model="text-embedding-004",
+                )
+
+            except Exception as e:  # noqa: BLE001
+                error_count += 1
+                logger.warning(
+                    "Failed to process product embedding",
+                    product_id=product.get("id"),
+                    product_name=product.get("name", "Unknown"),
+                    error=str(e),
+                )
+
+    return success_count, error_count
+
+
 @coffee_demo_group.command(
     name="bulk-embed",
     help="Run bulk embedding job for all products using Vertex AI.",
@@ -397,18 +426,7 @@ def bulk_embed(batch_size: int, force: bool) -> None:
             product_service = await anext(product_service_gen)
             vertex_ai_service = await anext(vertex_ai_service_gen)
 
-            # Get products to process
-            with console.status("[bold yellow]Finding products to process...", spinner="dots"):
-                if force:
-                    # Get all products
-                    products = await product_service.driver.select(
-                        "SELECT id, name, description, embedding FROM product ORDER BY id",
-                    )
-                    console.print(f"[cyan]Processing ALL {len(products)} products (force mode)[/cyan]")
-                else:
-                    # Get only products without embeddings
-                    products = await product_service.get_products_without_embeddings()
-                    console.print(f"[cyan]Processing {len(products)} products without embeddings[/cyan]")
+            products = await _get_products_to_embed(product_service, console, force)
 
             if not products:
                 if force:
@@ -421,8 +439,8 @@ def bulk_embed(batch_size: int, force: bool) -> None:
             console.print()
 
             # Process products in batches
-            success_count = 0
-            error_count = 0
+            total_success = 0
+            total_errors = 0
             total_batches = (len(products) + batch_size - 1) // batch_size
 
             for batch_num in range(total_batches):
@@ -432,49 +450,20 @@ def bulk_embed(batch_size: int, force: bool) -> None:
 
                 console.print(f"[bold]Processing batch {batch_num + 1}/{total_batches} ({len(batch)} products)[/bold]")
 
-                with console.status("[bold yellow]Generating embeddings...", spinner="dots") as status:
-                    for i, product in enumerate(batch):
-                        try:
-                            # Update status
-                            product_name = product.get("name", f"Product {product['id']}")
-                            global_idx = start_idx + i + 1
-                            status.update(f"[bold yellow]Processing {global_idx}/{len(products)}: {product_name}...")
-
-                            # Generate embedding for product
-                            description = product.get("description", "")
-                            combined_text = f"{product_name}: {description}"
-                            embedding = await vertex_ai_service.get_text_embedding(combined_text)
-
-                            # Update product with embedding
-                            await product_service.update_product_embedding(product["id"], embedding)
-
-                            success_count += 1
-                            logger.debug(
-                                "Generated embedding and updated product",
-                                product_id=product["id"],
-                                product_name=product_name,
-                                text_length=len(combined_text),
-                                embedding_dimensions=len(embedding),
-                                model="text-embedding-004",
-                            )
-
-                        except Exception as e:  # noqa: BLE001
-                            error_count += 1
-                            logger.warning(
-                                "Failed to process product embedding",
-                                product_id=product.get("id"),
-                                product_name=product.get("name", "Unknown"),
-                                error=str(e),
-                            )
+                success, errors = await _process_product_batch(
+                    batch, product_service, vertex_ai_service, console, start_idx, len(products)
+                )
+                total_success += success
+                total_errors += errors
 
                 console.print(f"[green]✓ Batch {batch_num + 1} complete[/green]")
                 console.print()
 
             # Show final results
             console.print("[bold]Final Results:[/bold]")
-            console.print(f"[bold green]✓ Successfully processed: {success_count} products[/bold green]")
-            if error_count > 0:
-                console.print(f"[bold red]✗ Failed to process: {error_count} products[/bold red]")
+            console.print(f"[bold green]✓ Successfully processed: {total_success} products[/bold green]")
+            if total_errors > 0:
+                console.print(f"[bold red]✗ Failed to process: {total_errors} products[/bold red]")
             console.print()
 
         finally:
@@ -482,6 +471,46 @@ def bulk_embed(batch_size: int, force: bool) -> None:
             await vertex_ai_service_gen.aclose()
 
     run_(_bulk_embed_products)()
+
+
+async def _process_single_products(products, product_service, vertex_ai_service, console) -> tuple[int, int]:
+    """Process products one by one and return success/error counts."""
+    success_count = 0
+    error_count = 0
+
+    with console.status("[bold yellow]Generating embeddings...", spinner="dots") as status:
+        for i, product in enumerate(products, 1):
+            try:
+                # Update status
+                status.update(f"[bold yellow]Processing product {i}/{len(products)}: {product.get('name')}...")
+
+                # Generate embedding for product
+                combined_text = f"{product.get('name')}: {product.get('description')}"
+                embedding = await vertex_ai_service.get_text_embedding(combined_text)
+
+                # Update product with embedding
+                await product_service.update_product_embedding(cast("int", product.get("id")), embedding)
+
+                success_count += 1
+                logger.debug(
+                    "Generated embedding and updated product",
+                    product_id=product.get("id"),
+                    product_name=product.get("name"),
+                    text_length=len(combined_text),
+                    embedding_dimensions=len(embedding),
+                    model="text-embedding-004",
+                )
+
+            except Exception as e:  # noqa: BLE001
+                error_count += 1
+                logger.warning(
+                    "Failed to process product embedding",
+                    product_id=product.get("id"),
+                    product_name=product.get("name"),
+                    error=str(e),
+                )
+
+    return success_count, error_count
 
 
 @coffee_demo_group.command(
@@ -519,41 +548,9 @@ def embed_new(limit: int) -> None:
             console.print(f"[cyan]Found {len(products)} products without embeddings[/cyan]")
             console.print()
 
-            # Process products in batches
-            success_count = 0
-            error_count = 0
-
-            with console.status("[bold yellow]Generating embeddings...", spinner="dots") as status:
-                for i, product in enumerate(products, 1):
-                    try:
-                        # Update status
-                        status.update(f"[bold yellow]Processing product {i}/{len(products)}: {product.get('name')}...")
-
-                        # Generate embedding for product
-                        combined_text = f"{product.get('name')}: {product.get('description')}"
-                        embedding = await vertex_ai_service.get_text_embedding(combined_text)
-
-                        # Update product with embedding
-                        await product_service.update_product_embedding(cast("int", product.get("id")), embedding)
-
-                        success_count += 1
-                        logger.debug(
-                            "Generated embedding and updated product",
-                            product_id=product.get("id"),
-                            product_name=product.get("name"),
-                            text_length=len(combined_text),
-                            embedding_dimensions=len(embedding),
-                            model="text-embedding-004",
-                        )
-
-                    except Exception as e:  # noqa: BLE001
-                        error_count += 1
-                        logger.warning(
-                            "Failed to process product embedding",
-                            product_id=product.get("id"),
-                            product_name=product.get("name"),
-                            error=str(e),
-                        )
+            success_count, error_count = await _process_single_products(
+                products, product_service, vertex_ai_service, console
+            )
 
             # Show results
             console.print(f"[bold green]✓ Successfully processed {success_count} products[/bold green]")
@@ -881,7 +878,6 @@ def populate_intents(force: bool, intent: str | None) -> None:
         from app.lib.intents import INTENT_EXEMPLARS
         from app.server.deps import create_service_provider
         from app.services.exemplar import ExemplarService
-        from app.services.vertex_ai import VertexAIService
 
         console = get_console()
         console.rule("[bold blue]Populating Intent Exemplars", style="blue", align="left")
@@ -934,15 +930,13 @@ def populate_intents(force: bool, intent: str | None) -> None:
 
 @coffee_demo_group.command(name="test-intent", help="Test intent classification for a query.")
 @click.argument("query", required=True)
-@click.option("--alternatives", "-a", is_flag=True, help="Show alternative intent matches")
-def test_intent(query: str, alternatives: bool) -> None:
+def test_intent(query: str) -> None:
     """Test intent classification for a query."""
 
     async def _test_intent() -> None:
         from app.server.deps import create_service_provider
         from app.services.exemplar import ExemplarService
         from app.services.intent import IntentService
-        from app.services.vertex_ai import VertexAIService
 
         console = get_console()
         console.rule("[bold blue]Testing Intent Classification", style="blue", align="left")
@@ -966,17 +960,10 @@ def test_intent(query: str, alternatives: bool) -> None:
             )
 
             with console.status("[bold yellow]Classifying intent...", spinner="dots"):
-                if alternatives:
-                    result, alternative_results = await intent_service.classify_intent_with_alternatives(query)
-                else:
-                    result = await intent_service.classify_intent(query)
-                    alternative_results = []
+                result = await intent_service.classify_intent(query)
 
             # Display results using helper functions
             _display_intent_result(console, result)
-
-            if alternatives:
-                _display_alternatives(console, alternative_results)
 
         finally:
             await service_gen.aclose()

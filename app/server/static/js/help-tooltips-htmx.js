@@ -120,15 +120,42 @@ function getTooltipHTML(triggerId) {
         "performance-summary": {
             title: "📊 Performance Breakdown",
             body: `
-                <div class="help-tooltip-section perf-chart">
-                    <div class="perf-bar">
-                        <div class="perf-bar-label">Total Time</div>
-                        <div class="perf-bar-track">
-                            <div class="perf-bar-fill total-time-bar" style="width: 100%;"></div>
-                        </div>
-                        <div class="perf-bar-value total-time-value">N/A</div>
+                <div class="help-tooltip-section">
+                    <div class="help-tooltip-section-title">Total Response Time</div>
+                    <div class="help-tooltip-metric">
+                        <span class="help-tooltip-metric-label">Total Time</span>
+                        <span class="help-tooltip-metric-value total-time-value">N/A</span>
                     </div>
-                    <!-- More bars can be added dynamically -->
+                </div>
+                <div class="help-tooltip-section perf-chart">
+                    <div class="help-tooltip-section-title">Component Breakdown</div>
+                    <!-- Performance bars will be populated dynamically -->
+                </div>
+            `
+        },
+        "response-cache-hit": {
+            title: "⚡ Response Cache Hit",
+            body: `
+                <div class="help-tooltip-section">
+                    <div class="help-tooltip-section-title">Cache Details</div>
+                    <p>This response was served from the response cache, providing faster delivery without re-processing the query through the ADK agents.</p>
+                    <div class="help-tooltip-metric">
+                        <span class="help-tooltip-metric-label">Response Time</span>
+                        <span class="help-tooltip-metric-value">~5ms (cached)</span>
+                    </div>
+                </div>
+            `
+        },
+        "embedding-cache-hit": {
+            title: "🧠 Embedding Cache Hit",
+            body: `
+                <div class="help-tooltip-section">
+                    <div class="help-tooltip-section-title">Embedding Cache Details</div>
+                    <p>The text embedding for this query was served from cache, avoiding a round-trip to Vertex AI.</p>
+                    <div class="help-tooltip-metric">
+                        <span class="help-tooltip-metric-label">Embedding Time</span>
+                        <span class="help-tooltip-metric-value">~1ms (cached)</span>
+                    </div>
                 </div>
             `
         },
@@ -150,28 +177,93 @@ function getTooltipHTML(triggerId) {
 
 // Populates the tooltip skeleton with live data
 function populateTooltip(tooltipElement, triggerElement, triggerId) {
-    const debugInfo = JSON.parse(triggerElement.dataset.debugInfo || '{}');
+    if (triggerId === 'intent-detection') {
+        const intent = triggerElement.dataset.intent || 'UNKNOWN';
+        const confidence = parseFloat(triggerElement.dataset.confidence || 0);
+        const sql = triggerElement.dataset.sql;
 
-    if (triggerId === 'intent-detection' && debugInfo.intent) {
         const queryElem = tooltipElement.querySelector('.sql-query-placeholder');
         if (queryElem) {
-            queryElem.textContent = `SELECT\n    intent, phrase, 1 - (embedding <=> :query_embedding) AS similarity\nFROM intent_exemplar\nWHERE 1 - (embedding <=> :query_embedding) > :min_threshold\nORDER BY similarity DESC\nLIMIT :limit;`;
+            queryElem.textContent = sql || `SELECT intent_type,
+       VECTOR_DISTANCE(embedding, :query_embedding, COSINE) AS similarity
+FROM intent_exemplars
+WHERE VECTOR_DISTANCE(embedding, :query_embedding, COSINE) < 0.3
+ORDER BY similarity
+FETCH FIRST 1 ROW ONLY`;
         }
-        tooltipElement.querySelector('.intent-name-placeholder').textContent = debugInfo.intent.intent || 'N/A';
-        tooltipElement.querySelector('.confidence-placeholder').textContent = `${((debugInfo.intent.confidence || 0) * 100).toFixed(1)}%`;
+
+        const intentElem = tooltipElement.querySelector('.intent-name-placeholder');
+        if (intentElem) intentElem.textContent = intent;
+
+        const confidenceElem = tooltipElement.querySelector('.confidence-placeholder');
+        if (confidenceElem) confidenceElem.textContent = `${(confidence * 100).toFixed(1)}%`;
     }
 
-    if (triggerId === 'vector-search' && debugInfo.search) {
+    if (triggerId === 'vector-search') {
+        const sql = triggerElement.dataset.sql;
+        const results = triggerElement.dataset.results || 0;
+        const params = JSON.parse(triggerElement.dataset.params || '{}');
+
         const queryElem = tooltipElement.querySelector('.sql-query-placeholder');
-        if (queryElem) {
-            queryElem.textContent = `SELECT\n    name, description, 1 - (embedding <=> :query_embedding) AS similarity_score\nFROM product\nWHERE in_stock = true AND 1 - (embedding <=> :query_embedding) >= :similarity_threshold\nORDER BY embedding <=> :query_embedding\nLIMIT :limit_count;`;
+        if (queryElem && sql) {
+            queryElem.textContent = sql;
         }
-        tooltipElement.querySelector('.results-count-placeholder').textContent = debugInfo.search.results_count || 0;
+
+        const resultsElem = tooltipElement.querySelector('.results-count-placeholder');
+        if (resultsElem) resultsElem.textContent = results;
+
+        const paramsElem = tooltipElement.querySelector('.params-placeholder');
+        if (paramsElem) paramsElem.textContent = JSON.stringify(params, null, 2);
     }
 
-    if (triggerId === 'performance-summary' && debugInfo.timings) {
-        const totalTime = debugInfo.timings.total_ms || 0;
-        tooltipElement.querySelector('.total-time-value').textContent = `${totalTime}ms`;
+    if (triggerId === 'performance-summary') {
+        const timingsStr = triggerElement.dataset.timings;
+        if (timingsStr) {
+            try {
+                const timings = JSON.parse(timingsStr);
+                updatePerformanceTooltipContent(tooltipElement, timings);
+            } catch (e) {
+                console.error('Error parsing timings:', e);
+            }
+        }
+    }
+}
+
+// Update performance tooltip content with detailed breakdown
+function updatePerformanceTooltipContent(tooltipElement, timings) {
+    const chartEl = tooltipElement.querySelector('.perf-chart');
+    if (!chartEl) return;
+
+    // Build performance bars for each component
+    const components = [
+        { label: "Agent Processing", value: timings.agent_processing_ms || 0, color: "#f59e0b" },
+        { label: "Intent Classification", value: timings.intent_classification_ms || 0, color: "#10b981" },
+        { label: "Vector Search", value: timings.vector_search_ms || 0, color: "#8b5cf6" },
+        { label: "Embedding Generation", value: timings.embedding_generation_ms || 0, color: "#f97316" },
+        { label: "Session Management", value: timings.session_ms || 0, color: "#6366f1" },
+    ];
+
+    const totalTime = timings.total_ms || 0;
+    const maxTime = Math.max(...components.map(c => c.value), totalTime, 1);
+
+    const barsHtml = components
+        .filter(c => c.value > 0)
+        .map(comp => `
+            <div class="perf-bar">
+                <div class="perf-bar-label">${comp.label}</div>
+                <div class="perf-bar-track">
+                    <div class="perf-bar-fill" style="width: ${(comp.value / maxTime) * 100}%; background: ${comp.color}"></div>
+                </div>
+                <div class="perf-bar-value">${comp.value}ms</div>
+            </div>
+        `).join("");
+
+    chartEl.innerHTML = barsHtml;
+
+    // Update total time if there's a separate total element
+    const totalValueElem = tooltipElement.querySelector('.total-time-value');
+    if (totalValueElem) {
+        totalValueElem.textContent = `${totalTime}ms`;
     }
 }
 

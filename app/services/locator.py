@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, TypeVar
+from typing import Any, TypeVar, get_type_hints
 
 from sqlspec.driver import AsyncDriverAdapterBase
 
@@ -48,17 +48,27 @@ class ServiceLocator:
         # 2. Handle complex services with special dependency injection needs
         if service_cls == IntentService:
             from app.services.exemplar import ExemplarService
+
             return IntentService(
                 driver=session,
                 exemplar_service=self.get(ExemplarService, session),
                 vertex_ai_service=self.get(VertexAIService, session),
             )
 
+        # Special handling for VertexAIService to inject CacheService
+        if service_cls == VertexAIService:
+            from app.services.cache import CacheService
+
+            # Create VertexAI service with cache service
+            cache_service = self.get(CacheService, session) if session else None
+            return VertexAIService(cache_service=cache_service)
+
         if service_cls == AgentToolsService:
             from app.services.chat import ChatService
             from app.services.metrics import MetricsService
             from app.services.product import ProductService
             from app.services.store import StoreService
+
             return AgentToolsService(
                 driver=session,
                 product_service=self.get(ProductService, session),
@@ -71,13 +81,16 @@ class ServiceLocator:
 
         # 3. Handle Transient (session-scoped) services.
         if session is None:
-            msg = f"A database session is required to create a transient instance of {service_cls.__name__}"
+            service_name = getattr(service_cls, "__name__", str(service_cls))
+            msg = f"A database session is required to create a transient instance of {service_name}"
             raise ValueError(msg)
 
         return self._create_instance(service_cls, session)
 
     def _create_instance(
-        self, service_cls: type[T], session: AsyncDriverAdapterBase | None,
+        self,
+        service_cls: type[T],
+        session: AsyncDriverAdapterBase | None,
     ) -> T:
         """Creates an instance of a class by inspecting its __init__ method
         and recursively resolving dependencies.
@@ -86,12 +99,15 @@ class ServiceLocator:
         try:
             signature = inspect.signature(service_cls.__init__)
         except (TypeError, ValueError):
-            return service_cls()  # type: ignore[call-arg]
+            return service_cls()
+
+        # Get resolved type hints to handle forward references and string annotations
+        type_hints = get_type_hints(service_cls.__init__)
 
         dependencies: dict[str, Any] = {}
         # Iterate over constructor parameters, skipping 'self'
         for param in list(signature.parameters.values())[1:]:
-            param_type = param.annotation
+            param_type = type_hints.get(param.name, param.annotation)
 
             if param_type is inspect.Parameter.empty:
                 msg = (
@@ -101,13 +117,18 @@ class ServiceLocator:
                 raise TypeError(msg)
 
             # 3. Inject the database session/driver if type-hinted
-            if (
-                isinstance(param_type, type)
-                and issubclass(param_type, AsyncDriverAdapterBase)
-            ) or param.name in ("driver", "session"):
+            if (isinstance(param_type, type) and issubclass(param_type, AsyncDriverAdapterBase)) or param.name in (
+                "driver",
+                "session",
+            ):
                 dependencies[param.name] = session
 
-            # 4. Recursively resolve other service dependencies
+            # 4. Skip parameters with default values (like object | None = None)
+            elif param.default is not inspect.Parameter.empty:
+                # Parameter has a default value, skip it
+                continue
+
+            # 5. Recursively resolve other service dependencies
             else:
                 dependencies[param.name] = self.get(param_type, session)
 

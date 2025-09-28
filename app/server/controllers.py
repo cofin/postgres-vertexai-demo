@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import secrets
 import time
 import uuid
 from typing import TYPE_CHECKING, Annotated, cast
@@ -45,10 +44,6 @@ class CoffeeChatController(Controller):
         "metrics_service": Provide(deps.provide_metrics_service),
     }
 
-    @staticmethod
-    def generate_csp_nonce() -> str:
-        """Generate a CSP nonce."""
-        return secrets.token_urlsafe(16)
 
     @staticmethod
     def validate_message(message: str) -> str:
@@ -68,19 +63,13 @@ class CoffeeChatController(Controller):
 
         return message
 
-    @staticmethod
-    def validate_persona(persona: str) -> str:
-        """Validate persona input."""
-        if persona not in {"novice", "enthusiast", "expert", "barista"}:
-            return "enthusiast"
-        return persona
 
     @get(path="/", name="coffee_chat.show")
     async def show_coffee_chat(self) -> HTMXTemplate:
-        """Serve site root with CSP nonce."""
+        """Serve site root."""
         return HTMXTemplate(
             template_name="coffee_chat.html",
-            context={"csp_nonce": self.generate_csp_nonce()},
+            context={},
             headers={
                 "X-Content-Type-Options": "nosniff",
                 "X-Frame-Options": "DENY",
@@ -99,9 +88,8 @@ class CoffeeChatController(Controller):
     ) -> HTMXTemplate:
         """Handle both full page and HTMX partial requests using the ADK agent system."""
 
-        csp_nonce = self.generate_csp_nonce()
         clean_message = self.validate_message(data.message)
-        validated_persona = self.validate_persona(data.persona)
+        validated_persona = data.persona if data.persona in {"novice", "enthusiast", "expert", "barista"} else "enthusiast"
         query_id = str(uuid.uuid4())  # Keep for message fingerprinting
 
         # Get or create session_id for persistence across requests
@@ -135,8 +123,10 @@ class CoffeeChatController(Controller):
                     "ai_response": agent_response.get("answer", ""),
                     "query_id": query_id,
                     "products": agent_response.get("products", []),
-                    "debug_info": to_json(agent_response.get("debug_info", {}), as_bytes=False),
-                    "csp_nonce": csp_nonce,
+                    "debug_info": agent_response.get("debug_info", {}),
+                    "intent_detected": agent_response.get("debug_info", {}).get("intent", {}).get("intent", "GENERAL"),
+                    "from_cache": agent_response.get("from_cache", False),
+                    "embedding_cache_hit": agent_response.get("debug_info", {}).get("embedding_cache_hit", False),
                 },
                 trigger_event="chat:response-complete",
                 params={"query_id": query_id, "agent": agent_response.get("agent_used", "ADK")},
@@ -148,7 +138,6 @@ class CoffeeChatController(Controller):
             context={
                 "answer": agent_response.get("answer", ""),
                 "products": agent_response.get("products", []),
-                "csp_nonce": csp_nonce,
                 "agent_used": agent_response.get("agent_used", "ADK"),
             },
         )
@@ -201,7 +190,6 @@ class CoffeeChatController(Controller):
             template_name="performance_dashboard.html",
             context={
                 "metrics": metrics,
-                "csp_nonce": self.generate_csp_nonce(),
             },
             trigger_event="dashboard:loaded",
             params={"total_searches": metrics.get("total_searches", 0)},

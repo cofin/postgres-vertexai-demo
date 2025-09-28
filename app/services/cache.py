@@ -218,3 +218,25 @@ class CacheService(SQLSpecService):
             "embedding_cache_entries": embedding_count,
             "total_embedding_hits": embedding_hits,
         }
+
+    async def get(self, cache_key: str) -> dict[str, Any] | None:
+        """Simple cache get method.
+
+        Args:
+            cache_key: Cache key to lookup
+
+        Returns:
+            Cached data or None if not found
+        """
+        cached = await self.get_cached_response(cache_key)
+        return cached.response_data if cached else None
+
+    async def set(self, cache_key: str, data: dict[str, Any], ttl: int = 5) -> None:
+        """Simple cache set method.
+
+        Args:
+            cache_key: Cache key
+            data: Data to cache
+            ttl: Time to live in minutes
+        """
+        await self.set_cached_response(cache_key, data, ttl)
