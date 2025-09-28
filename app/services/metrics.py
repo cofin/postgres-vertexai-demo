@@ -47,7 +47,7 @@ class MetricsService(SQLSpecService):
             Created search metric
         """
         return await self.driver.select_one(
-            sql.insert("search_metrics")
+            sql.insert("search_metric")
             .columns(
                 "session_id",
                 "query_text",
@@ -120,7 +120,7 @@ class MetricsService(SQLSpecService):
               min(total_response_time_ms) as min_response_time_ms,
               max(total_response_time_ms) as max_response_time_ms
             FROM
-              search_metrics
+              search_metric
             WHERE
               created_at >= current_timestamp - :hours_back * interval '1 hour'
             """,

@@ -14,19 +14,22 @@ from app.services.adk.tool_service import AgentToolsService
 
 async def search_products_by_vector(
     query: str,
-    limit: int = 5,
-    similarity_threshold: float = 0.7
+    limit: int,
+    similarity_threshold: float,
 ) -> list[dict[str, Any]]:
     """Search for coffee products using vector similarity with fresh session.
 
     Args:
         query: Customer's product query or description
-        limit: Maximum number of products to return (1-20, default 5)
-        similarity_threshold: Minimum similarity score 0.0-1.0 (default 0.7)
+        limit: Maximum number of products to return (1-20)
+        similarity_threshold: Minimum similarity score 0.0-1.0
 
     Returns:
         List of matching products with details and similarity scores
     """
+    # Apply defaults within function to avoid ADK schema issues
+    limit = limit or 5
+    similarity_threshold = similarity_threshold or 0.7
     async with sqlspec.provide_session(db) as session:
         tools_service = service_locator.get(AgentToolsService, session)
         return await tools_service.search_products_by_vector(query, limit, similarity_threshold)
@@ -62,7 +65,7 @@ async def classify_intent(query: str) -> dict[str, Any]:
 
 async def get_conversation_history(
     session_id: str,
-    limit: int = 10
+    limit: int,
 ) -> list[dict[str, Any]]:
     """Get recent conversation history with fresh session.
 
@@ -73,6 +76,8 @@ async def get_conversation_history(
     Returns:
         List of conversation messages
     """
+    # Apply default within function to avoid ADK schema issues
+    limit = limit or 10
     async with sqlspec.provide_session(db) as session:
         tools_service = service_locator.get(AgentToolsService, session)
         return await tools_service.get_conversation_history(session_id, limit)
@@ -83,8 +88,8 @@ async def record_search_metric(
     query_text: str,
     intent: str,
     response_time_ms: float,
-    vector_search_time_ms: int = 0,
-    vector_results: list[dict[str, Any]] | None = None,
+    vector_search_time_ms: int,
+    vector_results: list[dict[str, Any]] | None,
 ) -> dict[str, Any]:
     """Record metrics for search performance with fresh session.
 
@@ -101,14 +106,58 @@ async def record_search_metric(
     """
     async with sqlspec.provide_session(db) as session:
         tools_service = service_locator.get(AgentToolsService, session)
+        # Apply defaults within function to avoid ADK schema issues
+        vector_search_time_ms = vector_search_time_ms or 0
+        vector_results = vector_results or []
+
         return await tools_service.record_search_metric(
             session_id=session_id,
             query_text=query_text,
             intent=intent,
-            vector_results=vector_results or [],
+            vector_results=vector_results,
             total_response_time_ms=int(response_time_ms),
             vector_search_time_ms=vector_search_time_ms,
         )
+
+
+async def get_store_locations() -> list[dict[str, Any]]:
+    """Get all store locations and information with fresh session.
+
+    Returns:
+        List of all coffee shop locations with details
+    """
+    async with sqlspec.provide_session(db) as session:
+        tools_service = service_locator.get(AgentToolsService, session)
+        return await tools_service.get_all_store_locations()
+
+
+async def find_stores_by_location(city: str | None, state: str | None) -> list[dict[str, Any]]:
+    """Find stores in a specific location with fresh session.
+
+    Args:
+        city: City name to search for (optional)
+        state: State to search for (optional)
+
+    Returns:
+        List of stores matching the location criteria
+    """
+    async with sqlspec.provide_session(db) as session:
+        tools_service = service_locator.get(AgentToolsService, session)
+        return await tools_service.find_stores_by_location(city, state)
+
+
+async def get_store_hours(store_id: int) -> dict[str, Any]:
+    """Get store hours for a specific store with fresh session.
+
+    Args:
+        store_id: Store ID
+
+    Returns:
+        Store hours information
+    """
+    async with sqlspec.provide_session(db) as session:
+        tools_service = service_locator.get(AgentToolsService, session)
+        return await tools_service.get_store_hours(store_id)
 
 
 # List of all available tool functions
@@ -118,4 +167,7 @@ ALL_TOOLS = [
     classify_intent,
     get_conversation_history,
     record_search_metric,
+    get_store_locations,
+    find_stores_by_location,
+    get_store_hours,
 ]

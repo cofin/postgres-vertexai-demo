@@ -16,13 +16,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import click
 import structlog
 from rich import get_console
 from rich.prompt import Prompt
-from sqlspec.extensions.litestar.cli import database_group as database_management_group
 
 from app.db.utils import load_fixtures
 from app.utils.sync_tools import run_
@@ -36,6 +35,12 @@ logger = structlog.get_logger()
 # Constants
 MAX_ERROR_LENGTH = 200
 MAX_PHRASE_DISPLAY = 40
+
+
+@click.group(name="coffee", invoke_without_command=False, help="Coffee shop demo and AI operations.")
+@click.pass_context
+def coffee_demo_group(_: dict[str, Any]) -> None:
+    """Coffee shop demo and AI operations."""
 
 
 def _display_intent_result(console: Console, result: Any) -> None:
@@ -81,8 +86,7 @@ def _display_alternatives(console: Console, alternative_results: list[Any]) -> N
         console.print()
 
 
-# Fixtures commands
-@database_management_group.command(name="load-fixtures", help="Load application fixture data into the database.")  # type: ignore[misc]
+@click.command(name="load-fixtures", help="Load application fixture data into the database.")
 @click.option("--tables", "-t", help="Comma-separated list of specific tables to load (loads all if not specified)")
 @click.option("--list", "list_fixtures", is_flag=True, help="List available fixture files")
 def load_fixtures_cmd(tables: str | None, list_fixtures: bool) -> None:
@@ -282,9 +286,11 @@ def _print_fixture_summary(total_upserted: int, total_failed: int, total_records
     console.print()
 
 
-@database_management_group.command(name="export-fixtures", help="Export database tables to fixture files.")  # type: ignore[misc]
+@click.command(name="export-fixtures", help="Export database tables to fixture files.")
 @click.option(
-    "--tables", "-t", help="Comma-separated list of specific tables to export (exports default set if not specified)"
+    "--tables",
+    "-t",
+    help="Comma-separated list of specific tables to export (exports default set if not specified)",
 )
 @click.option(
     "--output-dir",
@@ -365,9 +371,10 @@ def export_fixtures_cmd(tables: str | None, output_dir: str | None, no_compress:
         raise click.ClickException(str(e)) from e
 
 
-# Embedding commands (placeholder - services not implemented yet)
-@database_management_group.command(  # type: ignore[misc]
-    name="bulk-embed", help="Run bulk embedding job for all products using Vertex AI."
+# Embedding commands - moved to coffee group
+@coffee_demo_group.command(
+    name="bulk-embed",
+    help="Run bulk embedding job for all products using Vertex AI.",
 )
 @click.option("--batch-size", default=50, help="Number of products to process in each batch (default: 50)")
 @click.option("--force", "-f", is_flag=True, help="Re-embed all products, even if they already have embeddings")
@@ -395,7 +402,7 @@ def bulk_embed(batch_size: int, force: bool) -> None:
                 if force:
                     # Get all products
                     products = await product_service.driver.select(
-                        "SELECT id, name, description, embedding FROM product ORDER BY id"
+                        "SELECT id, name, description, embedding FROM product ORDER BY id",
                     )
                     console.print(f"[cyan]Processing ALL {len(products)} products (force mode)[/cyan]")
                 else:
@@ -477,8 +484,9 @@ def bulk_embed(batch_size: int, force: bool) -> None:
     run_(_bulk_embed_products)()
 
 
-@database_management_group.command(  # type: ignore[misc]
-    name="embed-new", help="Process new/updated products using online embedding API for real-time updates."
+@coffee_demo_group.command(
+    name="embed-new",
+    help="Process new/updated products using online embedding API for real-time updates.",
 )
 @click.option("--limit", default=200, help="Maximum number of products to process in this batch (default: 200)")
 def embed_new(limit: int) -> None:
@@ -519,20 +527,20 @@ def embed_new(limit: int) -> None:
                 for i, product in enumerate(products, 1):
                     try:
                         # Update status
-                        status.update(f"[bold yellow]Processing product {i}/{len(products)}: {product.name}...")
+                        status.update(f"[bold yellow]Processing product {i}/{len(products)}: {product.get('name')}...")
 
                         # Generate embedding for product
-                        combined_text = f"{product.name}: {product.description}"
+                        combined_text = f"{product.get('name')}: {product.get('description')}"
                         embedding = await vertex_ai_service.get_text_embedding(combined_text)
 
                         # Update product with embedding
-                        await product_service.update_product_embedding(product.id, embedding)
+                        await product_service.update_product_embedding(cast("int", product.get("id")), embedding)
 
                         success_count += 1
                         logger.debug(
                             "Generated embedding and updated product",
-                            product_id=product.id,
-                            product_name=product.name,
+                            product_id=product.get("id"),
+                            product_name=product.get("name"),
                             text_length=len(combined_text),
                             embedding_dimensions=len(embedding),
                             model="text-embedding-004",
@@ -542,8 +550,8 @@ def embed_new(limit: int) -> None:
                         error_count += 1
                         logger.warning(
                             "Failed to process product embedding",
-                            product_id=product.id,
-                            product_name=product.name,
+                            product_id=product.get("id"),
+                            product_name=product.get("name"),
                             error=str(e),
                         )
 
@@ -560,7 +568,7 @@ def embed_new(limit: int) -> None:
     run_(_embed_new_products)()
 
 
-@database_management_group.command(name="model-info", help="Show information about currently configured AI models.")  # type: ignore[misc]
+@coffee_demo_group.command(name="model-info", help="Show information about currently configured AI models.")
 def model_info() -> None:
     """Show information about currently configured AI models."""
 
@@ -593,8 +601,7 @@ def model_info() -> None:
     _show_model_info()
 
 
-# Cache commands
-@database_management_group.command(name="clear-cache", help="Clear cache tables in the database.")  # type: ignore[misc]
+@click.command(name="clear-cache", help="Clear cache tables in the database.")
 @click.option(
     "--keep-response-cache",
     is_flag=True,
@@ -606,9 +613,9 @@ def model_info() -> None:
     help="Keep embedding cache",
 )
 @click.option(
-    "--keep-search-metrics",
+    "--keep-search-metric",
     is_flag=True,
-    help="Keep search metrics",
+    help="Keep search metric",
 )
 @click.option(
     "--keep-intent-exemplars",
@@ -624,13 +631,13 @@ def model_info() -> None:
 def clear_cache(
     keep_response_cache: bool,
     keep_embedding_cache: bool,
-    keep_search_metrics: bool,
+    keep_search_metric: bool,
     keep_intent_exemplars: bool,
     force: bool,
 ) -> None:
     """Clear cache tables in the database.
 
-    By default, clears response_cache, embedding_cache, search_metrics, and intent_exemplar.
+    By default, clears response_cache, embedding_cache, search_metric, and intent_exemplar.
     """
     console = get_console()
 
@@ -640,8 +647,8 @@ def clear_cache(
         tables_to_clear.append("response_cache")
     if not keep_embedding_cache:
         tables_to_clear.append("embedding_cache")
-    if not keep_search_metrics:
-        tables_to_clear.append("search_metrics")
+    if not keep_search_metric:
+        tables_to_clear.append("search_metric")
     if not keep_intent_exemplars:
         tables_to_clear.append("intent_exemplar")
 
@@ -668,7 +675,7 @@ def clear_cache(
                 console.print(f"[bold cyan]Clearing {table_name}...[/bold cyan]")
 
                 # Validate table name to prevent SQL injection
-                if table_name not in ["response_cache", "search_metrics", "embedding_cache", "intent_exemplar"]:
+                if table_name not in ["response_cache", "search_metric", "embedding_cache", "intent_exemplar"]:
                     console.print(f"[red]✗ Invalid table name: {table_name}[/red]")
                     continue
 
@@ -707,12 +714,11 @@ def _confirm_clear(console: Console, tables: list[str]) -> bool:
     return True
 
 
-# Data commands
-@database_management_group.command(name="truncate-tables", help="Clear all tables in the database.")  # type: ignore[misc]
+@click.command(name="truncate-tables", help="Clear all tables in the database.")
 @click.option(
     "--skip-cache",
     is_flag=True,
-    help="Skip cache tables (response_cache, search_metrics, embedding_cache)",
+    help="Skip cache tables (response_cache, search_metric, embedding_cache)",
 )
 @click.option(
     "--skip-session",
@@ -761,7 +767,7 @@ def truncate_tables(
                 # Validate table name
                 valid_tables = [
                     "response_cache",
-                    "search_metrics",
+                    "search_metric",
                     "embedding_cache",
                     "chat_conversation",
                     "chat_session",
@@ -786,7 +792,7 @@ def truncate_tables(
 
 def _get_tables_to_truncate(skip_cache: bool, skip_session: bool, skip_data: bool) -> list[str]:
     """Get list of tables to truncate based on flags."""
-    cache_tables = ["response_cache", "search_metrics", "embedding_cache"]
+    cache_tables = ["response_cache", "search_metric", "embedding_cache"]
     session_tables = ["chat_conversation", "chat_session"]  # Order matters for FKs
     data_tables = ["products"]  # Order matters for FKs
 
@@ -821,7 +827,7 @@ def _confirm_truncate(console: Console) -> bool:
     return True
 
 
-@database_management_group.command(name="dump-data", help="Export database tables to JSON files.")  # type: ignore[misc]
+@click.command(name="dump-data", help="Export database tables to JSON files.")
 @click.option(
     "--table",
     "-t",
@@ -865,8 +871,7 @@ def dump_data(table: str, path: str, no_compress: bool) -> None:
     run_(_dump_data)()
 
 
-# Intent management commands
-@database_management_group.command(name="populate-intents", help="Populate intent exemplars with embeddings.")  # type: ignore[misc]
+@click.command(name="populate-intents", help="Populate intent exemplars with embeddings.")
 @click.option("--force", "-f", is_flag=True, help="Force repopulation of existing exemplars")
 @click.option("--intent", "-i", help="Populate only specific intent (optional)")
 def populate_intents(force: bool, intent: str | None) -> None:
@@ -895,18 +900,21 @@ def populate_intents(force: bool, intent: str | None) -> None:
             console.print("[dim]Loading exemplars for all intents[/dim]")
         console.print()
 
+        from app.server.deps import provide_vertex_ai_service_with_cache
+
         provider = create_service_provider(ExemplarService)
         service_gen = provider()
+        vertex_ai_gen = provide_vertex_ai_service_with_cache()
 
         try:
             exemplar_service = await anext(service_gen)
-            vertex_ai_service = VertexAIService()
+            vertex_ai_service = await anext(vertex_ai_gen)
 
             with console.status("[bold yellow]Loading intent exemplars...", spinner="dots"):
                 count = await exemplar_service.load_exemplars_bulk(
                     exemplars_to_load,
                     vertex_ai_service,
-                    default_threshold=0.7,
+                    default_threshold=0.6,
                 )
 
             console.print(f"[bold green]✓ Successfully populated {count} intent exemplars![/bold green]")
@@ -919,11 +927,12 @@ def populate_intents(force: bool, intent: str | None) -> None:
 
         finally:
             await service_gen.aclose()
+            await vertex_ai_gen.aclose()
 
     run_(_populate_intents)()
 
 
-@database_management_group.command(name="test-intent", help="Test intent classification for a query.")  # type: ignore[misc]
+@coffee_demo_group.command(name="test-intent", help="Test intent classification for a query.")
 @click.argument("query", required=True)
 @click.option("--alternatives", "-a", is_flag=True, help="Show alternative intent matches")
 def test_intent(query: str, alternatives: bool) -> None:
@@ -941,12 +950,15 @@ def test_intent(query: str, alternatives: bool) -> None:
         console.print(f"Query: [cyan]{query}[/cyan]")
         console.print()
 
+        from app.server.deps import provide_vertex_ai_service_with_cache
+
         provider = create_service_provider(ExemplarService)
         service_gen = provider()
+        vertex_ai_gen = provide_vertex_ai_service_with_cache()
 
         try:
             exemplar_service = await anext(service_gen)
-            vertex_ai_service = VertexAIService()
+            vertex_ai_service = await anext(vertex_ai_gen)
             intent_service = IntentService(
                 exemplar_service.driver,
                 exemplar_service,
@@ -968,11 +980,12 @@ def test_intent(query: str, alternatives: bool) -> None:
 
         finally:
             await service_gen.aclose()
+            await vertex_ai_gen.aclose()
 
     run_(_test_intent)()
 
 
-@database_management_group.command(name="intent-stats", help="Show intent classification statistics.")  # type: ignore[misc]
+@coffee_demo_group.command(name="intent-stats", help="Show intent classification statistics.")
 def intent_stats() -> None:
     """Show intent classification statistics."""
 
@@ -1027,7 +1040,7 @@ def intent_stats() -> None:
     run_(_intent_stats)()
 
 
-@database_management_group.command(name="clear-intents", help="Clear intent exemplar cache.")  # type: ignore[misc]
+@click.command(name="clear-intents", help="Clear intent exemplar cache.")
 @click.option("--intent", "-i", help="Clear only specific intent (optional)")
 @click.option("--unused-only", is_flag=True, help="Clear only unused exemplars")
 def clear_intents(intent: str | None, unused_only: bool) -> None:
@@ -1089,9 +1102,10 @@ def clear_intents(intent: str | None, unused_only: bool) -> None:
     run_(_clear_intents)()
 
 
-@database_management_group.command(
-    name="rebuild-vector-indexes", help="Drop and recreate vector indexes for embeddings."
-)  # type: ignore[misc]
+@click.command(
+    name="rebuild-vector-indexes",
+    help="Drop and recreate vector indexes for embeddings.",
+)
 @click.option(
     "--force",
     "-f",

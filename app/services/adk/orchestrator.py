@@ -55,17 +55,17 @@ class ADKOrchestrator:
                 app_name="coffee-assistant",
                 user_id=user_id,
                 session_id=session_id,
-                state={}
+                state={},
             )
 
             # Create content object from user query
-            content = types.Content(role='user', parts=[types.Part(text=query)])
+            content = types.Content(role="user", parts=[types.Part(text=query)])
 
             # Run the agent asynchronously with proper ADK API
             events = self.runner.run_async(
                 user_id=user_id,
                 session_id=session_id,
-                new_message=content
+                new_message=content,
             )
 
             # Process events and extract final response
@@ -77,10 +77,9 @@ class ADKOrchestrator:
 
             async for event in events:
                 # Look for final response
-                if event.is_final_response():
-                    if event.content and event.content.parts:
-                        final_response_text = event.content.parts[0].text
-                        agent_used = event.author or "ADK Multi-Agent"
+                if event.is_final_response() and event.content and event.content.parts:
+                    final_response_text = event.content.parts[0].text
+                    agent_used = event.author or "ADK Multi-Agent"
 
                 # Extract tool-related information if available
                 function_calls = event.get_function_calls()
@@ -103,7 +102,7 @@ class ADKOrchestrator:
                             search_details = {
                                 "query": query,
                                 "sql": "SELECT name, 1 - (embedding <=> ...) FROM product ...",
-                                "results_count": len(products_found) if isinstance(products_found, list) else 0
+                                "results_count": len(products_found) if isinstance(products_found, list) else 0,
                             }
 
             total_time_ms = int((time.time() - start_time) * 1000)
@@ -134,7 +133,7 @@ class ADKOrchestrator:
                 "agent_used": agent_used,
                 "session_id": session_id,
                 "response_time_ms": total_time_ms,
-                "debug_info": debug_info, # Pass rich context to the controller
+                "debug_info": debug_info,  # Pass rich context to the controller
                 "metadata": {
                     "user_id": user_id,
                     "persona": persona,

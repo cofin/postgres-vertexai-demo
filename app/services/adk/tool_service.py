@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from app.services.intent import IntentService
     from app.services.metrics import MetricsService
     from app.services.product import ProductService
+    from app.services.store import StoreService
     from app.services.vertex_ai import VertexAIService
 
 logger = structlog.get_logger()
@@ -39,6 +40,7 @@ class AgentToolsService(SQLSpecService):
         metrics_service: MetricsService,
         intent_service: IntentService,
         vertex_ai_service: VertexAIService,
+        store_service: StoreService,
     ) -> None:
         """Initialize agent tools service.
 
@@ -49,6 +51,7 @@ class AgentToolsService(SQLSpecService):
             metrics_service: Service for metrics operations
             intent_service: Service for intent classification
             vertex_ai_service: Service for AI operations
+            store_service: Service for store operations
         """
         super().__init__(driver)
         self.product_service = product_service
@@ -56,12 +59,13 @@ class AgentToolsService(SQLSpecService):
         self.metrics_service = metrics_service
         self.intent_service = intent_service
         self.vertex_ai_service = vertex_ai_service
+        self.store_service = store_service
 
     async def search_products_by_vector(
         self,
         query: str,
         limit: int = 5,
-        similarity_threshold: float = 0.7
+        similarity_threshold: float = 0.7,
     ) -> list[dict[str, Any]]:
         """Search for coffee products using vector similarity.
 
@@ -80,7 +84,7 @@ class AgentToolsService(SQLSpecService):
         products = await self.product_service.vector_similarity_search(
             query_embedding=query_embedding,
             similarity_threshold=similarity_threshold,
-            limit=limit
+            limit=limit,
         )
 
         return [
@@ -160,7 +164,7 @@ class AgentToolsService(SQLSpecService):
     async def get_conversation_history(
         self,
         session_id: str,
-        limit: int = 10
+        limit: int = 10,
     ) -> list[dict[str, Any]]:
         """Get recent conversation history for a session.
 
@@ -177,7 +181,7 @@ class AgentToolsService(SQLSpecService):
 
             conversations = await self.chat_service.get_recent_conversations(
                 session_id=session_uuid,
-                limit=limit
+                limit=limit,
             )
 
             return [
@@ -228,3 +232,87 @@ class AgentToolsService(SQLSpecService):
             return {"status": "failed", "error": str(e)}
         else:
             return {"status": "recorded", "session_id": session_id}
+
+    async def get_all_store_locations(self) -> list[dict[str, Any]]:
+        """Get all store locations and information.
+
+        Returns:
+            List of all coffee shop locations with details
+        """
+        try:
+            stores = await self.store_service.get_all_stores()
+            return [
+                {
+                    "id": store.id,
+                    "name": store.name,
+                    "address": store.address,
+                    "city": store.city,
+                    "state": store.state,
+                    "zip": store.zip,
+                    "phone": store.phone,
+                    "hours": store.hours or {},
+                    "metadata": store.metadata or {},
+                }
+                for store in stores
+            ]
+        except Exception:
+            logger.exception("Failed to retrieve store locations")
+            return []
+
+    async def find_stores_by_location(self, city: str | None = None, state: str | None = None) -> list[dict[str, Any]]:
+        """Find stores in a specific location.
+
+        Args:
+            city: City name to search for (optional)
+            state: State to search for (optional)
+
+        Returns:
+            List of stores matching the location criteria
+        """
+        try:
+            if city:
+                stores = await self.store_service.find_stores_by_city(city)
+            elif state:
+                stores = await self.store_service.find_stores_by_state(state)
+            else:
+                stores = await self.store_service.get_all_stores()
+
+            return [
+                {
+                    "id": store.id,
+                    "name": store.name,
+                    "address": store.address,
+                    "city": store.city,
+                    "state": store.state,
+                    "phone": store.phone,
+                    "hours": store.hours or {},
+                }
+                for store in stores
+            ]
+        except Exception:
+            logger.exception("Failed to find stores by location", city=city, state=state)
+            return []
+
+    async def get_store_hours(self, store_id: int) -> dict[str, Any]:
+        """Get store hours for a specific store.
+
+        Args:
+            store_id: Store ID
+
+        Returns:
+            Store hours information
+        """
+        try:
+            store = await self.store_service.get_store_by_id(store_id)
+            if not store:
+                return {"error": "Store not found"}
+        except Exception:
+            logger.exception("Failed to get store hours", store_id=store_id)
+            return {"error": "Failed to retrieve store hours"}
+        else:
+            return {
+                "store_name": store.name,
+                "hours": store.hours or {},
+                "phone": store.phone,
+                "address": store.address,
+            }

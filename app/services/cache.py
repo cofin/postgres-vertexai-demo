@@ -24,21 +24,15 @@ class CacheService(SQLSpecService):
             Cached response or None if not found or expired
         """
         return await self.driver.select_one_or_none(
-            sql.select(
-                "id", "cache_key", "response_data", "expires_at", "created_at"
-            ).from_("response_cache").where_eq(
-                "cache_key", cache_key
-            ).where(
-                "(expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)"
-            ),
+            sql.select("id", "cache_key", "response_data", "expires_at", "created_at")
+            .from_("response_cache")
+            .where_eq("cache_key", cache_key)
+            .where("(expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)"),
             schema_type=ResponseCache,
         )
 
     async def set_cached_response(
-        self,
-        cache_key: str,
-        response_data: dict[str, Any],
-        ttl_minutes: int = 5
+        self, cache_key: str, response_data: dict[str, Any], ttl_minutes: int = 5,
     ) -> ResponseCache:
         """Cache a response with TTL.
 
@@ -53,19 +47,20 @@ class CacheService(SQLSpecService):
         expires_at = sql.raw(f"NOW() + INTERVAL '{ttl_minutes} minutes'")
 
         return await self.driver.select_one(
-            sql.insert("response_cache").columns(
-                "cache_key", "response_data", "expires_at"
-            ).values(
+            sql.insert("response_cache")
+            .columns("cache_key", "response_data", "expires_at")
+            .values(
                 cache_key=cache_key,
                 response_data=response_data,
                 expires_at=expires_at,
-            ).on_conflict("cache_key").do_update(
+            )
+            .on_conflict("cache_key")
+            .do_update(
                 response_data=sql.raw("EXCLUDED.response_data"),
                 expires_at=sql.raw("EXCLUDED.expires_at"),
                 created_at=sql.raw("CURRENT_TIMESTAMP"),
-            ).returning(
-                "id", "cache_key", "response_data", "expires_at", "created_at"
-            ),
+            )
+            .returning("id", "cache_key", "response_data", "expires_at", "created_at"),
             schema_type=ResponseCache,
         )
 
@@ -82,9 +77,9 @@ class CacheService(SQLSpecService):
             ValueError: If cache entry not found
         """
         return await self.get_or_404(
-            sql.select(
-                "id", "cache_key", "response_data", "expires_at", "created_at"
-            ).from_("response_cache").where_eq("id", cache_id),
+            sql.select("id", "cache_key", "response_data", "expires_at", "created_at")
+            .from_("response_cache")
+            .where_eq("id", cache_id),
             schema_type=ResponseCache,
             error_message=f"Cache entry {cache_id} not found",
         )
@@ -102,23 +97,19 @@ class CacheService(SQLSpecService):
         text_hash = hashlib.sha256(text.encode()).hexdigest()
 
         result = await self.driver.select_one_or_none(
-            sql.select(
-                "id", "text_hash", "embedding", "model", "hit_count", "last_accessed", "created_at"
-            ).from_("embedding_cache").where_eq(
-                "text_hash", text_hash
-            ).where_eq(
-                "model", model_name
-            ),
+            sql.select("id", "text_hash", "embedding", "model", "hit_count", "last_accessed", "created_at")
+            .from_("embedding_cache")
+            .where_eq("text_hash", text_hash)
+            .where_eq("model", model_name),
             schema_type=EmbeddingCache,
         )
 
         if result:
             # Update hit count and last accessed
             await self.driver.execute(
-                sql.update("embedding_cache").set(
-                    hit_count=sql.raw("hit_count + 1"),
-                    last_accessed=sql.raw("CURRENT_TIMESTAMP")
-                ).where_eq("id", result.id)
+                sql.update("embedding_cache")
+                .set(hit_count=sql.raw("hit_count + 1"), last_accessed=sql.raw("CURRENT_TIMESTAMP"))
+                .where_eq("id", result.id),
             )
 
         return result
@@ -143,22 +134,30 @@ class CacheService(SQLSpecService):
 
         # Get result WITHOUT the embedding field to avoid vector type serialization issues
         result = await self.driver.select_one(
-            sql.insert("embedding_cache").columns(
-                "text_hash", "embedding", "model", "hit_count", "last_accessed"
-            ).values(
+            sql.insert("embedding_cache")
+            .columns("text_hash", "embedding", "model", "hit_count", "last_accessed")
+            .values(
                 text_hash=text_hash,
                 embedding=embedding,
                 model=model_name,
                 hit_count=1,
                 last_accessed=sql.raw("CURRENT_TIMESTAMP"),
-            ).on_conflict("text_hash", "model").do_update(
+            )
+            .on_conflict("text_hash", "model")
+            .do_update(
                 embedding=sql.raw("EXCLUDED.embedding"),
                 hit_count=sql.raw("embedding_cache.hit_count + 1"),
                 last_accessed=sql.raw("CURRENT_TIMESTAMP"),
-            ).returning(
-                "id", "text_hash", "model", "hit_count", "last_accessed", "created_at"
-                # Note: "embedding" field removed from RETURNING to avoid vector deserialization issue
             )
+            .returning(
+                "id",
+                "text_hash",
+                "model",
+                "hit_count",
+                "last_accessed",
+                "created_at",
+                # Note: "embedding" field removed from RETURNING to avoid vector deserialization issue
+            ),
         )
 
         # Manually construct the complete object with the embedding we already have
@@ -185,11 +184,11 @@ class CacheService(SQLSpecService):
 
         if cache_type in (None, "response"):
             result = await self.driver.execute("DELETE FROM response_cache")
-            deleted_count += result.rowcount if result.rowcount else 0
+            deleted_count += result.rows_affected
 
         if cache_type in (None, "embedding"):
             result = await self.driver.execute("DELETE FROM embedding_cache")
-            deleted_count += result.rowcount if result.rowcount else 0
+            deleted_count += result.rows_affected
 
         return deleted_count
 
@@ -200,9 +199,9 @@ class CacheService(SQLSpecService):
             Number of records deleted
         """
         result = await self.driver.execute(
-            "DELETE FROM response_cache WHERE expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP"
+            "DELETE FROM response_cache WHERE expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP",
         )
-        return result.rowcount if result.rowcount else 0
+        return result.rows_affected
 
     async def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics.
@@ -210,15 +209,9 @@ class CacheService(SQLSpecService):
         Returns:
             Dictionary with cache statistics
         """
-        response_count = await self.driver.select_value(
-            "SELECT COUNT(*) FROM response_cache"
-        )
-        embedding_count = await self.driver.select_value(
-            "SELECT COUNT(*) FROM embedding_cache"
-        )
-        embedding_hits = await self.driver.select_value(
-            "SELECT COALESCE(SUM(hit_count), 0) FROM embedding_cache"
-        )
+        response_count = await self.driver.select_value("SELECT COUNT(*) FROM response_cache")
+        embedding_count = await self.driver.select_value("SELECT COUNT(*) FROM embedding_cache")
+        embedding_hits = await self.driver.select_value("SELECT COALESCE(SUM(hit_count), 0) FROM embedding_cache")
 
         return {
             "response_cache_entries": response_count,

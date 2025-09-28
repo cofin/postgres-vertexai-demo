@@ -22,6 +22,7 @@ from litestar.logging.config import (
 from litestar.middleware.logging import LoggingMiddlewareConfig
 from litestar.plugins.problem_details import ProblemDetailsConfig
 from litestar.plugins.structlog import StructlogConfig
+from litestar_mcp import MCPConfig
 from sqlspec.adapters.asyncpg import AsyncpgConfig
 from sqlspec.extensions.litestar import DatabaseConfig, SQLSpec
 
@@ -31,7 +32,7 @@ from app.services.locator import ServiceLocator
 
 settings = get_settings()
 
-
+mcp = MCPConfig(base_path="/mcp")
 compression = CompressionConfig(backend="gzip")
 csrf = CSRFConfig(
     secret=settings.app.SECRET_KEY,

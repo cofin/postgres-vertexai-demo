@@ -61,7 +61,7 @@ def get_env(key: str, default: dict[str, Any], type_hint: UnsetType = _UNSET) ->
 
 
 def get_env(
-    key: str, default: ParseTypes | None, type_hint: type[T] | UnsetType = _UNSET
+    key: str, default: ParseTypes | None, type_hint: type[T] | UnsetType = _UNSET,
 ) -> Callable[[], ParseTypes | T | None]:
     """Return a lambda that gets configuration value from environment."""
     return lambda: get_config_val(key=key, default=default, type_hint=type_hint)  # type: ignore[arg-type]
@@ -104,7 +104,7 @@ def get_config_val(key: str, default: dict[str, Any], type_hint: UnsetType = _UN
 
 
 def get_config_val(
-    key: str, default: ParseTypes | None, type_hint: type[T] | UnsetType = _UNSET
+    key: str, default: ParseTypes | None, type_hint: type[T] | UnsetType = _UNSET,
 ) -> ParseTypes | T | None:
     """Parse environment variables with proper type handling.
 

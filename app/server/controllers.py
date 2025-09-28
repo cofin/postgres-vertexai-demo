@@ -6,7 +6,7 @@ import re
 import secrets
 import time
 import uuid
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, cast
 
 from litestar import Controller, get, post
 from litestar.di import Provide
@@ -16,6 +16,7 @@ from litestar.plugins.htmx import (
     HXStopPolling,
 )
 from litestar.response import File, Stream
+from litestar_mcp import mcp_tool
 from sqlspec.utils.serializers import to_json
 
 from app.server import deps
@@ -232,6 +233,7 @@ class CoffeeChatController(Controller):
             return {"total_searches": 0, "avg_search_time_ms": 0, "avg_similarity_score": 0}
 
     @post(path="/api/vector-demo", name="vector.demo")
+    @mcp_tool(name="Search Coffee Products")
     async def vector_search_demo(
         self,
         data: Annotated[s.VectorDemoRequest, Body(media_type=RequestEncodingType.URL_ENCODED)],
@@ -248,13 +250,15 @@ class CoffeeChatController(Controller):
 
         # Time the embedding generation
         embedding_start = time.time()
-        query_embedding = await vertex_ai_service.get_text_embedding(query)
+        query_embedding = cast("list[float]", await vertex_ai_service.get_text_embedding(query))
         detailed_timings["embedding_ms"] = (time.time() - embedding_start) * 1000
 
         # Time the vector search
         search_start = time.time()
         results = await product_service.vector_similarity_search(
-            query_embedding=query_embedding, similarity_threshold=0.5, limit=5
+            query_embedding=query_embedding,
+            similarity_threshold=0.5,
+            limit=5,
         )
         detailed_timings["search_ms"] = (time.time() - search_start) * 1000
 

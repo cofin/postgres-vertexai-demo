@@ -16,6 +16,7 @@ classifiers = [
 dependencies = [
     "litestar[jinja,jwt,cryptography,structlog]",
     "litestar-granian[uvloop]",
+    "litestar-mcp",
     "sqlspec[asyncpg,performance,mypyc]",
     "google-adk",
     "pgvector",
@@ -208,10 +209,6 @@ warn_unused_ignores = true
 disallow_untyped_decorators = false
 module = ["tests.*"]
 
-[[tool.mypy.overrides]]
-disallow_untyped_calls = false
-disallow_untyped_decorators = false
-module = ["aisoql.*"]
 
 [[tool.mypy.overrides]]
 ignore_missing_imports = true

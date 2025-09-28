@@ -21,6 +21,7 @@ from app.schemas.intent import (
 )
 from app.schemas.metrics import SearchMetrics
 from app.schemas.product import Product, ProductCreate, ProductSearchResult, ProductUpdate
+from app.schemas.store import Store, StoreCreate, StoreUpdate
 from app.schemas.vector_demo import VectorDemoRequest
 
 __all__ = (
@@ -47,5 +48,8 @@ __all__ = (
     "ProductUpdate",
     "ResponseCache",
     "SearchMetrics",
+    "Store",
+    "StoreCreate",
+    "StoreUpdate",
     "VectorDemoRequest",
 )

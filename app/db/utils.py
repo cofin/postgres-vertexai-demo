@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from app.lib.settings import get_settings
 from app.utils.fixtures import FixtureExporter, FixtureLoader
+
+if TYPE_CHECKING:
+    from sqlspec.driver import AsyncDriverAdapterBase
+
 
 # Table loading order - tables with no dependencies first, then ordered by dependencies
 COFFEE_SHOP_TABLES = [
     # Core tables without dependencies
     "product",
+    "store",
     # Session and user-related tables
     "chat_session",
     "chat_conversation",
@@ -18,7 +25,8 @@ COFFEE_SHOP_TABLES = [
     "response_cache",
     "embedding_cache",
     # Metrics and analytics
-    "search_metrics",
+    "search_metric",
+    "intent_exemplar",
 ]
 
 
@@ -54,7 +62,7 @@ async def load_fixtures(tables: list[str] | None = None) -> dict[str, dict[str, 
         await service_gen.aclose()
 
 
-async def _reset_sequences(driver) -> None:
+async def _reset_sequences(driver: AsyncDriverAdapterBase) -> None:
     """Reset PostgreSQL sequences to match the current maximum IDs in tables.
 
     This prevents duplicate key violations when inserting new records after
@@ -63,27 +71,30 @@ async def _reset_sequences(driver) -> None:
     # Tables with serial primary keys that need sequence reset
     tables_with_sequences = [
         "product",
+        "store",
         "chat_session",
         "chat_conversation",
         "response_cache",
         "embedding_cache",
         "intent_exemplar",
-        "search_metrics"
+        "search_metric",
     ]
 
     for table in tables_with_sequences:
         # Reset sequence to max(id) + 1 for each table
-        sequence_name = f"{table}_id_seq"
-        reset_query = f"SELECT setval('{sequence_name}', (SELECT COALESCE(MAX(id), 1) FROM {table}));"
-        try:
-            await driver.execute(reset_query)
-        except Exception:
-            # Ignore errors for tables that don't exist or don't have sequences
-            pass
+        # Use parameterized query to avoid SQL injection
+        with contextlib.suppress(Exception):
+            # Note: table and sequence names cannot be parameterized, but they are from a controlled list
+            # ruff: noqa: S608  # SQL injection is not possible here - table names are from controlled list
+            await driver.execute(
+                f"SELECT setval('{table}_id_seq', (SELECT COALESCE(MAX(id), 1) FROM {table}));",
+            )
 
 
 async def export_fixtures(
-    tables: list[str] | None = None, output_dir: Path | None = None, compress: bool = True
+    tables: list[str] | None = None,
+    output_dir: Path | None = None,
+    compress: bool = True,
 ) -> dict[str, str]:
     """Convenience function to export coffee shop fixtures.
 

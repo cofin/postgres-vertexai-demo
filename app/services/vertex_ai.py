@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, NoReturn, overload
 
 import structlog
 from google import genai
@@ -93,8 +93,24 @@ class VertexAIService:
         )
         return embeddings
 
+    @overload
     async def get_text_embedding(
-        self, text: str | list[str], model: str | None = None
+        self,
+        text: str,
+        model: str | None = None,
+    ) -> list[float]: ...
+
+    @overload
+    async def get_text_embedding(
+        self,
+        text: list[str],
+        model: str | None = None,
+    ) -> list[list[float]]: ...
+
+    async def get_text_embedding(
+        self,
+        text: str | list[str],
+        model: str | None = None,
     ) -> list[float] | list[list[float]]:
         """Generate text embedding(s) using Vertex AI."""
         if not self._initialized or not self._genai_client:
@@ -173,7 +189,10 @@ class VertexAIService:
 
         try:
             async for chunk in self._generate_chat_response_stream_async(
-                messages, model_name, temperature, max_output_tokens
+                messages,
+                model_name,
+                temperature,
+                max_output_tokens,
             ):
                 yield chunk
 

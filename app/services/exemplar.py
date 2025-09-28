@@ -37,7 +37,7 @@ class ExemplarService(SQLSpecService):
 
         return await self.driver.select(
             sql.select(
-                "id", "intent", "phrase", "embedding", "confidence_threshold", "usage_count", "created_at", "updated_at"
+                "id", "intent", "phrase", "embedding", "confidence_threshold", "usage_count", "created_at", "updated_at",
             )
             .from_("intent_exemplar")
             .where_eq("intent", intent)
@@ -71,9 +71,9 @@ class ExemplarService(SQLSpecService):
                 updated_at=sql.raw("CURRENT_TIMESTAMP"),
             )
             .returning(
-                "id", "intent", "phrase", "confidence_threshold", "usage_count", "created_at", "updated_at"
+                "id", "intent", "phrase", "confidence_threshold", "usage_count", "created_at", "updated_at",
                 # Note: "embedding" field removed from RETURNING to avoid vector deserialization issue
-            )
+            ),
         )
 
         # Manually construct the complete object with the embedding we already have
@@ -116,7 +116,7 @@ class ExemplarService(SQLSpecService):
             List of similar intent exemplars with similarity scores
         """
         logger.debug(
-            "search_similar_intents called", target_intent=target_intent, min_threshold=min_threshold, limit=limit
+            "search_similar_intents called", target_intent=target_intent, min_threshold=min_threshold, limit=limit,
         )
 
         if target_intent is not None and target_intent != "":
@@ -198,7 +198,7 @@ class ExemplarService(SQLSpecService):
             sql.update("intent_exemplar")
             .set(usage_count=sql.raw("usage_count + 1"))
             .where_eq("intent", intent)
-            .where_eq("phrase", phrase)
+            .where_eq("phrase", phrase),
         )
 
     async def load_exemplars_bulk(
@@ -236,7 +236,7 @@ class ExemplarService(SQLSpecService):
                             phrase=phrase,
                             embedding=embedding,
                             confidence_threshold=default_threshold,
-                        )
+                        ),
                     )
                     count += 1
 
@@ -268,7 +268,7 @@ class ExemplarService(SQLSpecService):
                 count(DISTINCT intent) as intents_count,
                 avg(usage_count) as average_usage
             FROM intent_exemplar
-            """
+            """,
         )
 
         if not stats:

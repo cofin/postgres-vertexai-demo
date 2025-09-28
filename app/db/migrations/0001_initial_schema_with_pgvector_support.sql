@@ -24,6 +24,22 @@ CREATE TABLE product (
 );
 
 
+-- Store locations for coffee shop finder
+CREATE TABLE store (
+    id serial PRIMARY KEY,
+    name varchar(255) NOT NULL,
+    address text NOT NULL,
+    city varchar(100),
+    state varchar(50),
+    zip varchar(20),
+    phone varchar(50),
+    hours jsonb, -- Store hours by day: {"monday": "7am-9pm", "tuesday": "7am-9pm", ...}
+    metadata jsonb,
+    created_at timestamp with time zone DEFAULT current_timestamp,
+    updated_at timestamp with time zone DEFAULT current_timestamp
+);
+
+
 -- Chat sessions for user conversations
 CREATE TABLE chat_session (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -86,7 +102,7 @@ CREATE TABLE intent_exemplar (
 
 
 -- Search metrics for performance tracking
-CREATE TABLE search_metrics (
+CREATE TABLE search_metric (
     id serial PRIMARY KEY,
     session_id uuid REFERENCES chat_session (id),
     query_text text,
@@ -132,6 +148,16 @@ CREATE INDEX product_in_stock_idx ON product (in_stock);
 CREATE INDEX product_created_at_idx ON product (created_at);
 
 
+-- Store indexes for location queries
+CREATE INDEX store_city_idx ON store (city);
+
+
+CREATE INDEX store_state_idx ON store (state);
+
+
+CREATE INDEX store_zip_idx ON store (zip);
+
+
 CREATE INDEX chat_session_user_id_idx ON chat_session (user_id);
 
 
@@ -172,13 +198,13 @@ CREATE INDEX intent_exemplar_intent_idx ON intent_exemplar (intent);
 CREATE INDEX intent_exemplar_usage_count_idx ON intent_exemplar (usage_count DESC);
 
 
-CREATE INDEX search_metrics_session_id_idx ON search_metrics (session_id);
+CREATE INDEX search_metric_session_id_idx ON search_metric (session_id);
 
 
-CREATE INDEX search_metrics_intent_idx ON search_metrics (intent);
+CREATE INDEX search_metric_intent_idx ON search_metric (intent);
 
 
-CREATE INDEX search_metrics_created_at_idx ON search_metrics (created_at);
+CREATE INDEX search_metric_created_at_idx ON search_metric (created_at);
 
 
 -- Functions for automatic updated_at timestamps
@@ -191,35 +217,53 @@ $$ language plpgsql;
 
 
 -- Trigger for product updated_at
-CREATE TRIGGER update_product_updated_at before
+CREATE TRIGGER product_updated_at_trigger before
 UPDATE ON product FOR each ROW
 EXECUTE function update_updated_at_column ();
 
 
 -- Trigger for intent_exemplar updated_at
-CREATE TRIGGER update_intent_exemplar_updated_at before
+CREATE TRIGGER intent_exemplar_updated_at_trigger before
 UPDATE ON intent_exemplar FOR each ROW
 EXECUTE function update_updated_at_column ();
 
 
 -- Trigger for chat_session updated_at
-CREATE TRIGGER update_chat_session_updated_at before
+CREATE TRIGGER chat_session_updated_at_trigger before
 UPDATE ON chat_session FOR each ROW
+EXECUTE function update_updated_at_column ();
+
+
+-- Trigger for search_metric updated_at
+CREATE TRIGGER search_metric_updated_at_trigger before
+UPDATE ON search_metric FOR each ROW
+EXECUTE function update_updated_at_column ();
+
+
+-- Trigger for store updated_at
+CREATE TRIGGER store_updated_at_trigger before
+UPDATE ON store FOR each ROW
 EXECUTE function update_updated_at_column ();
 
 
 -- name: migrate-0001-down
 -- Drop triggers and functions
+DROP TRIGGER if EXISTS chat_session_updated_at_trigger ON chat_session cascade;
 DROP TRIGGER if EXISTS update_chat_session_updated_at ON chat_session cascade;
 
 
+DROP TRIGGER if EXISTS intent_exemplar_updated_at_trigger ON intent_exemplar cascade;
 DROP TRIGGER if EXISTS update_intent_exemplar_updated_at ON intent_exemplar cascade;
 
 
+DROP TRIGGER if EXISTS product_updated_at_trigger ON product cascade;
 DROP TRIGGER if EXISTS update_product_updated_at ON product cascade;
 
 
-DROP TRIGGER if EXISTS update_products_updated_at ON product cascade;
+DROP TRIGGER if EXISTS search_metric_updated_at_trigger ON search_metric cascade;
+
+
+DROP TRIGGER if EXISTS store_updated_at_trigger ON store cascade;
 
 
 -- Drop indexes
@@ -256,6 +300,16 @@ DROP INDEX if EXISTS product_in_stock_idx;
 DROP INDEX if EXISTS product_created_at_idx;
 
 
+-- Drop store indexes
+DROP INDEX if EXISTS store_city_idx;
+
+
+DROP INDEX if EXISTS store_state_idx;
+
+
+DROP INDEX if EXISTS store_zip_idx;
+
+
 DROP INDEX if EXISTS chat_session_user_id_idx;
 
 
@@ -283,16 +337,20 @@ DROP INDEX if EXISTS embedding_cache_model_idx;
 DROP INDEX if EXISTS embedding_cache_created_at_idx;
 
 
+DROP INDEX if EXISTS search_metric_session_id_idx;
 DROP INDEX if EXISTS search_metrics_session_id_idx;
 
 
+DROP INDEX if EXISTS search_metric_intent_idx;
 DROP INDEX if EXISTS search_metrics_intent_idx;
 
 
+DROP INDEX if EXISTS search_metric_created_at_idx;
 DROP INDEX if EXISTS search_metrics_created_at_idx;
 
 
 -- Drop tables in reverse dependency order
+DROP TABLE IF EXISTS search_metric cascade;
 DROP TABLE IF EXISTS search_metrics cascade;
 
 
@@ -309,6 +367,9 @@ DROP TABLE IF EXISTS chat_conversation cascade;
 
 
 DROP TABLE IF EXISTS chat_session cascade;
+
+
+DROP TABLE IF EXISTS store cascade;
 
 
 DROP TABLE IF EXISTS product cascade;

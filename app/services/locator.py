@@ -51,13 +51,14 @@ class ServiceLocator:
             return IntentService(
                 driver=session,
                 exemplar_service=self.get(ExemplarService, session),
-                vertex_ai_service=self.get(VertexAIService, session)
+                vertex_ai_service=self.get(VertexAIService, session),
             )
 
         if service_cls == AgentToolsService:
             from app.services.chat import ChatService
             from app.services.metrics import MetricsService
             from app.services.product import ProductService
+            from app.services.store import StoreService
             return AgentToolsService(
                 driver=session,
                 product_service=self.get(ProductService, session),
@@ -65,6 +66,7 @@ class ServiceLocator:
                 metrics_service=self.get(MetricsService, session),
                 intent_service=self.get(IntentService, session),
                 vertex_ai_service=self.get(VertexAIService, session),
+                store_service=self.get(StoreService, session),
             )
 
         # 3. Handle Transient (session-scoped) services.
@@ -75,7 +77,7 @@ class ServiceLocator:
         return self._create_instance(service_cls, session)
 
     def _create_instance(
-        self, service_cls: type[T], session: AsyncDriverAdapterBase | None
+        self, service_cls: type[T], session: AsyncDriverAdapterBase | None,
     ) -> T:
         """Creates an instance of a class by inspecting its __init__ method
         and recursively resolving dependencies.

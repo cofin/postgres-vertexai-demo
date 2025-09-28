@@ -194,7 +194,7 @@ def handle_vector_demo_exception(request: Request, exc: VectorDemoException) -> 
             "results": [],
             "search_time": "N/A",
             "embedding_time": "N/A",
-            "oracle_time": "N/A",
+            "postgres_time": "N/A",
             "error": error_message,
             "query": query,
             "csp_nonce": csp_nonce,

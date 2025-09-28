@@ -36,12 +36,37 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
 
     def on_cli_init(self, cli: Group) -> None:
         """Configure CLI commands."""
-        # Import commands module to register all CLI commands
-        import app.cli.commands  # noqa: F401
+        from sqlspec.extensions.litestar.cli import database_group as database_management_group
+
+        from app.cli.commands import (
+            clear_cache,
+            clear_intents,
+            coffee_demo_group,
+            dump_data,
+            export_fixtures_cmd,
+            load_fixtures_cmd,
+            populate_intents,
+            rebuild_vector_indexes,
+            truncate_tables,
+        )
         from app.lib.settings import get_settings
 
         settings = get_settings()
         self.app_name = settings.app.NAME
+
+        # Register database commands programmatically
+        database_management_group.add_command(load_fixtures_cmd)  # type: ignore[arg-type]
+        database_management_group.add_command(export_fixtures_cmd)  # type: ignore[arg-type]
+        database_management_group.add_command(clear_cache)  # type: ignore[arg-type]
+        database_management_group.add_command(truncate_tables)  # type: ignore[arg-type]
+        database_management_group.add_command(dump_data)  # type: ignore[arg-type]
+        database_management_group.add_command(rebuild_vector_indexes)  # type: ignore[arg-type]
+        database_management_group.add_command(clear_intents)  # type: ignore[arg-type]
+        database_management_group.add_command(populate_intents)  # type: ignore[arg-type]
+
+        # Register command groups with the CLI
+        cli.add_command(database_management_group)
+        cli.add_command(coffee_demo_group)
 
     @asynccontextmanager
     async def server_lifespan(self, app: Litestar) -> AsyncGenerator[None, None]:
@@ -138,6 +163,7 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         app_config.cors_config = config.cors
         app_config.plugins.extend(
             [
+                plugins.mcp,
                 plugins.structlog,
                 plugins.granian,
                 plugins.sqlspec,

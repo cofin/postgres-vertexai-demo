@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlspec import sql
 
 from app.schemas import Product, ProductCreate, ProductSearchResult, ProductUpdate
@@ -12,7 +14,10 @@ class ProductService(SQLSpecService):
     """Handles database operations for products using SQLSpec patterns."""
 
     async def vector_similarity_search(
-        self, query_embedding: list[float], similarity_threshold: float = 0.7, limit: int = 5
+        self,
+        query_embedding: list[float],
+        similarity_threshold: float = 0.7,
+        limit: int = 5,
     ) -> list[ProductSearchResult]:
         """Search products using vector similarity.
 
@@ -87,7 +92,16 @@ class ProductService(SQLSpecService):
                 updated_at=sql.raw("CURRENT_TIMESTAMP"),
             )
             .returning(
-                "id", "name", "description", "price", "category", "sku", "in_stock", "metadata", "created_at", "updated_at"
+                "id",
+                "name",
+                "description",
+                "price",
+                "category",
+                "sku",
+                "in_stock",
+                "metadata",
+                "created_at",
+                "updated_at",
             ),
             schema_type=Product,
         )
@@ -100,10 +114,10 @@ class ProductService(SQLSpecService):
             embedding: Embedding vector (768 dimensions)
         """
         await self.driver.execute(
-            sql.update("product").set(embedding=embedding, updated_at=sql.raw("NOW()")).where_eq("id", product_id)
+            sql.update("product").set(embedding=embedding, updated_at=sql.raw("NOW()")).where_eq("id", product_id),
         )
 
-    async def get_products_without_embeddings(self, limit: int = 100) -> list[Product]:
+    async def get_products_without_embeddings(self, limit: int = 100) -> list[dict[str, Any]]:
         """Get products that don't have embeddings yet.
 
         Args:
@@ -128,6 +142,5 @@ class ProductService(SQLSpecService):
             .from_("product")
             .where_is_null("embedding")
             .order_by("created_at")
-            .limit(limit),
-            schema_type=Product,
+            .limit(limit)
         )

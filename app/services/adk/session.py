@@ -93,7 +93,7 @@ class ChatSessionService(BaseSessionService):
                     created_at=datetime.now(UTC),
                     updated_at=datetime.now(UTC),
                 )
-                .returning("id", "user_id", "session_data", "last_activity", "created_at", "updated_at")
+                .returning("id", "user_id", "session_data", "last_activity", "created_at", "updated_at"),
             )
             adk_session = Session(
                 id=str(created_session["id"]),
@@ -131,7 +131,7 @@ class ChatSessionService(BaseSessionService):
         existing_session = await self.get_session(
             app_name=app_name,
             user_id=user_id,
-            session_id=session_id
+            session_id=session_id,
         )
 
         if existing_session:
@@ -144,7 +144,7 @@ class ChatSessionService(BaseSessionService):
             app_name=app_name,
             user_id=user_id,
             session_id=session_id,
-            state=state
+            state=state,
         )
 
     async def get_session(
@@ -279,7 +279,7 @@ class ChatSessionService(BaseSessionService):
                     metadata=metadata if metadata else None,
                     created_at=datetime.fromtimestamp(event.timestamp or datetime.now(UTC).timestamp(), UTC),
                 )
-                .returning("id", "session_id", "role", "content", "metadata", "created_at")
+                .returning("id", "session_id", "role", "content", "metadata", "created_at"),
             )
 
             # Current timestamp for session updates
@@ -290,7 +290,7 @@ class ChatSessionService(BaseSessionService):
                 sql.update("chat_session")
                 .set("last_activity", now)
                 .set("updated_at", now)
-                .where_eq("id", UUID(session.id))
+                .where_eq("id", UUID(session.id)),
             )
 
             # Update session state if event has state delta
@@ -303,7 +303,7 @@ class ChatSessionService(BaseSessionService):
             session.last_update_time = datetime.now(UTC).timestamp()
 
             logger.debug(
-                "Event appended successfully", session_id=session.id, conversation_id=conversation_record["id"]
+                "Event appended successfully", session_id=session.id, conversation_id=conversation_record["id"],
             )
 
             return event

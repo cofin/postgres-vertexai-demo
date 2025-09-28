@@ -11,7 +11,7 @@ __all__ = (
 )
 
 
-class ResponseCache(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class ResponseCache(msgspec.Struct, gc=False, omit_defaults=True):
     """Response cache data schema."""
 
     id: int
@@ -21,7 +21,7 @@ class ResponseCache(msgspec.Struct, gc=False, array_like=True, omit_defaults=Tru
     created_at: datetime | None = None
 
 
-class EmbeddingCache(msgspec.Struct, gc=False, array_like=True, omit_defaults=True):
+class EmbeddingCache(msgspec.Struct, gc=False, omit_defaults=True):
     """Embedding cache data schema."""
 
     id: int
