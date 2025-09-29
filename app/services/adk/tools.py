@@ -53,6 +53,7 @@ async def search_products_by_vector(
             "total_ms": result["timing"]["total_ms"],
             "embedding_ms": result["timing"]["embedding_ms"],
             "search_ms": result["timing"]["search_ms"],
+            "embedding_cache_hit": result["embedding_cache_hit"],
             "sql_query": result["sql_query"],
             "params": result["params"],
             "results_count": result["results_count"]

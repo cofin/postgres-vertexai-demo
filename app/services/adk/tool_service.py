@@ -80,9 +80,9 @@ class AgentToolsService(SQLSpecService):
         """
         start_time = time.time()
 
-        # Time embedding generation
+        # Time embedding generation and track cache hit
         embedding_start = time.time()
-        query_embedding = await self.vertex_ai_service.get_text_embedding(query)
+        query_embedding, embedding_cache_hit = await self.vertex_ai_service.get_text_embedding_with_cache_status(query)
         embedding_ms = (time.time() - embedding_start) * 1000
 
         # Time vector search
@@ -123,6 +123,7 @@ LIMIT %s"""
                 "embedding_ms": embedding_ms,
                 "search_ms": search_ms
             },
+            "embedding_cache_hit": embedding_cache_hit,
             "sql_query": sql_query,
             "params": {
                 "similarity_threshold": similarity_threshold,
@@ -291,10 +292,7 @@ LIMIT
             # Calculate average similarity score from vector results
             avg_similarity = 0.0
             if vector_results:
-                similarity_scores = []
-                for result in vector_results:
-                    if isinstance(result, dict) and "similarity_score" in result:
-                        similarity_scores.append(result["similarity_score"])
+                similarity_scores = [result["similarity_score"] for result in vector_results if isinstance(result, dict) and "similarity_score" in result]
 
                 if similarity_scores:
                     avg_similarity = sum(similarity_scores) / len(similarity_scores)

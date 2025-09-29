@@ -9,7 +9,12 @@ from __future__ import annotations
 import asyncio
 import re
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+    from app.schemas.chat import ChatSession
 
 import structlog
 from google.adk import Runner
@@ -23,6 +28,9 @@ from app.services.cache import CacheService
 from app.services.metrics import MetricsService
 
 logger = structlog.get_logger()
+
+# HTTP Status codes
+HTTP_SERVICE_UNAVAILABLE = 503
 
 
 class ADKOrchestrator:
@@ -48,32 +56,32 @@ class ADKOrchestrator:
             return text
 
         # Convert **bold** to <strong>bold</strong>
-        text = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', text)
+        text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
 
         # Convert *italic* to <em>italic</em>
-        text = re.sub(r'\*([^*]+)\*', r'<em>\1</em>', text)
+        text = re.sub(r"\*([^*]+)\*", r"<em>\1</em>", text)
 
         # Convert numbered lists (1. item) to proper format
-        lines = text.split('\n')
+        lines = text.split("\n")
         in_list = False
         result_lines = []
 
         for line in lines:
             stripped = line.strip()
-            if re.match(r'^\d+\.\s+', stripped):
+            if re.match(r"^\d+\.\s+", stripped):
                 if not in_list:
-                    result_lines.append('')  # Add space before list
+                    result_lines.append("")  # Add space before list
                     in_list = True
                 # Remove number and just keep the content
-                item_text = re.sub(r'^\d+\.\s+', '', stripped)
+                item_text = re.sub(r"^\d+\.\s+", "", stripped)
                 result_lines.append(item_text)
             else:
                 if in_list and stripped:
                     in_list = False
-                    result_lines.append('')  # Add space after list
+                    result_lines.append("")  # Add space after list
                 result_lines.append(line)
 
-        return '\n'.join(result_lines)
+        return "\n".join(result_lines)
 
     async def process_request(
         self,
@@ -116,8 +124,8 @@ class ADKOrchestrator:
                         event_data = await self._process_events(events, query, timings)
                     except errors.ServerError as e:
                         # If all retries failed, return a graceful fallback
-                        if e.status_code == 503:
-                            logger.error("ADK service unavailable after retries", error=str(e))
+                        if e.status_code == HTTP_SERVICE_UNAVAILABLE:
+                            logger.exception("ADK service unavailable after retries")
                             event_data = {
                                 "final_response_text": "I apologize, but I'm experiencing some technical difficulties connecting to the AI service. Please try again in a moment.",
                                 "agent_used": "Fallback",
@@ -143,6 +151,7 @@ class ADKOrchestrator:
             if "vector_search" in tool_timings:
                 timings["vector_search_ms"] = tool_timings["vector_search"]["total_ms"]
                 timings["embedding_generation_ms"] = tool_timings["vector_search"]["embedding_ms"]
+                timings["embedding_cache_hit"] = tool_timings["vector_search"]["embedding_cache_hit"]
                 # Update search details with actual data from tools
                 event_data["search_details"].update({
                     "sql": tool_timings["vector_search"]["sql_query"],
@@ -168,7 +177,7 @@ class ADKOrchestrator:
             logger.exception("Request processing failed", error=str(e), query=query)
             return self._build_error_response(e, session_id, start_time, user_id, persona)
 
-    async def _ensure_session(self, user_id: str, session_id: str | None):
+    async def _ensure_session(self, user_id: str, session_id: str | None) -> ChatSession:
         """Ensure session exists using upsert pattern."""
         return await self.session_service.upsert_session(
             app_name="coffee-assistant",
@@ -177,7 +186,7 @@ class ADKOrchestrator:
             state={},
         )
 
-    async def _run_agent(self, query: str, user_id: str, session_id: str):
+    async def _run_agent(self, query: str, user_id: str, session_id: str) -> AsyncGenerator:
         """Run the ADK agent with the user query with retry logic."""
         content = types.Content(role="user", parts=[types.Part(text=query)])
 
@@ -194,7 +203,7 @@ class ADKOrchestrator:
                 )
             except errors.ServerError as e:
                 # Check if it's a timeout or other retryable error
-                if e.status_code == 503 and attempt < max_retries - 1:
+                if e.status_code == HTTP_SERVICE_UNAVAILABLE and attempt < max_retries - 1:
                     logger.warning(
                         "ADK request timed out, retrying...",
                         attempt=attempt + 1,
@@ -209,8 +218,9 @@ class ADKOrchestrator:
             except Exception:
                 # Non-server errors should not be retried
                 raise
+        return None
 
-    async def _process_events(self, events, query: str, timings: dict) -> dict[str, Any]:
+    async def _process_events(self, events: AsyncGenerator, query: str, timings: dict) -> dict[str, Any]:
         """Process ADK events and extract relevant information with timing."""
         final_response_text = ""
         agent_used = "ADK Multi-Agent"
@@ -222,10 +232,7 @@ class ADKOrchestrator:
             # Only process final responses for the actual answer
             if event.is_final_response() and event.content and event.content.parts:
                 # Extract only text parts, ignoring function calls and other non-text content
-                text_parts = []
-                for part in event.content.parts:
-                    if hasattr(part, 'text') and part.text:
-                        text_parts.append(part.text)
+                text_parts = [part.text for part in event.content.parts if hasattr(part, "text") and part.text]
 
                 # Only set final response if we have actual text content
                 if text_parts:
@@ -287,12 +294,13 @@ LIMIT %s""",
                 "intent_classification_ms": timings.get("intent_classification_ms", 0),
                 "vector_search_ms": timings.get("vector_search_ms", 0),
                 "embedding_generation_ms": timings.get("embedding_generation_ms", 0),
+                "embedding_cache_hit": timings.get("embedding_cache_hit", False),
             },
             "agent_used": event_data["agent_used"],
             "from_cache": from_cache,
         }
 
-    async def _record_metrics(self, session_id: str, query: str, event_data: dict, timings: dict):
+    async def _record_metrics(self, session_id: str, query: str, event_data: dict, timings: dict) -> None:
         """Record detailed metrics."""
         try:
             async with sqlspec.provide_session(db) as session:
@@ -301,10 +309,7 @@ LIMIT %s""",
                 products = event_data.get("products_found", [])
                 avg_similarity = 0.0
                 if products:
-                    similarity_scores = []
-                    for product in products:
-                        if isinstance(product, dict) and "similarity_score" in product:
-                            similarity_scores.append(product["similarity_score"])
+                    similarity_scores = [product["similarity_score"] for product in products if isinstance(product, dict) and "similarity_score" in product]
 
                     if similarity_scores:
                         avg_similarity = sum(similarity_scores) / len(similarity_scores)
@@ -316,14 +321,14 @@ LIMIT %s""",
                     confidence_score=event_data.get("intent_details", {}).get("confidence"),
                     vector_search_results=len(event_data.get("products_found", [])),
                     total_response_time_ms=timings.get("total_ms", 0),
-                    vector_search_time_ms=None,  # TODO: Track individual tool timing
+                    vector_search_time_ms=timings.get("vector_search_ms"),
                     llm_response_time_ms=timings.get("agent_processing_ms"),
-                    embedding_cache_hit=False,  # TODO: Track this when embedding caching is added
+                    embedding_cache_hit=timings.get("embedding_cache_hit", False),
                     intent_exemplar_used=event_data.get("intent_details", {}).get("exemplar_used"),
                     avg_similarity_score=avg_similarity,
                 )
-        except Exception as e:
-            logger.error("Failed to record metrics", error=str(e))
+        except Exception:
+            logger.exception("Failed to record metrics")
 
     def _build_success_response(
         self,

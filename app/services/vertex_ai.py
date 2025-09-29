@@ -171,7 +171,7 @@ class VertexAIService:
             RuntimeError: If Vertex AI not initialized
             ValueError: If embedding generation fails
         """
-        if not self._initialized or not self._genai_client:
+        if not self._genai_client:
             msg = "Vertex AI not initialized"
             raise RuntimeError(msg)
 

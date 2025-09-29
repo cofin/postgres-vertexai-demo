@@ -29,6 +29,9 @@ from app.utils.sync_tools import run_
 if TYPE_CHECKING:
     from rich.console import Console
 
+    from app.services.product import ProductService
+    from app.services.vertex_ai import VertexAIService
+
 
 logger = structlog.get_logger()
 
@@ -340,7 +343,7 @@ def export_fixtures_cmd(tables: str | None, output_dir: str | None, no_compress:
 
 
 # Embedding commands - moved to coffee group
-async def _get_products_to_embed(product_service, console, force: bool):
+async def _get_products_to_embed(product_service: ProductService, console: Console, force: bool) -> list[dict[str, Any]]:
     """Get products that need embeddings."""
     with console.status("[bold yellow]Finding products to process...", spinner="dots"):
         if force:
@@ -357,7 +360,7 @@ async def _get_products_to_embed(product_service, console, force: bool):
 
 
 async def _process_product_batch(
-    batch, product_service, vertex_ai_service, console, start_idx: int, total_products: int
+    batch: list[dict[str, Any]], product_service: ProductService, vertex_ai_service: VertexAIService, console: Console, start_idx: int, total_products: int
 ) -> tuple[int, int]:
     """Process a batch of products and return success/error counts."""
     success_count = 0
@@ -473,7 +476,7 @@ def bulk_embed(batch_size: int, force: bool) -> None:
     run_(_bulk_embed_products)()
 
 
-async def _process_single_products(products, product_service, vertex_ai_service, console) -> tuple[int, int]:
+async def _process_single_products(products: list[dict[str, Any]], product_service: ProductService, vertex_ai_service: VertexAIService, console: Console) -> tuple[int, int]:
     """Process products one by one and return success/error counts."""
     success_count = 0
     error_count = 0

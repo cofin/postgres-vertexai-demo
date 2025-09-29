@@ -738,9 +738,24 @@
         document.body.addEventListener('htmx:beforeRequest', function (evt) {
             if (evt.detail.elt.classList.contains('chat-form') || evt.detail.elt.closest('.chat-form')) {
                 const chatContainer = document.getElementById('chat-container');
+                const messageInput = document.getElementById('message');
+                const messageValue = messageInput.value.trim();
 
-                // Don't add user message here - server response will include it with debug info
-                // Just add typing indicator
+                // Add user message immediately for better UX
+                if (messageValue) {
+                    const userMessageDiv = document.createElement('div');
+                    userMessageDiv.className = 'message user';
+                    userMessageDiv.innerHTML = `<strong>You:</strong> ${messageValue}`;
+                    chatContainer.appendChild(userMessageDiv);
+
+                    // Clear the input immediately
+                    messageInput.value = '';
+
+                    // Scroll to show the new message
+                    scrollChatToBottom();
+                }
+
+                // Then add typing indicator
                 const typingDiv = document.createElement('div');
                 typingDiv.className = 'message assistant typing-response';
                 typingDiv.id = 'typing-indicator';
@@ -772,8 +787,7 @@
                 const chatContainer = document.getElementById('chat-container');
                 scrollChatToBottom();
 
-                // Reset form and button
-                document.getElementById('message').value = '';
+                // Form already cleared in beforeRequest, just reset focus
                 document.getElementById('message').focus();
                 const sendBtn = document.getElementById('send-btn');
                 sendBtn.classList.remove('htmx-request');

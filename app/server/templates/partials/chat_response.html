@@ -1,29 +1,4 @@
-<!-- User message with intent detection -->
-<div class="message user" data-message-id="{{ query_id }}">
-    <strong>You:</strong> {{ user_message }}
-    <div class="help-triggers" style="display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle;">
-        <button type="button" class="help-trigger"
-                onclick="showTooltip('intent-detection', this)"
-                title="Intent: {{ intent_detected }}"
-                data-intent="{{ intent_detected }}"
-                data-confidence="{{ intent_confidence }}"
-                data-sql="{{ intent_sql }}">
-            {% if intent_detected == "PRODUCT_SEARCH" %}🎯{% else %}💬{% endif %}
-        </button>
-        {% if intent_detected == "PRODUCT_SEARCH" %}
-        <button type="button" class="help-trigger"
-                onclick="showTooltip('vector-search', this)"
-                title="Product vector search"
-                data-sql="{{ search_sql }}"
-                data-results="{{ search_results_count }}"
-                data-params="{{ search_params | tojson }}">
-            🔍
-        </button>
-        {% endif %}
-    </div>
-</div>
-
-<!-- AI response -->
+<!-- AI response only (user message added client-side) -->
 <div class="message assistant" data-message-id="{{ query_id }}"
      data-from-cache="{{ 'true' if from_cache else 'false' }}"
      {% if debug_info and debug_info.timings %}data-timings='{{ debug_info.timings | tojson }}'{% endif %}>

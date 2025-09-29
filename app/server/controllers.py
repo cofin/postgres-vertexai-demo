@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import time
 import uuid
-from typing import TYPE_CHECKING, Annotated, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 from litestar import Controller, get, post
 from litestar.di import Provide
@@ -276,7 +276,7 @@ class CoffeeChatController(Controller):
                     }
                 },
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             # Return empty metrics on error
             return HTMXTemplate(
                 template_name="partials/metrics_summary.html",
@@ -317,7 +317,7 @@ class CoffeeChatController(Controller):
                 "scatter_data": scatter_data,
                 "breakdown_data": breakdown,
             }
-        except Exception:
+        except Exception:  # noqa: BLE001
             # Return empty chart data on error
             return {
                 "time_series": {
