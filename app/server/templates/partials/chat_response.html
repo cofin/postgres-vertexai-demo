@@ -1,33 +1,33 @@
-<!-- User message with intent classification -->
+<!-- User message with intent detection -->
 <div class="message user" data-message-id="{{ query_id }}">
     <strong>You:</strong> {{ user_message }}
-    <span class="help-triggers" style="display: inline-flex; gap: 4px; margin-left: 8px;">
+    <div class="help-triggers" style="display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle;">
         <button type="button" class="help-trigger"
                 onclick="showTooltip('intent-detection', this)"
                 title="Intent: {{ intent_detected }}"
                 data-intent="{{ intent_detected }}"
-                data-confidence="{{ debug_info.intent.confidence or 0 }}"
-                data-sql="{{ debug_info.intent.sql_query | e }}">
-            {% if intent_detected == "PRODUCT_SEARCH" %}🎯{% elif intent_detected == "STORE_INFO" %}🏪{% else %}💬{% endif %}
+                data-confidence="{{ intent_confidence }}"
+                data-sql="{{ intent_sql }}">
+            {% if intent_detected == "PRODUCT_SEARCH" %}🎯{% else %}💬{% endif %}
         </button>
-        {% if intent_detected == "PRODUCT_SEARCH" and debug_info and debug_info.search and debug_info.search.results_count > 0 %}
-            <button type="button" class="help-trigger"
-                    onclick="showTooltip('vector-search', this)"
-                    title="Product vector search"
-                    data-sql="{{ debug_info.search.sql | e }}"
-                    data-results="{{ debug_info.search.results_count }}"
-                    data-params="{{ debug_info.search.params | tojson | e }}">
-                🔍
-            </button>
+        {% if intent_detected == "PRODUCT_SEARCH" %}
+        <button type="button" class="help-trigger"
+                onclick="showTooltip('vector-search', this)"
+                title="Product vector search"
+                data-sql="{{ search_sql }}"
+                data-results="{{ search_results_count }}"
+                data-params="{{ search_params | tojson }}">
+            🔍
+        </button>
         {% endif %}
-    </span>
+    </div>
 </div>
 
 <!-- AI response -->
 <div class="message assistant" data-message-id="{{ query_id }}"
      data-from-cache="{{ 'true' if from_cache else 'false' }}"
      {% if debug_info and debug_info.timings %}data-timings='{{ debug_info.timings | tojson }}'{% endif %}>
-    <strong>AI Coffee Expert:</strong> <span class="ai-response-content">{{ ai_response }}</span>
+    <strong>AI Coffee Expert:</strong> <span class="ai-response-content">{{ ai_response | safe }}</span>
 
     <div class="help-triggers" style="display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle;">
         {% if from_cache %}

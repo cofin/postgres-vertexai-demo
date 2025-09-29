@@ -16,7 +16,6 @@ from litestar.plugins.htmx import (
 )
 from litestar.response import File, Stream
 from litestar_mcp import mcp_tool
-from sqlspec.utils.serializers import to_json
 
 from app.server import deps
 
@@ -44,7 +43,6 @@ class CoffeeChatController(Controller):
         "metrics_service": Provide(deps.provide_metrics_service),
     }
 
-
     @staticmethod
     def validate_message(message: str) -> str:
         """Validate and sanitize user message input."""
@@ -62,7 +60,6 @@ class CoffeeChatController(Controller):
             raise ValueError(msg)
 
         return message
-
 
     @get(path="/", name="coffee_chat.show")
     async def show_coffee_chat(self) -> HTMXTemplate:
@@ -89,7 +86,9 @@ class CoffeeChatController(Controller):
         """Handle both full page and HTMX partial requests using the ADK agent system."""
 
         clean_message = self.validate_message(data.message)
-        validated_persona = data.persona if data.persona in {"novice", "enthusiast", "expert", "barista"} else "enthusiast"
+        validated_persona = (
+            data.persona if data.persona in {"novice", "enthusiast", "expert", "barista"} else "enthusiast"
+        )
         query_id = str(uuid.uuid4())  # Keep for message fingerprinting
 
         # Get or create session_id for persistence across requests
@@ -116,15 +115,24 @@ class CoffeeChatController(Controller):
             }
 
         if request.htmx:
+            debug_info = agent_response.get("debug_info", {})
+            intent_info = debug_info.get("intent", {})
+            search_info = debug_info.get("search", {})
+
             return HTMXTemplate(
                 template_name="partials/chat_response.html",
                 context={
-                    "user_message": clean_message,
                     "ai_response": agent_response.get("answer", ""),
+                    "user_message": clean_message,
                     "query_id": query_id,
                     "products": agent_response.get("products", []),
-                    "debug_info": agent_response.get("debug_info", {}),
-                    "intent_detected": agent_response.get("debug_info", {}).get("intent", {}).get("intent", "GENERAL"),
+                    "debug_info": debug_info,
+                    "intent_detected": intent_info.get("intent", "GENERAL"),
+                    "intent_confidence": intent_info.get("confidence", 0.0),
+                    "intent_sql": intent_info.get("sql_query", ""),
+                    "search_sql": search_info.get("sql", ""),
+                    "search_results_count": search_info.get("results_count", 0),
+                    "search_params": search_info.get("params", {}),
                     "from_cache": agent_response.get("from_cache", False),
                     "embedding_cache_hit": agent_response.get("debug_info", {}).get("embedding_cache_hit", False),
                 },
@@ -220,6 +228,111 @@ class CoffeeChatController(Controller):
         except (ValueError, TypeError):
             return {"total_searches": 0, "avg_search_time_ms": 0, "avg_similarity_score": 0}
 
+    @get(path="/api/metrics/summary", name="metrics.summary")
+    async def get_metrics_summary(self, metrics_service: MetricsService) -> HTMXTemplate:
+        """Get dashboard metrics summary for HTMX partial updates."""
+        try:
+            # Get base metrics from service
+            metrics = await metrics_service.get_performance_metrics(hours_back=24)
+
+            # Calculate additional metrics needed by the template
+            total_searches = int(metrics.get("total_searches", 0))
+            avg_response_time = float(metrics.get("avg_response_time_ms", 0))
+            avg_db_time = float(metrics.get("avg_search_time_ms", 0))  # Vector search time
+
+            # Get additional metrics from service
+            cache_hit_rate = await metrics_service.get_cache_hit_rate(hours_back=24)
+            active_sessions = await metrics_service.get_active_sessions_count()
+            unique_users = await metrics_service.get_unique_users_count(hours_back=24)
+            avg_similarity_score = float(metrics.get("avg_similarity_score", 0.82))
+
+            # Get time-based trends
+            trends = await metrics_service.get_metric_trends()
+            searches_trend = trends.get("searches_trend", 0.0)
+            response_time_trend = trends.get("response_time_trend", 0.0)
+            cache_trend = trends.get("cache_trend", 0.0)
+
+            # Calculate derived metrics
+            db_percentage = (avg_db_time / avg_response_time * 100) if avg_response_time > 0 else 0
+            error_rate = float(metrics.get("error_rate", 0.0))
+            successful_searches = max(0, 100 - error_rate)  # Success rate = 100% - error rate
+
+            return HTMXTemplate(
+                template_name="partials/metrics_summary.html",
+                context={
+                    "metrics": {
+                        "total_searches": total_searches,
+                        "avg_response_time": avg_response_time,
+                        "avg_db_time": avg_db_time,
+                        "cache_hit_rate": cache_hit_rate,
+                        "active_sessions": active_sessions,
+                        "unique_users": unique_users,
+                        "avg_similarity_score": avg_similarity_score,
+                        "searches_trend": searches_trend,
+                        "response_time_trend": response_time_trend,
+                        "cache_trend": cache_trend,
+                        "db_percentage": db_percentage,
+                        "successful_searches": successful_searches,
+                    }
+                },
+            )
+        except Exception:
+            # Return empty metrics on error
+            return HTMXTemplate(
+                template_name="partials/metrics_summary.html",
+                context={
+                    "metrics": {
+                        "total_searches": 0,
+                        "avg_response_time": 0,
+                        "avg_db_time": 0,
+                        "cache_hit_rate": 0,
+                        "active_sessions": 0,
+                        "unique_users": 0,
+                        "avg_similarity_score": 0,
+                        "searches_trend": 0,
+                        "response_time_trend": 0,
+                        "cache_trend": 0,
+                        "db_percentage": 0,
+                        "successful_searches": 0,
+                    }
+                },
+            )
+
+    @get(path="/api/metrics/charts", name="metrics.charts")
+    async def get_chart_data(self, metrics_service: MetricsService) -> dict[str, Any]:
+        """Get chart data for dashboard visualizations."""
+        try:
+            # Get data for all three charts
+            time_series = await metrics_service.get_time_series_data(minutes=60)
+            scatter_data = await metrics_service.get_scatter_data(hours=1)
+            breakdown = await metrics_service.get_performance_breakdown()
+
+            return {
+                "time_series": {
+                    "labels": time_series["labels"],
+                    "total_latency": time_series["total_latency"],
+                    "postgres_latency": time_series["postgres_latency"],
+                    "llm_latency": time_series["llm_latency"],
+                },
+                "scatter_data": scatter_data,
+                "breakdown_data": breakdown,
+            }
+        except Exception:
+            # Return empty chart data on error
+            return {
+                "time_series": {
+                    "labels": [],
+                    "total_latency": [],
+                    "postgres_latency": [],
+                    "llm_latency": [],
+                },
+                "scatter_data": [],
+                "breakdown_data": {
+                    "labels": ["Embedding Generation", "Vector Search", "AI Processing", "Other"],
+                    "data": [0, 0, 0, 0],
+                },
+            }
+
     @post(path="/api/vector-demo", name="vector.demo")
     @mcp_tool(name="Search Coffee Products")
     async def vector_search_demo(
@@ -245,13 +358,17 @@ class CoffeeChatController(Controller):
         search_start = time.time()
         results = await product_service.vector_similarity_search(
             query_embedding=query_embedding,
-            similarity_threshold=0.5,
+            similarity_threshold=0.0,
             limit=5,
         )
         detailed_timings["search_ms"] = (time.time() - search_start) * 1000
 
         # Record metrics
         total_time = (time.time() - full_request_start) * 1000
+
+        # Calculate average similarity score
+        avg_similarity = sum(r.similarity_score for r in results) / len(results) if results else 0.0
+
         await metrics_service.record_search_metric(
             session_id=None,
             query_text=query,
@@ -259,10 +376,11 @@ class CoffeeChatController(Controller):
             vector_search_results=len(results),
             total_response_time_ms=int(total_time),
             vector_search_time_ms=int(detailed_timings["search_ms"]),
+            avg_similarity_score=avg_similarity,
         )
 
         return HTMXTemplate(
-            template_name="partials/vector_results.html",
+            template_name="partials/_vector_results.html",
             context={
                 "results": [
                     {

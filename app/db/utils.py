@@ -16,17 +16,17 @@ if TYPE_CHECKING:
 # Table loading order - tables with no dependencies first, then ordered by dependencies
 COFFEE_SHOP_TABLES = [
     # Core tables without dependencies
-    "product",
     "store",
-    # Session and user-related tables
+    "product",
+    # Session tables (chat_session must come before chat_conversation due to FK)
     "chat_session",
     "chat_conversation",
     # Caching tables
-    "response_cache",
     "embedding_cache",
-    # Metrics and analytics
-    "search_metric",
+    "response_cache",
+    # Metrics and analytics tables
     "intent_exemplar",
+    "search_metric",
 ]
 
 

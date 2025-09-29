@@ -12,7 +12,7 @@
             <strong>{{ embedding_time }}</strong> Embedding {% if cache_hit %}(Cached){% else %}Generation{% endif %}
         </div>
         <div class="stat-item">
-            <strong>{{ oracle_time }}</strong> Vector Search
+            <strong>{{ search_time_detail }}</strong> Vector Search
         </div>
         {% if cache_hit %}
         <div class="stat-item" style="color: var(--success);">

@@ -30,8 +30,7 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.anyio
 pytest_plugins = [
-    "pytest_databases.docker",
-    "pytest_databases.docker.oracle",
+    "pytest_databases.docker.postgres",
 ]
 
 

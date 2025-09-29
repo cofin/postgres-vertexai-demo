@@ -69,13 +69,34 @@ class FixtureProcessor:
             if key == "price" and isinstance(value, str):
                 # Convert price string to Decimal for database
                 prepared[key] = Decimal(value)
-            elif key in ("created_at", "updated_at") and isinstance(value, str):
+            elif key == "embedding" and isinstance(value, str):
+                # Handle embedding vector conversions from numpy array string format
+                import numpy as np
+
+                # Remove newlines and normalize whitespace from numpy string format
+                cleaned = value.replace("\n", " ")
+                # Normalize multiple spaces to single space
+                import re
+                cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+                try:
+                    # Parse numpy array string format: "[ 1.0 2.0 3.0 ... ]"
+                    if cleaned.startswith("[") and cleaned.endswith("]"):
+                        # Remove brackets and split by whitespace
+                        numbers_str = cleaned[1:-1].strip()
+                        # Split by whitespace and convert to floats
+                        float_values = [float(x) for x in numbers_str.split() if x.strip()]
+                        prepared[key] = float_values
+                    else:
+                        # Fallback: try numpy fromstring
+                        array_data = np.fromstring(cleaned, sep=" ")
+                        prepared[key] = array_data.tolist()
+                except (ValueError, TypeError):
+                    # If parsing fails, skip this field and continue
+                    continue
+            elif key in ("created_at", "updated_at", "last_activity", "expires_at", "last_accessed") and isinstance(value, str):
                 # Convert ISO timestamp strings to datetime objects
-                if value.endswith("+00:00"):
-                    # Handle timezone aware timestamps
-                    prepared[key] = datetime.fromisoformat(value.replace("+00:00", "+00:00"))
-                else:
-                    prepared[key] = datetime.fromisoformat(value)
+                prepared[key] = datetime.fromisoformat(value)
             else:
                 prepared[key] = value
 

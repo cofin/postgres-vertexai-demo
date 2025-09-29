@@ -6,76 +6,76 @@ let activeTooltip = null;
 
 // Toggle help mode
 function toggleHelp() {
-  helpEnabled = !helpEnabled;
-  localStorage.setItem("helpTooltipsEnabled", helpEnabled.toString());
+    helpEnabled = !helpEnabled;
+    localStorage.setItem("helpTooltipsEnabled", helpEnabled.toString());
 
-  // Update button text
-  const button = document.querySelector(".help-toggle");
-  if (button) {
-    button.textContent = helpEnabled ? "✓" : "💡";
-    button.classList.toggle("active", helpEnabled);
-  }
+    // Update button text
+    const button = document.querySelector(".help-toggle");
+    if (button) {
+        button.textContent = helpEnabled ? "✓" : "💡";
+        button.classList.toggle("active", helpEnabled);
+    }
 
-  // Show/hide help elements
-  document.querySelectorAll(".help-trigger").forEach((el) => {
-    el.style.display = helpEnabled ? "inline-flex" : "none";
-  });
+    // Show/hide help elements
+    document.querySelectorAll(".help-trigger").forEach((el) => {
+        el.style.display = helpEnabled ? "inline-flex" : "none";
+    });
 
-  // Close any open tooltip
-  hideTooltip();
+    // Close any open tooltip
+    hideTooltip();
 }
 
 // Initialize tooltip positioner
 const tooltipPositioner = new TooltipPositioner({
-  padding: 16,
-  arrowSize: 10,
-  preferredPlacements: {
-    left: ["right", "left", "top", "bottom"],
-    right: ["left", "right", "top", "bottom"],
-  },
+    padding: 16,
+    arrowSize: 10,
+    preferredPlacements: {
+        left: ["right", "left", "top", "bottom"],
+        right: ["left", "right", "top", "bottom"],
+    },
 });
 
 // Show tooltip
 function showTooltip(triggerId, triggerElement) {
-  hideTooltip();
+    hideTooltip();
 
-  const tooltip = document.createElement("div");
-  tooltip.className = "help-tooltip";
-  tooltip.innerHTML = getTooltipHTML(triggerId);
+    const tooltip = document.createElement("div");
+    tooltip.className = "help-tooltip";
+    tooltip.innerHTML = getTooltipHTML(triggerId);
 
-  // NEW: Populate the skeleton with dynamic data
-  populateTooltip(tooltip, triggerElement, triggerId);
+    // NEW: Populate the skeleton with dynamic data
+    populateTooltip(tooltip, triggerElement, triggerId);
 
-  document.body.appendChild(tooltip);
-  tooltip.style.visibility = "hidden";
+    document.body.appendChild(tooltip);
+    tooltip.style.visibility = "hidden";
 
-  const position = tooltipPositioner.calculatePosition(triggerElement, tooltip);
-  tooltip.style.left = position.left + "px";
-  tooltip.style.top = position.top + "px";
-  tooltip.setAttribute("data-placement", position.placement);
+    const position = tooltipPositioner.calculatePosition(triggerElement, tooltip);
+    tooltip.style.left = position.left + "px";
+    tooltip.style.top = position.top + "px";
+    tooltip.setAttribute("data-placement", position.placement);
 
-  tooltip.style.visibility = "visible";
-  requestAnimationFrame(() => {
-    tooltip.classList.add("show");
-  });
+    tooltip.style.visibility = "visible";
+    requestAnimationFrame(() => {
+        tooltip.classList.add("show");
+    });
 
-  activeTooltip = tooltip;
+    activeTooltip = tooltip;
 
-  const closeBtn = tooltip.querySelector(".help-tooltip-close");
-  if (closeBtn) {
-    closeBtn.onclick = hideTooltip;
-  }
+    const closeBtn = tooltip.querySelector(".help-tooltip-close");
+    if (closeBtn) {
+        closeBtn.onclick = hideTooltip;
+    }
 }
 
 // Hide tooltip
 function hideTooltip() {
-  if (activeTooltip) {
-    activeTooltip.classList.remove("show");
-    setTimeout(() => {
-      activeTooltip?.remove();
-      activeTooltip = null;
-    }, 200);
-  }
+    if (activeTooltip) {
+        activeTooltip.classList.remove("show");
+        setTimeout(() => {
+            activeTooltip?.remove();
+            activeTooltip = null;
+        }, 200);
+    }
 }
 
 // Gets the HTML skeleton for a tooltip
@@ -184,12 +184,26 @@ function populateTooltip(tooltipElement, triggerElement, triggerId) {
 
         const queryElem = tooltipElement.querySelector('.sql-query-placeholder');
         if (queryElem) {
-            queryElem.textContent = sql || `SELECT intent_type,
-       VECTOR_DISTANCE(embedding, :query_embedding, COSINE) AS similarity
-FROM intent_exemplars
-WHERE VECTOR_DISTANCE(embedding, :query_embedding, COSINE) < 0.3
-ORDER BY similarity
-FETCH FIRST 1 ROW ONLY`;
+            queryElem.textContent = sql || `WITH
+    query_embedding AS (
+        SELECT
+            intent,
+            phrase,
+            1 - (embedding <=> $1) AS similarity,
+            confidence_threshold,
+            usage_count
+        FROM intent_exemplar
+    )
+SELECT
+    intent,
+    phrase,
+    similarity,
+    confidence_threshold,
+    usage_count
+FROM query_embedding
+WHERE similarity > $2
+ORDER BY similarity DESC
+LIMIT $3`;
         }
 
         const intentElem = tooltipElement.querySelector('.intent-name-placeholder');
@@ -269,28 +283,28 @@ function updatePerformanceTooltipContent(tooltipElement, timings) {
 
 // Initialize on load
 document.addEventListener("DOMContentLoaded", () => {
-  const button = document.querySelector(".help-toggle");
-  if (button) {
-    button.textContent = helpEnabled ? "✓" : "💡";
-    button.classList.toggle("active", helpEnabled);
-  }
-  document.querySelectorAll(".help-trigger").forEach((el) => {
-    el.style.display = helpEnabled ? "inline-flex" : "none";
-  });
+    const button = document.querySelector(".help-toggle");
+    if (button) {
+        button.textContent = helpEnabled ? "✓" : "💡";
+        button.classList.toggle("active", helpEnabled);
+    }
+    document.querySelectorAll(".help-trigger").forEach((el) => {
+        el.style.display = helpEnabled ? "inline-flex" : "none";
+    });
 });
 
 // Handle clicks outside tooltips
 document.addEventListener("click", (e) => {
-  if (activeTooltip && !activeTooltip.contains(e.target) && !e.target.closest(".help-trigger")) {
-    hideTooltip();
-  }
+    if (activeTooltip && !activeTooltip.contains(e.target) && !e.target.closest(".help-trigger")) {
+        hideTooltip();
+    }
 });
 
 // Handle HTMX events
 document.body.addEventListener("htmx:afterRequest", () => {
-  setTimeout(() => {
-    document.querySelectorAll(".help-trigger").forEach((el) => {
-      el.style.display = helpEnabled ? "inline-flex" : "none";
-    });
-  }, 100);
+    setTimeout(() => {
+        document.querySelectorAll(".help-trigger").forEach((el) => {
+            el.style.display = helpEnabled ? "inline-flex" : "none";
+        });
+    }, 100);
 });

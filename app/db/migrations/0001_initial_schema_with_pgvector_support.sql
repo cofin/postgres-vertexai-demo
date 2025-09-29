@@ -114,6 +114,7 @@ CREATE TABLE search_metric (
     total_response_time_ms integer,
     embedding_cache_hit boolean DEFAULT false,
     intent_exemplar_used varchar(255),
+    avg_similarity_score real,
     created_at timestamp with time zone DEFAULT current_timestamp
 );
 
@@ -205,6 +206,9 @@ CREATE INDEX search_metric_intent_idx ON search_metric (intent);
 
 
 CREATE INDEX search_metric_created_at_idx ON search_metric (created_at);
+
+
+CREATE INDEX search_metric_similarity_score_idx ON search_metric (avg_similarity_score) WHERE avg_similarity_score IS NOT NULL;
 
 
 -- Functions for automatic updated_at timestamps
@@ -347,6 +351,9 @@ DROP INDEX if EXISTS search_metrics_intent_idx;
 
 DROP INDEX if EXISTS search_metric_created_at_idx;
 DROP INDEX if EXISTS search_metrics_created_at_idx;
+
+
+DROP INDEX if EXISTS search_metric_similarity_score_idx;
 
 
 -- Drop tables in reverse dependency order

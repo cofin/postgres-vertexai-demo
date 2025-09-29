@@ -180,13 +180,32 @@ LIMIT %s"""
             result = await self.intent_service.classify_intent(query)
             total_ms = (time.time() - start_time) * 1000
 
-            # Include actual SQL query for intent classification
-            sql_query = """SELECT intent_type,
-       VECTOR_DISTANCE(embedding, :query_embedding, COSINE) AS similarity
-FROM intent_exemplars
-WHERE VECTOR_DISTANCE(embedding, :query_embedding, COSINE) < 0.3
-ORDER BY similarity
-FETCH FIRST 1 ROW ONLY"""
+            # Include actual PostgreSQL query for intent classification
+            sql_query = """WITH
+    query_embedding AS (
+        SELECT
+            intent,
+            phrase,
+            1 - (embedding <=> $1) AS similarity,
+            confidence_threshold,
+            usage_count
+        FROM
+            intent_exemplar
+    )
+SELECT
+    intent,
+    phrase,
+    similarity,
+    confidence_threshold,
+    usage_count
+FROM
+    query_embedding
+WHERE
+    similarity > $2
+ORDER BY
+    similarity DESC
+LIMIT
+    $3"""
 
             return {
                 "intent": result.intent,
@@ -269,13 +288,25 @@ FETCH FIRST 1 ROW ONLY"""
             Status of metric recording
         """
         try:
+            # Calculate average similarity score from vector results
+            avg_similarity = 0.0
+            if vector_results:
+                similarity_scores = []
+                for result in vector_results:
+                    if isinstance(result, dict) and "similarity_score" in result:
+                        similarity_scores.append(result["similarity_score"])
+
+                if similarity_scores:
+                    avg_similarity = sum(similarity_scores) / len(similarity_scores)
+
             await self.metrics_service.record_search_metric(
                 session_id=session_id,
                 query_text=query_text,
                 intent=intent,
-                vector_search_results=vector_results,
+                vector_search_results=len(vector_results),  # Fix: pass count not list
                 total_response_time_ms=int(total_response_time_ms),
                 vector_search_time_ms=vector_search_time_ms,
+                avg_similarity_score=avg_similarity,
             )
         except (ValueError, TypeError, AttributeError) as e:
             return {"status": "failed", "error": str(e)}

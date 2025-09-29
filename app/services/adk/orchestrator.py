@@ -6,13 +6,14 @@ using the proper ADK Runner pattern with our custom session service.
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from typing import Any
 
 import structlog
 from google.adk import Runner
-from google.genai import types
+from google.genai import errors, types
 
 from app.config import db, service_locator, sqlspec
 from app.services.adk.agent import CoffeeAssistantAgent  # This now imports the router agent
@@ -110,8 +111,22 @@ class ADKOrchestrator:
                 else:
                     # Time ADK agent processing
                     agent_start = time.time()
-                    events = await self._run_agent(query, user_id, session.id)
-                    event_data = await self._process_events(events, query, timings)
+                    try:
+                        events = await self._run_agent(query, user_id, session.id)
+                        event_data = await self._process_events(events, query, timings)
+                    except errors.ServerError as e:
+                        # If all retries failed, return a graceful fallback
+                        if e.status_code == 503:
+                            logger.error("ADK service unavailable after retries", error=str(e))
+                            event_data = {
+                                "final_response_text": "I apologize, but I'm experiencing some technical difficulties connecting to the AI service. Please try again in a moment.",
+                                "agent_used": "Fallback",
+                                "intent_details": {"intent": "GENERAL_CONVERSATION", "confidence": 0.0},
+                                "search_details": {},
+                                "products_found": [],
+                            }
+                        else:
+                            raise
                     timings["agent_processing_ms"] = int((time.time() - agent_start) * 1000)
 
                     # Cache the response
@@ -163,13 +178,37 @@ class ADKOrchestrator:
         )
 
     async def _run_agent(self, query: str, user_id: str, session_id: str):
-        """Run the ADK agent with the user query."""
+        """Run the ADK agent with the user query with retry logic."""
         content = types.Content(role="user", parts=[types.Part(text=query)])
-        return self.runner.run_async(
-            user_id=user_id,
-            session_id=session_id,
-            new_message=content,
-        )
+
+        # Retry logic for transient errors
+        max_retries = 3
+        retry_delay = 1.0
+
+        for attempt in range(max_retries):
+            try:
+                return self.runner.run_async(
+                    user_id=user_id,
+                    session_id=session_id,
+                    new_message=content,
+                )
+            except errors.ServerError as e:
+                # Check if it's a timeout or other retryable error
+                if e.status_code == 503 and attempt < max_retries - 1:
+                    logger.warning(
+                        "ADK request timed out, retrying...",
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                        error=str(e),
+                    )
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    # Last attempt or non-retryable error
+                    raise
+            except Exception:
+                # Non-server errors should not be retried
+                raise
 
     async def _process_events(self, events, query: str, timings: dict) -> dict[str, Any]:
         """Process ADK events and extract relevant information with timing."""
@@ -180,14 +219,18 @@ class ADKOrchestrator:
         products_found = []
 
         async for event in events:
+            # Only process final responses for the actual answer
             if event.is_final_response() and event.content and event.content.parts:
-                # Handle both text and function_call parts properly
+                # Extract only text parts, ignoring function calls and other non-text content
                 text_parts = []
                 for part in event.content.parts:
                     if hasattr(part, 'text') and part.text:
                         text_parts.append(part.text)
-                final_response_text = self._convert_markdown_to_html("".join(text_parts))
-                agent_used = event.author or "ADK Multi-Agent"
+
+                # Only set final response if we have actual text content
+                if text_parts:
+                    final_response_text = self._convert_markdown_to_html("".join(text_parts))
+                    agent_used = event.author or "ADK Multi-Agent"
 
             function_responses = event.get_function_responses()
             if function_responses:
@@ -254,6 +297,18 @@ LIMIT %s""",
         try:
             async with sqlspec.provide_session(db) as session:
                 metrics_service = service_locator.get(MetricsService, session)
+                # Calculate average similarity score from products
+                products = event_data.get("products_found", [])
+                avg_similarity = 0.0
+                if products:
+                    similarity_scores = []
+                    for product in products:
+                        if isinstance(product, dict) and "similarity_score" in product:
+                            similarity_scores.append(product["similarity_score"])
+
+                    if similarity_scores:
+                        avg_similarity = sum(similarity_scores) / len(similarity_scores)
+
                 await metrics_service.record_search_metric(
                     session_id=session_id,
                     query_text=query,
@@ -265,6 +320,7 @@ LIMIT %s""",
                     llm_response_time_ms=timings.get("agent_processing_ms"),
                     embedding_cache_hit=False,  # TODO: Track this when embedding caching is added
                     intent_exemplar_used=event_data.get("intent_details", {}).get("exemplar_used"),
+                    avg_similarity_score=avg_similarity,
                 )
         except Exception as e:
             logger.error("Failed to record metrics", error=str(e))
