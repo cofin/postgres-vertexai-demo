@@ -1,7 +1,11 @@
 // Simple Help Tooltips with HTMX
 
-// Default to enabled for tech demo
-let helpEnabled = localStorage.getItem("helpTooltipsEnabled") !== "false";
+// Default to enabled for tech demo - explicitly default to true
+// Check if localStorage has been set, if not, default to true and save it
+if (localStorage.getItem("helpTooltipsEnabled") === null) {
+    localStorage.setItem("helpTooltipsEnabled", "true");
+}
+let helpEnabled = localStorage.getItem("helpTooltipsEnabled") === "true";
 let activeTooltip = null;
 
 // Toggle help mode
@@ -43,7 +47,7 @@ function showTooltip(triggerId, triggerElement) {
     tooltip.className = "help-tooltip";
     tooltip.innerHTML = getTooltipHTML(triggerId);
 
-    // NEW: Populate the skeleton with dynamic data
+    // Populate the skeleton with dynamic data
     populateTooltip(tooltip, triggerElement, triggerId);
 
     document.body.appendChild(tooltip);
@@ -61,22 +65,31 @@ function showTooltip(triggerId, triggerElement) {
 
     activeTooltip = tooltip;
 
+    // Add close handler
     const closeBtn = tooltip.querySelector(".help-tooltip-close");
     if (closeBtn) {
         closeBtn.onclick = hideTooltip;
     }
 }
 
+// Make showTooltip globally available for inline onclick handlers
+window.showTooltip = showTooltip;
+
 // Hide tooltip
 function hideTooltip() {
     if (activeTooltip) {
         activeTooltip.classList.remove("show");
         setTimeout(() => {
-            activeTooltip?.remove();
-            activeTooltip = null;
+            if (activeTooltip) {
+                activeTooltip.remove();
+                activeTooltip = null;
+            }
         }, 200);
     }
 }
+
+// Make hideTooltip globally available
+window.hideTooltip = hideTooltip;
 
 // Gets the HTML skeleton for a tooltip
 function getTooltipHTML(triggerId) {
@@ -159,7 +172,6 @@ function getTooltipHTML(triggerId) {
                 </div>
             `
         },
-        // ... other static tooltips
     };
 
     const skeleton = skeletons[triggerId] || { title: "Details", body: "<p>No details available for this component.</p>" };
@@ -295,16 +307,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Handle clicks outside tooltips
 document.addEventListener("click", (e) => {
-    if (activeTooltip && !activeTooltip.contains(e.target) && !e.target.closest(".help-trigger")) {
+    if (activeTooltip &&
+        !activeTooltip.contains(e.target) &&
+        !e.target.closest(".help-trigger")) {
         hideTooltip();
     }
 });
 
-// Handle HTMX events
-document.body.addEventListener("htmx:afterRequest", () => {
+// Handle HTMX events - use document instead of document.body to avoid timing issues
+document.addEventListener("htmx:afterSettle", (evt) => {
+    // Process help triggers within the settled content
+    // Use a small delay to ensure DOM is fully updated
     setTimeout(() => {
-        document.querySelectorAll(".help-trigger").forEach((el) => {
-            el.style.display = helpEnabled ? "inline-flex" : "none";
-        });
-    }, 100);
+        const target = evt.detail.target;
+        if (target) {
+            target.querySelectorAll(".help-trigger").forEach((el) => {
+                // Always show by default for tech demo unless explicitly disabled
+                el.style.display = helpEnabled ? "inline-flex" : "none";
+            });
+        }
+    }, 10);
 });

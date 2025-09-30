@@ -264,11 +264,11 @@ wheels = [
 
 [[package]]
 name = "cachetools"
-version = "5.5.2"
+version = "6.2.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/6c/81/3747dad6b14fa2cf53fcf10548cf5aea6913e96fab41a3c198676f8948a5/cachetools-5.5.2.tar.gz", hash = "sha256:1a661caa9175d26759571b2e19580f9d6393969e5dfca11fdb1f947a23e640d4", size = 28380, upload-time = "2025-02-20T21:01:19.524Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9d/61/e4fad8155db4a04bfb4734c7c8ff0882f078f24294d42798b3568eb63bff/cachetools-6.2.0.tar.gz", hash = "sha256:38b328c0889450f05f5e120f56ab68c8abaf424e1275522b138ffc93253f7e32", size = 30988, upload-time = "2025-08-25T18:57:30.924Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/72/76/20fa66124dbe6be5cafeb312ece67de6b61dd91a0247d1ea13db4ebb33c2/cachetools-5.5.2-py3-none-any.whl", hash = "sha256:d26a22bcc62eb95c3beabd9f1ee5e820d3d2704fe2967cbe350e20c8ffcd3f0a", size = 10080, upload-time = "2025-02-20T21:01:16.647Z" },
+    { url = "https://files.pythonhosted.org/packages/6c/56/3124f61d37a7a4e7cc96afc5492c78ba0cb551151e530b54669ddd1436ef/cachetools-6.2.0-py3-none-any.whl", hash = "sha256:1c76a8960c0041fcc21097e357f882197c79da0dbff766e7317890a65d7d8ba6", size = 11276, upload-time = "2025-08-25T18:57:29.684Z" },
 ]
 
 [[package]]
@@ -636,16 +636,16 @@ wheels = [
 
 [[package]]
 name = "google-auth"
-version = "2.40.3"
+version = "2.41.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cachetools" },
     { name = "pyasn1-modules" },
     { name = "rsa" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9e/9b/e92ef23b84fa10a64ce4831390b7a4c2e53c0132568d99d4ae61d04c8855/google_auth-2.40.3.tar.gz", hash = "sha256:500c3a29adedeb36ea9cf24b8d10858e152f2412e3ca37829b3fa18e33d63b77", size = 281029, upload-time = "2025-06-04T18:04:57.577Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/c5/87742f5b5f055514c67f970f7174a876fccff2289a69d460b0614cc7ccfb/google_auth-2.41.0.tar.gz", hash = "sha256:c9d7b534ea4a5d9813c552846797fafb080312263cd4994d6622dd50992ae101", size = 292282, upload-time = "2025-09-29T21:36:35.791Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/63/b19553b658a1692443c62bd07e5868adaa0ad746a0751ba62c59568cd45b/google_auth-2.40.3-py2.py3-none-any.whl", hash = "sha256:1370d4593e86213563547f97a92752fc658456fe4514c809544f330fed45a7ca", size = 216137, upload-time = "2025-06-04T18:04:55.573Z" },
+    { url = "https://files.pythonhosted.org/packages/78/ff/a1c426fc9bea7268230bf92340da7d112fae18cf946cafe13ab17d14e6ee/google_auth-2.41.0-py2.py3-none-any.whl", hash = "sha256:d8bed9b53ab63b7b0374656b8e1bef051f95bb14ecc0cf21ba49de7911d62e09", size = 221168, upload-time = "2025-09-29T21:36:33.925Z" },
 ]
 
 [[package]]
@@ -1354,7 +1354,7 @@ wheels = [
 
 [[package]]
 name = "litestar-mcp"
-version = "0.2.1"
+version = "0.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -1362,9 +1362,9 @@ dependencies = [
     { name = "rich" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9f/cc/e90dea3a7d35e6d9de04382fc4d41313d299f8af8451891f326583487382/litestar_mcp-0.2.1.tar.gz", hash = "sha256:ec91c869a256730701b38b246090be1fa5d4e5b9cce894e78af6984b93aae55a", size = 282827, upload-time = "2025-09-28T13:18:19.597Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/48/ff/bd7f0d14766e4dae815b053a502f19017ce47903e20e5b771a504c909788/litestar_mcp-0.2.2.tar.gz", hash = "sha256:4a576b0cbd63877fdf485d643a11fa3008499a5076a1ccab0b57d0686c40d805", size = 282884, upload-time = "2025-09-30T12:11:18.891Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/4d/abd4ccd482e0a116834eb3f5c61d151d80c0cee703cbcb22158d9cf85744/litestar_mcp-0.2.1-py3-none-any.whl", hash = "sha256:667af6fee8d1033b77018397c1e8e5ef136d828c41678edc2a016178f26ca2ec", size = 23859, upload-time = "2025-09-28T13:18:18.093Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/7c/294fb7c2e5c672d19a48b5c2485566402903f6af490baffff35ded611207/litestar_mcp-0.2.2-py3-none-any.whl", hash = "sha256:86f6c904d73e67014f6ced622104c0d0fbe6dd0b8188af0015aaca1b9296f34c", size = 23918, upload-time = "2025-09-30T12:11:17.433Z" },
 ]
 
 [[package]]
@@ -2486,11 +2486,11 @@ wheels = [
 
 [[package]]
 name = "sqlglot"
-version = "27.19.0"
+version = "27.20.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f5/39/59c0feb9c29bd122b9492b6f51d583401ba977957b614d4ac0481cf380bc/sqlglot-27.19.0.tar.gz", hash = "sha256:4986ab43443263144c1783aeafe116e68a46f9be43f813c0ce4b914700063dbc", size = 5479756, upload-time = "2025-09-26T16:49:37.45Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/76/9d/31eac378d98b5d7f945981dc27bc34a3959a60c09ed9ca78cf9c9f95fe52/sqlglot-27.20.0.tar.gz", hash = "sha256:92e7a93200eb588eb17cf19c813103160bd6c9b261ffd295eea79633657569d9", size = 5480742, upload-time = "2025-09-30T13:36:20.987Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/3d/35d33f0e167ac5a3acec1b66bd3b6e2cf62285c779474004d44a17745b52/sqlglot-27.19.0-py3-none-any.whl", hash = "sha256:2bb4a9522c835bb41ff274497973906b42f8ec2cf7776a18b1035b1253bc81e5", size = 520489, upload-time = "2025-09-26T16:49:35.428Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/53/4c87ef36f743d7b2a414839677f08ea0904400afd376b3785b6ed1593d0b/sqlglot-27.20.0-py3-none-any.whl", hash = "sha256:9c0b67bbb8e0a9300e34eb2984bf825bca6356cf3cdcc7637658058f2afe41ca", size = 520739, upload-time = "2025-09-30T13:36:18.322Z" },
 ]
 
 [package.optional-dependencies]

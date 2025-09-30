@@ -37,8 +37,8 @@
     <!-- Tooltip Positioning System -->
     <script src="{{ url_for('static', file_path='js/tooltip-positioning.js') }}"></script>
 
-    <!-- Help Tooltips JavaScript -->
-    <script src="{{ url_for('static', file_path='js/help-tooltips-htmx.js') }}"></script>
+    <!-- Help Tooltips JavaScript - defer to ensure DOM is ready -->
+    <script src="{{ url_for('static', file_path='js/help-tooltips-htmx.js') }}" defer></script>
 
     <style>
         /* Coffee Chat specific styles */
@@ -1046,6 +1046,10 @@
 
         // Global hideTooltip for backward compatibility
         window.hideTooltip = hideIntentSearchTooltip;
+
+        // Make popup functions globally accessible for dynamically added content
+        window.showIntentPopup = showIntentPopup;
+        window.showSearchPopup = showSearchPopup;
     </script>
 </body>
 
