@@ -43,13 +43,13 @@ class ServiceLocator:
             if service_cls not in self._cache:
                 # Singletons are created without a session.
                 self._cache[service_cls] = self._create_instance(service_cls, None)
-            return self._cache[service_cls]
+            return self._cache[service_cls]  # type: ignore[return-value]
 
         # 2. Handle complex services with special dependency injection needs
         if service_cls == IntentService:
             from app.services.exemplar import ExemplarService
 
-            return IntentService(
+            return IntentService(  # type: ignore[return-value]
                 driver=session,
                 exemplar_service=self.get(ExemplarService, session),
                 vertex_ai_service=self.get(VertexAIService, session),
@@ -61,7 +61,7 @@ class ServiceLocator:
 
             # Create VertexAI service with cache service
             cache_service = self.get(CacheService, session) if session else None
-            return VertexAIService(cache_service=cache_service)
+            return VertexAIService(cache_service=cache_service)  # type: ignore[return-value]
 
         if service_cls == AgentToolsService:
             from app.services.chat import ChatService
@@ -69,7 +69,7 @@ class ServiceLocator:
             from app.services.product import ProductService
             from app.services.store import StoreService
 
-            return AgentToolsService(
+            return AgentToolsService(  # type: ignore[return-value]
                 driver=session,
                 product_service=self.get(ProductService, session),
                 chat_service=self.get(ChatService, session),

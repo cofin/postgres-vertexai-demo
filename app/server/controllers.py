@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import time
 import uuid
-from typing import TYPE_CHECKING, Annotated, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any
 
 from litestar import Controller, get, post
 from litestar.di import Provide
@@ -222,6 +222,7 @@ class CoffeeChatController(Controller):
                 return HXStopPolling()
             return {
                 "total_searches": int(metrics.get("total_searches", 0)),
+                "avg_response_time_ms": float(metrics.get("avg_response_time_ms", 0)),
                 "avg_search_time_ms": float(metrics.get("avg_search_time_ms", 0)),
                 "avg_vector_search_time_ms": float(metrics.get("avg_vector_search_time_ms", 0)),
                 "avg_similarity_score": float(metrics.get("avg_similarity_score", 0)),
@@ -350,10 +351,11 @@ class CoffeeChatController(Controller):
         full_request_start = time.time()
         detailed_timings: dict[str, float] = {}
 
-        # Time the embedding generation
+        # Time the embedding generation and check cache
         embedding_start = time.time()
-        query_embedding = cast("list[float]", await vertex_ai_service.get_text_embedding(query))
+        query_embedding, embedding_cache_hit = await vertex_ai_service.get_text_embedding_with_cache_status(query)
         detailed_timings["embedding_ms"] = (time.time() - embedding_start) * 1000
+        detailed_timings["embedding_cache_hit"] = embedding_cache_hit
 
         # Time the vector search
         search_start = time.time()
@@ -395,6 +397,7 @@ class CoffeeChatController(Controller):
                 "search_time": f"{total_time:.0f}ms",
                 "embedding_time": f"{detailed_timings['embedding_ms']:.1f}ms",
                 "search_time_detail": f"{detailed_timings['search_ms']:.1f}ms",
+                "cache_hit": embedding_cache_hit,
                 "query": query,
             },
             trigger_event="vector:search-complete",

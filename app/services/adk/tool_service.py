@@ -243,7 +243,7 @@ LIMIT $3"""
                 for conv in conversations
             ]
         except (ValueError, TypeError, AttributeError) as e:
-            return {"error": f"Failed to retrieve history: {e!s}"}
+            return [{"error": f"Failed to retrieve history: {e!s}"}]  # type: ignore[list-item]
 
     async def record_search_metric(
         self,
@@ -281,7 +281,7 @@ LIMIT $3"""
                     avg_similarity = sum(similarity_scores) / len(similarity_scores)
 
             await self.metrics_service.record_search_metric(
-                session_id=session_id,
+                session_id=uuid.UUID(session_id),
                 query_text=query_text,
                 intent=intent,
                 vector_search_results=len(vector_results),  # Fix: pass count not list

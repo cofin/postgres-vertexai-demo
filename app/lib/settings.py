@@ -168,6 +168,8 @@ class AppSettings:
         default_factory=get_env("SECRET_KEY", binascii.hexlify(os.urandom(32)).decode(encoding="utf-8")),
     )
     """Application secret key."""
+    URL: str = field(default_factory=get_env("APP_URL", "http://localhost:8000"))
+    """Application base URL."""
     STATIC_DIR: Path = field(default_factory=get_env("STATIC_DIR", STATIC_DIR))
     """Default URL where static assets are located."""
     TEMPLATE_DIR: Path = field(default_factory=get_env("TEMPLATE_DIR", TEMPLATE_DIR))

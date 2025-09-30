@@ -60,7 +60,7 @@ class FixtureProcessor:
         Returns:
             Processed record ready for insertion
         """
-        prepared = {}
+        prepared: dict[str, Any] = {}
         for key, value in record.items():
             if value is None:
                 continue  # Exclude None values to let database handle defaults

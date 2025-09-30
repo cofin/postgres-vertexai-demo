@@ -10,11 +10,12 @@ import asyncio
 import re
 import time
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-    from app.schemas.chat import ChatSession
+    from google.adk.sessions import Session
 
 import structlog
 from google.adk import Runner
@@ -124,7 +125,7 @@ class ADKOrchestrator:
                         event_data = await self._process_events(events, query, timings)
                     except errors.ServerError as e:
                         # If all retries failed, return a graceful fallback
-                        if e.status_code == HTTP_SERVICE_UNAVAILABLE:
+                        if getattr(e, "status", None) == HTTP_SERVICE_UNAVAILABLE:
                             logger.exception("ADK service unavailable after retries")
                             event_data = {
                                 "final_response_text": "I apologize, but I'm experiencing some technical difficulties connecting to the AI service. Please try again in a moment.",
@@ -175,8 +176,9 @@ class ADKOrchestrator:
             logger.exception("Request processing failed", error=str(e), query=query)
             return self._build_error_response(e, session_id, start_time, user_id, persona)
 
-    async def _ensure_session(self, user_id: str, session_id: str | None) -> ChatSession:
+    async def _ensure_session(self, user_id: str, session_id: str | None) -> Session:
         """Ensure session exists using upsert pattern."""
+        # Returns google.adk.sessions.Session, not our ChatSession schema
         return await self.session_service.upsert_session(
             app_name="coffee-assistant",
             user_id=user_id,
@@ -201,7 +203,7 @@ class ADKOrchestrator:
                 )
             except errors.ServerError as e:
                 # Check if it's a timeout or other retryable error
-                if e.status_code == HTTP_SERVICE_UNAVAILABLE and attempt < max_retries - 1:
+                if getattr(e, "status", None) == HTTP_SERVICE_UNAVAILABLE and attempt < max_retries - 1:
                     logger.warning(
                         "ADK request timed out, retrying...",
                         attempt=attempt + 1,
@@ -216,140 +218,134 @@ class ADKOrchestrator:
             except Exception:
                 # Non-server errors should not be retried
                 raise
-        return None
+        # This point should never be reached
+        msg = "Failed to run agent after all retries"
+        raise RuntimeError(msg)
 
-    async def _process_events(self, events: AsyncGenerator, query: str, timings: dict) -> dict[str, Any]:
-        """Process ADK events and extract relevant information with timing."""
-        final_response_text = ""
-        all_text_responses = []  # Collect all text responses
-        agent_used = "ADK Multi-Agent"
-        intent_details = {}
-        search_details = {}
-        products_found = []
+    def _extract_text_from_event(self, event: Any) -> list[str]:
+        """Extract text parts from an event."""
+        if not (event.content and event.content.parts):
+            return []
+        return [part.text for part in event.content.parts if hasattr(part, "text") and part.text]
 
-        async for event in events:
-            # Capture text from any event that has content, not just final responses
-            if event.content and event.content.parts:
-                # Extract text parts from this event
-                text_parts = [part.text for part in event.content.parts if hasattr(part, "text") and part.text]
+    def _should_filter_text(self, text: str) -> bool:
+        """Check if text should be filtered out."""
+        keywords = ["calling function", "function call", "tool call", "classify_intent", "search_products"]
+        return any(keyword in text.lower() for keyword in keywords)
 
-                # Add any text found to our collection
-                if text_parts:
-                    text_content = "".join(text_parts)
-                    # Filter out tool call descriptions and internal messages
-                    if not any(
-                        keyword in text_content.lower()
-                        for keyword in [
-                            "calling function",
-                            "function call",
-                            "tool call",
-                            "classify_intent",
-                            "search_products",
-                        ]
-                    ):
-                        all_text_responses.append(text_content)
+    def _process_intent_response(self, func_response: Any, timings: dict) -> dict[str, Any]:
+        """Process intent classification response."""
+        intent_result = func_response.response or {}
+        logger.debug(
+            "Intent classification result received",
+            intent=intent_result.get("intent"),
+            confidence=intent_result.get("confidence"),
+        )
+        if "timing_ms" in intent_result:
+            timings["intent_classification_ms"] = intent_result["timing_ms"]
 
-            # Process final response for official answer
-            if event.is_final_response() and event.content and event.content.parts:
-                # Extract only text parts, ignoring function calls and other non-text content
-                text_parts = [part.text for part in event.content.parts if hasattr(part, "text") and part.text]
+        return {
+            "intent": intent_result.get("intent"),
+            "confidence": intent_result.get("confidence"),
+            "exemplar_used": intent_result.get("exemplar_phrase"),
+        }
 
-                # Set final response if we have actual text content
-                if text_parts:
-                    final_response_text = self._convert_markdown_to_html("".join(text_parts))
-                    agent_used = event.author or "ADK Multi-Agent"
-                else:
-                    # Log when final response has no text parts
-                    logger.debug(
-                        "Final response event had no text parts",
-                        parts_count=len(event.content.parts) if event.content else 0,
-                    )
-
-            function_responses = event.get_function_responses()
-            if function_responses:
-                for func_response in function_responses:
-                    if func_response.name == "classify_intent":
-                        intent_result = func_response.response or {}
-                        logger.debug("Intent classification result received",
-                                   intent=intent_result.get("intent"),
-                                   confidence=intent_result.get("confidence"))
-                        # Extract timing if available from tool response
-                        if "timing_ms" in intent_result:
-                            timings["intent_classification_ms"] = intent_result["timing_ms"]
-
-                        intent_details = {
-                            "intent": intent_result.get("intent"),
-                            "confidence": intent_result.get("confidence"),
-                            "exemplar_used": intent_result.get("exemplar_phrase"),
-                        }
-
-                    elif func_response.name == "search_products_by_vector":
-                        products_found = func_response.response or []
-
-                        # For backwards compatibility, check if we got timing data
-                        # If not, we'll use the hardcoded approach
-                        search_details = {
-                            "query": query,
-                            "sql": """SELECT p.id, p.name, p.description, p.price,
+    def _process_search_response(self, func_response: Any, query: str) -> tuple[list, dict]:
+        """Process product search response."""
+        products_found = func_response.response or []
+        search_details = {
+            "query": query,
+            "sql": """SELECT p.id, p.name, p.description, p.price,
        1 - (p.embedding <=> %s) as similarity
 FROM product p
 WHERE 1 - (p.embedding <=> %s) > %s
 ORDER BY similarity DESC
 LIMIT %s""",
-                            "params": {
-                                "similarity_threshold": 0.7,
-                                "limit": len(products_found) if isinstance(products_found, list) else 0,
-                            },
-                            "results_count": len(products_found) if isinstance(products_found, list) else 0,
-                        }
+            "params": {
+                "similarity_threshold": 0.7,
+                "limit": len(products_found) if isinstance(products_found, list) else 0,
+            },
+            "results_count": len(products_found) if isinstance(products_found, list) else 0,
+        }
+        return products_found, search_details
 
-        # Critical validation: Check if agent failed to classify intent at all
+    def _generate_fallback_response(self, intent_details: dict, products_found: list) -> str:
+        """Generate fallback response based on intent."""
+        intent = intent_details.get("intent", "")
+        if intent == "PRODUCT_SEARCH":
+            if products_found:
+                product_names = [p.get("name", "product") for p in products_found[:3] if isinstance(p, dict)]
+                return f"I found these options for you: {', '.join(product_names)}. Would you like to know more?"
+            return "Let me help you find something great! We have amazing coffees, teas, and pastries."
+        if intent == "GENERAL_CONVERSATION":
+            return "Hey there! What can I get you today?"
+        return "I'm here to help! What can I get for you today?"
+
+    def _validate_and_apply_fallbacks(
+        self, intent_details: dict, products_found: list, query: str, all_text_responses: list
+    ) -> tuple[dict, str]:
+        """Validate intent and products, apply fallbacks if needed."""
+        final_response_text = ""
+
         if not intent_details or not intent_details.get("intent"):
             logger.error("CRITICAL: Agent did NOT call classify_intent!", query=query)
-            # Provide a default intent classification as emergency fallback
             intent_details = {
                 "intent": "GENERAL_CONVERSATION",
                 "confidence": 0.0,
-                "exemplar_used": "fallback - no classification performed"
+                "exemplar_used": "fallback - no classification performed",
             }
-
-        # Critical validation: Check if agent failed to search for products
         elif intent_details.get("intent") == "PRODUCT_SEARCH" and not products_found:
-            logger.error(
-                "CRITICAL: Agent detected PRODUCT_SEARCH intent but didn't call search_products_by_vector!",
-                query=query,
-                intent=intent_details.get("intent"),
-                confidence=intent_details.get("confidence"),
-            )
+            logger.error("CRITICAL: Agent detected PRODUCT_SEARCH but didn't search!", query=query)
+            final_response_text = "I'd recommend our Hazelnut Haiku ($5.49) or Mocha Marvel ($5.99)."
 
-            # Emergency fallback - provide hardcoded recommendations when agent fails
-            logger.info("Using emergency fallback products due to agent not calling search tool")
-            final_response_text = "I'd recommend our Hazelnut Haiku ($5.49) - it's nutty and smooth. Or maybe try our Mocha Marvel ($5.99) with rich chocolate notes. We also have a great Iced Coffee ($3.49) if you want something refreshing. What sounds good to you?"
+        return intent_details, final_response_text
 
-        # Validation: If we don't have a final response, use collected text responses
-        elif not final_response_text and all_text_responses:
-            logger.warning(
-                "No final response text found, using collected responses", collected_count=len(all_text_responses)
-            )
-            # Use the last meaningful text response
-            final_response_text = self._convert_markdown_to_html(" ".join(all_text_responses))
+    async def _process_events(self, events: AsyncGenerator, query: str, timings: dict) -> dict[str, Any]:
+        """Process ADK events and extract relevant information with timing."""
+        final_response_text = ""
+        all_text_responses: list[str] = []
+        agent_used = "ADK Multi-Agent"
+        intent_details: dict[str, Any] = {}
+        search_details: dict[str, Any] = {}
+        products_found: list[Any] = []
 
-        # Final fallback if still no response
-        elif not final_response_text:
-            logger.error("No response text found in any events", query=query)
-            # Provide a contextual fallback based on intent
-            if intent_details.get("intent") == "PRODUCT_SEARCH":
-                if products_found:
-                    # Generate a basic response if we have products but no text
-                    product_names = [p.get("name", "product") for p in products_found[:3] if isinstance(p, dict)]
-                    final_response_text = f"I found these options for you: {', '.join(product_names)}. Would you like to know more about any of them?"
-                else:
-                    # No products and no proper intent detection
-                    final_response_text = "Let me help you find something great! We have amazing coffees, teas, and pastries. What type of drink are you in the mood for?"
-            elif intent_details.get("intent") == "GENERAL_CONVERSATION":
-                final_response_text = "Hey there! What can I get you today?"
+        async for event in events:
+            # Extract and filter text responses
+            text_parts = self._extract_text_from_event(event)
+            if text_parts:
+                text_content = "".join(text_parts)
+                if not self._should_filter_text(text_content):
+                    all_text_responses.append(text_content)
+
+            # Process final response
+            if event.is_final_response() and text_parts:
+                final_response_text = self._convert_markdown_to_html("".join(text_parts))
+                agent_used = event.author or "ADK Multi-Agent"
+
+            # Process function responses
+            function_responses = event.get_function_responses()
+            if function_responses:
+                for func_response in function_responses:
+                    if func_response.name == "classify_intent":
+                        intent_details = self._process_intent_response(func_response, timings)
+                    elif func_response.name == "search_products_by_vector":
+                        products_found, search_details = self._process_search_response(func_response, query)
+
+        # Validate and apply fallbacks
+        intent_details, fallback_text = self._validate_and_apply_fallbacks(
+            intent_details, products_found, query, all_text_responses
+        )
+        if fallback_text:
+            final_response_text = fallback_text
+
+        # Use collected responses if no final response
+        if not final_response_text:
+            if all_text_responses:
+                logger.warning("No final response text found, using collected responses")
+                final_response_text = self._convert_markdown_to_html(" ".join(all_text_responses))
             else:
-                final_response_text = "I'm here to help! What can I get for you today?"
+                logger.error("No response text found in any events", query=query)
+                final_response_text = self._generate_fallback_response(intent_details, products_found)
 
         return {
             "final_response_text": final_response_text,
@@ -396,7 +392,7 @@ LIMIT %s""",
                         avg_similarity = sum(similarity_scores) / len(similarity_scores)
 
                 await metrics_service.record_search_metric(
-                    session_id=session_id,
+                    session_id=UUID(session_id),
                     query_text=query,
                     intent=event_data.get("intent_details", {}).get("intent"),
                     confidence_score=event_data.get("intent_details", {}).get("confidence"),

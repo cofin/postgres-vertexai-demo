@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.schemas import Product, ProductCreate, ProductSearchResult, ProductUpdate
 from app.services.base import SQLSpecService
+
+if TYPE_CHECKING:
+    from uuid import UUID
 
 
 class ProductService(SQLSpecService):
@@ -131,4 +134,58 @@ class ProductService(SQLSpecService):
             LIMIT :limit
             """,
             limit=limit,
+        )
+
+    async def get_by_id(self, product_id: UUID) -> Product | None:
+        """Get a product by ID.
+
+        Args:
+            product_id: Product UUID
+
+        Returns:
+            Product or None if not found
+        """
+        return await self.driver.select_one_or_none(
+            """
+            SELECT
+                id, name, description, price, category, sku,
+                in_stock, metadata, created_at, updated_at
+            FROM product
+            WHERE id = :product_id
+            """,
+            product_id=product_id,
+            schema_type=Product,
+        )
+
+    async def search_by_name(self, query: str, limit: int = 10) -> list[Product]:
+        """Search products by name using text search.
+
+        Args:
+            query: Search query string
+            limit: Maximum number of results
+
+        Returns:
+            List of matching products
+        """
+        return await self.driver.select(
+            """
+            SELECT
+                id, name, description, price, category, sku,
+                in_stock, metadata, created_at, updated_at
+            FROM product
+            WHERE LOWER(name) LIKE LOWER(:query) OR LOWER(description) LIKE LOWER(:query)
+            ORDER BY
+                CASE
+                    WHEN LOWER(name) LIKE LOWER(:exact_query) THEN 0
+                    WHEN LOWER(name) LIKE LOWER(:start_query) THEN 1
+                    ELSE 2
+                END,
+                name
+            LIMIT :limit
+            """,
+            query=f"%{query}%",
+            exact_query=query,
+            start_query=f"{query}%",
+            limit=limit,
+            schema_type=Product,
         )

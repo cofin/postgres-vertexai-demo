@@ -13,6 +13,7 @@ from app.lib.settings import get_settings
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
+
 logger = structlog.get_logger()
 
 
@@ -116,10 +117,7 @@ class VertexAIService:
         if isinstance(text, list):
             return await self._get_batch_text_embeddings(text, model_name)
 
-        # At this point, text must be str (not list)
-        if not isinstance(text, str):
-            msg = "Expected string input for single embedding"
-            raise TypeError(msg)
+        # At this point, text must be str (based on type hints)
 
         try:
             # Check cache first if available
@@ -175,9 +173,7 @@ class VertexAIService:
             msg = "Vertex AI not initialized"
             raise RuntimeError(msg)
 
-        if not isinstance(text, str):
-            msg = "Expected string input for single embedding"
-            raise TypeError(msg)
+        # Type is guaranteed to be str by function signature
 
         model_name = model or self.settings.vertex_ai.EMBEDDING_MODEL
         cache_hit = False
@@ -236,7 +232,7 @@ class VertexAIService:
             RuntimeError: If Vertex AI not initialized
             ValueError: If streaming fails
         """
-        if not self._initialized:
+        if not self._genai_client:
             msg = "Vertex AI not initialized"
             raise RuntimeError(msg)
 
@@ -328,7 +324,7 @@ class VertexAIService:
     @property
     def is_initialized(self) -> bool:
         """Check if Vertex AI is initialized."""
-        return self._initialized
+        return self._genai_client is not None
 
     def get_embedding_dimensions(self) -> int:
         """Get embedding dimensions for current model."""

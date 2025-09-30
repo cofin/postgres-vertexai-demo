@@ -64,26 +64,3 @@
     </div>
 </div>
 
-<!-- Active Sessions -->
-<div class="metric-card">
-    <div class="metric-label">Active Sessions <span class="help-icon" data-tippy-content="Current number of active user sessions tracked in PostgreSQL database with session state management">?</span></div>
-    <div class="metric-value">{{ metrics.active_sessions }}</div>
-    <div class="metric-trend">
-        <span style="color: #666;">{{ metrics.unique_users }} unique users today</span>
-    </div>
-    <div class="metric-tip">
-        <span class="tip-icon" data-tippy-content="💡 Tip: Monitor session patterns to optimize PostgreSQL connection pooling. Set pool size = concurrent sessions × 1.2. Use PostgreSQL's pg_stat_statements extension for detailed query analytics.">💡</span>
-    </div>
-</div>
-
-<!-- Vector Search Accuracy -->
-<div class="metric-card {{ 'success' if metrics.avg_similarity_score > 0.8 else 'warning' if metrics.avg_similarity_score > 0.6 else '' }}">
-    <div class="metric-label">Avg Similarity Score <span class="help-icon" data-tippy-content="Average cosine similarity score (0-1) between query vectors and stored product vectors. Higher scores indicate better semantic matches">?</span></div>
-    <div class="metric-value">{{ "{:.2f}".format(metrics.avg_similarity_score) }}</div>
-    <div class="metric-trend">
-        <span style="color: #666;">{{ metrics.successful_searches }}% successful matches</span>
-    </div>
-    <div class="metric-tip">
-        <span class="tip-icon" data-tippy-content="💡 Tip: Similarity scores < 0.7 may indicate: 1) Embedding model mismatch between queries and stored vectors, 2) Need for data augmentation, or 3) Query refinement. Consider fine-tuning your embedding model.">💡</span>
-    </div>
-</div>
