@@ -61,7 +61,7 @@ class VertexAISettings:
     """Vertex AI embedding model."""
     EMBEDDING_DIMENSIONS: int = field(default_factory=get_env("VERTEX_AI_EMBEDDING_DIMENSIONS", 768))
     """Embedding vector dimensions."""
-    CHAT_MODEL: str = field(default_factory=get_env("VERTEX_AI_CHAT_MODEL", "gemini-2.5-flash"))
+    CHAT_MODEL: str = field(default_factory=get_env("VERTEX_AI_CHAT_MODEL", "gemini-2.5-flash-lite"))
     """Vertex AI chat model."""
 
     # Context Caching Settings

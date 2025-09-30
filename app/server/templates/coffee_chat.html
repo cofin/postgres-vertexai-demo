@@ -864,11 +864,11 @@
                             <div class="metric-label">Total Searches</div>
                         </div>
                         <div class="metric-item">
-                            <div class="metric-value">${Math.round(data.avg_search_time_ms || 0)}ms</div>
+                            <div class="metric-value">${(data.avg_search_time_ms || 0).toFixed(2)}ms</div>
                             <div class="metric-label">Avg Response Time</div>
                         </div>
                         <div class="metric-item">
-                            <div class="metric-value">${Math.round(data.avg_vector_search_time_ms || 0)}ms</div>
+                            <div class="metric-value">${(data.avg_vector_search_time_ms || 0).toFixed(2)}ms</div>
                             <div class="metric-label">Vector Search Time</div>
                         </div>
                         <div class="metric-item">
@@ -892,6 +892,160 @@
 
         // Refresh metrics every 30 seconds
         setInterval(loadMetrics, 30000);
+
+        // Click outside to close popup
+        function handleClickOutside(event) {
+            if (window.activeTooltip && !window.activeTooltip.contains(event.target) &&
+                !event.target.classList.contains('help-trigger')) {
+                hideIntentSearchTooltip();
+                document.removeEventListener('click', handleClickOutside);
+            }
+        }
+
+        // Center popup in viewport
+        function centerTooltip(tooltip) {
+            const rect = tooltip.getBoundingClientRect();
+            const left = (window.innerWidth - rect.width) / 2;
+            const top = (window.innerHeight - rect.height) / 2;
+
+            tooltip.style.left = `${Math.max(10, left)}px`;
+            tooltip.style.top = `${Math.max(10, top)}px`;
+        }
+
+        // Show intent classification popup
+        function showIntentPopup(triggerElement) {
+            hideIntentSearchTooltip();
+
+            const intent = triggerElement.getAttribute('data-intent');
+            const confidence = triggerElement.getAttribute('data-confidence');
+            const sql = triggerElement.getAttribute('data-sql');
+
+            const tooltip = document.createElement("div");
+            tooltip.className = "help-tooltip show";
+            // Add inline styles for proper constraints
+            tooltip.style.cssText = `
+                max-width: 600px;
+                max-height: 80vh;
+                overflow: visible;
+            `;
+            tooltip.innerHTML = `
+                <div class="help-tooltip-content">
+                    <div class="help-tooltip-header">
+                        <span class="help-tooltip-title">🎯 Intent Detection</span>
+                        <button class="help-tooltip-close" onclick="hideIntentSearchTooltip()">×</button>
+                    </div>
+                    <div class="help-tooltip-body" style="max-height: 400px; overflow-y: auto;">
+                        <div class="help-tooltip-section">
+                            <div class="help-tooltip-section-title">Detection Results</div>
+                            <div class="help-tooltip-metric">
+                                <span class="help-tooltip-metric-label">Intent</span>
+                                <span class="help-tooltip-metric-value">${intent}</span>
+                            </div>
+                            <div class="help-tooltip-metric">
+                                <span class="help-tooltip-metric-label">Confidence</span>
+                                <span class="help-tooltip-metric-value">${(parseFloat(confidence) * 100).toFixed(1)}%</span>
+                            </div>
+                        </div>
+                        ${sql ? `
+                        <div class="help-tooltip-section">
+                            <div class="help-tooltip-section-title">PostgreSQL Query</div>
+                            <pre style="font-size: 0.75rem; overflow-x: auto; max-width: 550px; white-space: pre-wrap; word-break: break-all;"><code>${sql}</code></pre>
+                        </div>` : ''}
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(tooltip);
+
+            // Store reference for closing
+            window.activeTooltip = tooltip;
+
+            // Position the tooltip centered in viewport
+            tooltip.style.position = 'fixed';
+            tooltip.style.zIndex = '10000';
+
+            // Center the tooltip
+            centerTooltip(tooltip);
+
+            // Add click outside to close
+            setTimeout(() => {
+                document.addEventListener('click', handleClickOutside);
+            }, 100);
+        }
+
+        // Show vector search popup
+        function showSearchPopup(triggerElement) {
+            hideIntentSearchTooltip();
+
+            const results = triggerElement.getAttribute('data-results');
+            const sql = triggerElement.getAttribute('data-sql');
+            const params = JSON.parse(triggerElement.getAttribute('data-params') || '{}');
+
+            const tooltip = document.createElement("div");
+            tooltip.className = "help-tooltip show";
+            // Add inline styles for proper constraints
+            tooltip.style.cssText = `
+                max-width: 600px;
+                max-height: 80vh;
+                overflow: visible;
+            `;
+            tooltip.innerHTML = `
+                <div class="help-tooltip-content">
+                    <div class="help-tooltip-header">
+                        <span class="help-tooltip-title">🔍 Product Vector Search</span>
+                        <button class="help-tooltip-close" onclick="hideIntentSearchTooltip()">×</button>
+                    </div>
+                    <div class="help-tooltip-body" style="max-height: 400px; overflow-y: auto;">
+                        <div class="help-tooltip-section">
+                            <div class="help-tooltip-section-title">Search Results</div>
+                            <div class="help-tooltip-metric">
+                                <span class="help-tooltip-metric-label">Products Found</span>
+                                <span class="help-tooltip-metric-value">${results}</span>
+                            </div>
+                            ${params.similarity_threshold ? `
+                            <div class="help-tooltip-metric">
+                                <span class="help-tooltip-metric-label">Similarity Threshold</span>
+                                <span class="help-tooltip-metric-value">${params.similarity_threshold}</span>
+                            </div>` : ''}
+                        </div>
+                        ${sql ? `
+                        <div class="help-tooltip-section">
+                            <div class="help-tooltip-section-title">PostgreSQL pgvector Query</div>
+                            <pre style="font-size: 0.75rem; overflow-x: auto; max-width: 550px; white-space: pre-wrap; word-break: break-all;"><code>${sql}</code></pre>
+                        </div>` : ''}
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(tooltip);
+
+            // Store reference for closing
+            window.activeTooltip = tooltip;
+
+            // Position the tooltip centered in viewport
+            tooltip.style.position = 'fixed';
+            tooltip.style.zIndex = '10000';
+
+            // Center the tooltip
+            centerTooltip(tooltip);
+
+            // Add click outside to close
+            setTimeout(() => {
+                document.addEventListener('click', handleClickOutside);
+            }, 100);
+        }
+
+        // Enhanced hideTooltip function - renamed to avoid conflict
+        function hideIntentSearchTooltip() {
+            if (window.activeTooltip) {
+                window.activeTooltip.remove();
+                window.activeTooltip = null;
+                document.removeEventListener('click', handleClickOutside);
+            }
+        }
+
+        // Global hideTooltip for backward compatibility
+        window.hideTooltip = hideIntentSearchTooltip;
     </script>
 </body>
 

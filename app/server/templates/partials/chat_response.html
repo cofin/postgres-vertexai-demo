@@ -1,10 +1,32 @@
 <!-- AI response only (user message added client-side) -->
 <div class="message assistant" data-message-id="{{ query_id }}"
      data-from-cache="{{ 'true' if from_cache else 'false' }}"
-     {% if debug_info and debug_info.timings %}data-timings='{{ debug_info.timings | tojson }}'{% endif %}>
+     {% if debug_info and debug_info.timings %}data-timings='{{ debug_info.timings | tojson }}'{% endif %}
+     {% if intent_detected %}data-intent="{{ intent_detected }}" data-intent-confidence="{{ intent_confidence }}"{% endif %}
+     {% if search_results_count %}data-search-count="{{ search_results_count }}"{% endif %}>
     <strong>AI Coffee Expert:</strong> <span class="ai-response-content">{{ ai_response | safe }}</span>
 
     <div class="help-triggers" style="display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle;">
+        {% if intent_detected and intent_detected != 'GENERAL' %}
+        <button type="button" class="help-trigger intent-indicator"
+                onclick="showIntentPopup(this)"
+                title="Intent: {{ intent_detected }}"
+                data-intent="{{ intent_detected }}"
+                data-confidence="{{ intent_confidence }}"
+                data-sql="{{ intent_sql }}">
+            🎯
+        </button>
+        {% endif %}
+        {% if search_results_count > 0 %}
+        <button type="button" class="help-trigger search-indicator"
+                onclick="showSearchPopup(this)"
+                title="Vector Search: {{ search_results_count }} results"
+                data-results="{{ search_results_count }}"
+                data-sql="{{ search_sql }}"
+                data-params='{{ search_params | tojson }}'>
+            🔍
+        </button>
+        {% endif %}
         {% if from_cache %}
         <button type="button" class="help-trigger cache-hit"
                 onclick="showTooltip('response-cache-hit', this)"

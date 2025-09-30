@@ -48,7 +48,7 @@ class ADKOrchestrator:
             app_name="coffee-assistant",
             session_service=self.session_service,
         )
-        logger.debug("ADK Orchestrator initialized with Multi-Agent Router Pattern")
+        logger.debug("ADK Orchestrator initialized with an Agent Pattern")
 
     def _convert_markdown_to_html(self, text: str) -> str:
         """Convert simple markdown formatting to HTML."""
@@ -99,7 +99,7 @@ class ADKOrchestrator:
             # Time session management
             session_start = time.time()
             session = await self._ensure_session(user_id, session_id)
-            timings["session_ms"] = int((time.time() - session_start) * 1000)
+            timings["session_ms"] = round((time.time() - session_start) * 1000, 2)
 
             # Initialize cache variables
             from_cache = False
@@ -135,7 +135,7 @@ class ADKOrchestrator:
                             }
                         else:
                             raise
-                    timings["agent_processing_ms"] = int((time.time() - agent_start) * 1000)
+                    timings["agent_processing_ms"] = round((time.time() - agent_start) * 1000, 2)
 
                     # Cache the response
                     await cache_service.set(cache_key, event_data, ttl=5)  # 5-minute TTL
@@ -156,18 +156,16 @@ class ADKOrchestrator:
                 event_data["search_details"].update({
                     "sql": tool_timings["vector_search"]["sql_query"],
                     "params": tool_timings["vector_search"]["params"],
-                    "results_count": tool_timings["vector_search"]["results_count"]
+                    "results_count": tool_timings["vector_search"]["results_count"],
                 })
 
-            total_time_ms = int((time.time() - start_time) * 1000)
+            total_time_ms = round((time.time() - start_time) * 1000, 2)
             timings["total_ms"] = total_time_ms
 
             debug_info = self._build_debug_info(event_data, timings, from_cache)
 
             # Record metrics with all timing components
-            await self._record_metrics(
-                session.id, query, event_data, timings
-            )
+            await self._record_metrics(session.id, query, event_data, timings)
 
             return self._build_success_response(
                 event_data, session.id, total_time_ms, debug_info, user_id, persona, from_cache
@@ -251,7 +249,7 @@ class ADKOrchestrator:
                         intent_details = {
                             "intent": intent_result.get("intent"),
                             "confidence": intent_result.get("confidence"),
-                            "exemplar_used": intent_result.get("exemplar_phrase")
+                            "exemplar_used": intent_result.get("exemplar_phrase"),
                         }
 
                     elif func_response.name == "search_products_by_vector":
@@ -269,7 +267,7 @@ ORDER BY similarity DESC
 LIMIT %s""",
                             "params": {
                                 "similarity_threshold": 0.7,
-                                "limit": len(products_found) if isinstance(products_found, list) else 0
+                                "limit": len(products_found) if isinstance(products_found, list) else 0,
                             },
                             "results_count": len(products_found) if isinstance(products_found, list) else 0,
                         }
@@ -309,7 +307,11 @@ LIMIT %s""",
                 products = event_data.get("products_found", [])
                 avg_similarity = 0.0
                 if products:
-                    similarity_scores = [product["similarity_score"] for product in products if isinstance(product, dict) and "similarity_score" in product]
+                    similarity_scores = [
+                        product["similarity_score"]
+                        for product in products
+                        if isinstance(product, dict) and "similarity_score" in product
+                    ]
 
                     if similarity_scores:
                         avg_similarity = sum(similarity_scores) / len(similarity_scores)
@@ -320,9 +322,13 @@ LIMIT %s""",
                     intent=event_data.get("intent_details", {}).get("intent"),
                     confidence_score=event_data.get("intent_details", {}).get("confidence"),
                     vector_search_results=len(event_data.get("products_found", [])),
-                    total_response_time_ms=timings.get("total_ms", 0),
-                    vector_search_time_ms=timings.get("vector_search_ms"),
-                    llm_response_time_ms=timings.get("agent_processing_ms"),
+                    total_response_time_ms=int(timings.get("total_ms", 0)),  # Store as int in DB
+                    vector_search_time_ms=int(timings.get("vector_search_ms", 0))
+                    if timings.get("vector_search_ms")
+                    else None,
+                    llm_response_time_ms=int(timings.get("agent_processing_ms", 0))
+                    if timings.get("agent_processing_ms")
+                    else None,
                     embedding_cache_hit=timings.get("embedding_cache_hit", False),
                     intent_exemplar_used=event_data.get("intent_details", {}).get("exemplar_used"),
                     avg_similarity_score=avg_similarity,
@@ -334,7 +340,7 @@ LIMIT %s""",
         self,
         event_data: dict[str, Any],
         session_id: str,
-        total_time_ms: int,
+        total_time_ms: float,
         debug_info: dict[str, Any],
         user_id: str,
         persona: str,
@@ -370,7 +376,7 @@ LIMIT %s""",
             "products": [],
             "agent_used": "ErrorFallback",
             "session_id": session_id,
-            "response_time_ms": int((time.time() - start_time) * 1000),
+            "response_time_ms": round((time.time() - start_time) * 1000, 2),
             "error": str(error),
             "metadata": {"user_id": user_id, "persona": persona, "error_occurred": True},
         }

@@ -223,10 +223,11 @@ class CoffeeChatController(Controller):
             return {
                 "total_searches": int(metrics.get("total_searches", 0)),
                 "avg_search_time_ms": float(metrics.get("avg_search_time_ms", 0)),
+                "avg_vector_search_time_ms": float(metrics.get("avg_vector_search_time_ms", 0)),
                 "avg_similarity_score": float(metrics.get("avg_similarity_score", 0)),
             }
         except (ValueError, TypeError):
-            return {"total_searches": 0, "avg_search_time_ms": 0, "avg_similarity_score": 0}
+            return {"total_searches": 0, "avg_search_time_ms": 0, "avg_vector_search_time_ms": 0, "avg_similarity_score": 0}
 
     @get(path="/api/metrics/summary", name="metrics.summary")
     async def get_metrics_summary(self, metrics_service: MetricsService) -> HTMXTemplate:

@@ -268,7 +268,7 @@ function updatePerformanceTooltipContent(tooltipElement, timings) {
                 <div class="perf-bar-track">
                     <div class="perf-bar-fill" style="width: ${(comp.value / maxTime) * 100}%; background: ${comp.color}"></div>
                 </div>
-                <div class="perf-bar-value">${comp.value}ms</div>
+                <div class="perf-bar-value">${comp.value.toFixed(2)}ms</div>
             </div>
         `).join("");
 
@@ -277,7 +277,7 @@ function updatePerformanceTooltipContent(tooltipElement, timings) {
     // Update total time if there's a separate total element
     const totalValueElem = tooltipElement.querySelector('.total-time-value');
     if (totalValueElem) {
-        totalValueElem.textContent = `${totalTime}ms`;
+        totalValueElem.textContent = `${totalTime.toFixed(2)}ms`;
     }
 }
 

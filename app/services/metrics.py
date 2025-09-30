@@ -253,7 +253,7 @@ class MetricsService(SQLSpecService):
         Returns:
             Dictionary with performance breakdown data
         """
-        stats = await self.get_performance_metrics(hours=1)
+        stats = await self.get_performance_metrics(hours_back=1)
 
         # Get the averages
         avg_total = stats["avg_response_time_ms"]
