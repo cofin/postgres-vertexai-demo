@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from sqlspec import sql
-
 from app.schemas import Store
 from app.services.base import SQLSpecService
 
@@ -18,7 +16,7 @@ class StoreService(SQLSpecService):
             List of all stores
         """
         return await self.driver.select(
-            sql.select("*").from_("store").order_by("name"),
+            "SELECT * FROM store ORDER BY name",
             schema_type=Store,
         )
 
@@ -32,7 +30,8 @@ class StoreService(SQLSpecService):
             List of stores in the specified city
         """
         return await self.driver.select(
-            sql.select("*").from_("store").where_eq("city", city).order_by("name"),
+            "SELECT * FROM store WHERE city = :city ORDER BY name",
+            city=city,
             schema_type=Store,
         )
 
@@ -46,7 +45,8 @@ class StoreService(SQLSpecService):
             List of stores in the specified state
         """
         return await self.driver.select(
-            sql.select("*").from_("store").where_eq("state", state).order_by("city", "name"),
+            "SELECT * FROM store WHERE state = :state ORDER BY city, name",
+            state=state,
             schema_type=Store,
         )
 
@@ -60,7 +60,8 @@ class StoreService(SQLSpecService):
             Store or None if not found
         """
         return await self.driver.select_one_or_none(
-            sql.select("*").from_("store").where_eq("id", store_id),
+            "SELECT * FROM store WHERE id = :store_id",
+            store_id=store_id,
             schema_type=Store,
         )
 
@@ -74,7 +75,8 @@ class StoreService(SQLSpecService):
             Dictionary of store hours or empty dict if not found
         """
         result = await self.driver.select_one_or_none(
-            sql.select("hours").from_("store").where_eq("id", store_id),
+            "SELECT hours FROM store WHERE id = :store_id",
+            store_id=store_id,
         )
         return result.get("hours", {}) if result else {}
 
@@ -88,6 +90,7 @@ class StoreService(SQLSpecService):
             List of stores in the specified ZIP code
         """
         return await self.driver.select(
-            sql.select("*").from_("store").where_eq("zip", zip_code).order_by("name"),
+            "SELECT * FROM store WHERE zip = :zip_code ORDER BY name",
+            zip_code=zip_code,
             schema_type=Store,
         )

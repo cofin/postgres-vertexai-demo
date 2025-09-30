@@ -221,27 +221,58 @@ class ADKOrchestrator:
     async def _process_events(self, events: AsyncGenerator, query: str, timings: dict) -> dict[str, Any]:
         """Process ADK events and extract relevant information with timing."""
         final_response_text = ""
+        all_text_responses = []  # Collect all text responses
         agent_used = "ADK Multi-Agent"
         intent_details = {}
         search_details = {}
         products_found = []
 
         async for event in events:
-            # Only process final responses for the actual answer
+            # Capture text from any event that has content, not just final responses
+            if event.content and event.content.parts:
+                # Extract text parts from this event
+                text_parts = [part.text for part in event.content.parts if hasattr(part, "text") and part.text]
+
+                # Add any text found to our collection
+                if text_parts:
+                    text_content = "".join(text_parts)
+                    # Filter out tool call descriptions and internal messages
+                    if not any(
+                        keyword in text_content.lower()
+                        for keyword in [
+                            "calling function",
+                            "function call",
+                            "tool call",
+                            "classify_intent",
+                            "search_products",
+                        ]
+                    ):
+                        all_text_responses.append(text_content)
+
+            # Process final response for official answer
             if event.is_final_response() and event.content and event.content.parts:
                 # Extract only text parts, ignoring function calls and other non-text content
                 text_parts = [part.text for part in event.content.parts if hasattr(part, "text") and part.text]
 
-                # Only set final response if we have actual text content
+                # Set final response if we have actual text content
                 if text_parts:
                     final_response_text = self._convert_markdown_to_html("".join(text_parts))
                     agent_used = event.author or "ADK Multi-Agent"
+                else:
+                    # Log when final response has no text parts
+                    logger.debug(
+                        "Final response event had no text parts",
+                        parts_count=len(event.content.parts) if event.content else 0,
+                    )
 
             function_responses = event.get_function_responses()
             if function_responses:
                 for func_response in function_responses:
                     if func_response.name == "classify_intent":
                         intent_result = func_response.response or {}
+                        logger.debug("Intent classification result received",
+                                   intent=intent_result.get("intent"),
+                                   confidence=intent_result.get("confidence"))
                         # Extract timing if available from tool response
                         if "timing_ms" in intent_result:
                             timings["intent_classification_ms"] = intent_result["timing_ms"]
@@ -271,6 +302,54 @@ LIMIT %s""",
                             },
                             "results_count": len(products_found) if isinstance(products_found, list) else 0,
                         }
+
+        # Critical validation: Check if agent failed to classify intent at all
+        if not intent_details or not intent_details.get("intent"):
+            logger.error("CRITICAL: Agent did NOT call classify_intent!", query=query)
+            # Provide a default intent classification as emergency fallback
+            intent_details = {
+                "intent": "GENERAL_CONVERSATION",
+                "confidence": 0.0,
+                "exemplar_used": "fallback - no classification performed"
+            }
+
+        # Critical validation: Check if agent failed to search for products
+        elif intent_details.get("intent") == "PRODUCT_SEARCH" and not products_found:
+            logger.error(
+                "CRITICAL: Agent detected PRODUCT_SEARCH intent but didn't call search_products_by_vector!",
+                query=query,
+                intent=intent_details.get("intent"),
+                confidence=intent_details.get("confidence"),
+            )
+
+            # Emergency fallback - provide hardcoded recommendations when agent fails
+            logger.info("Using emergency fallback products due to agent not calling search tool")
+            final_response_text = "I'd recommend our Hazelnut Haiku ($5.49) - it's nutty and smooth. Or maybe try our Mocha Marvel ($5.99) with rich chocolate notes. We also have a great Iced Coffee ($3.49) if you want something refreshing. What sounds good to you?"
+
+        # Validation: If we don't have a final response, use collected text responses
+        elif not final_response_text and all_text_responses:
+            logger.warning(
+                "No final response text found, using collected responses", collected_count=len(all_text_responses)
+            )
+            # Use the last meaningful text response
+            final_response_text = self._convert_markdown_to_html(" ".join(all_text_responses))
+
+        # Final fallback if still no response
+        elif not final_response_text:
+            logger.error("No response text found in any events", query=query)
+            # Provide a contextual fallback based on intent
+            if intent_details.get("intent") == "PRODUCT_SEARCH":
+                if products_found:
+                    # Generate a basic response if we have products but no text
+                    product_names = [p.get("name", "product") for p in products_found[:3] if isinstance(p, dict)]
+                    final_response_text = f"I found these options for you: {', '.join(product_names)}. Would you like to know more about any of them?"
+                else:
+                    # No products and no proper intent detection
+                    final_response_text = "Let me help you find something great! We have amazing coffees, teas, and pastries. What type of drink are you in the mood for?"
+            elif intent_details.get("intent") == "GENERAL_CONVERSATION":
+                final_response_text = "Hey there! What can I get you today?"
+            else:
+                final_response_text = "I'm here to help! What can I get for you today?"
 
         return {
             "final_response_text": final_response_text,

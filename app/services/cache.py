@@ -5,8 +5,6 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from sqlspec import sql
-
 from app.schemas import EmbeddingCache, ResponseCache
 from app.services.base import SQLSpecService
 
@@ -24,15 +22,21 @@ class CacheService(SQLSpecService):
             Cached response or None if not found or expired
         """
         return await self.driver.select_one_or_none(
-            sql.select("id", "cache_key", "response_data", "expires_at", "created_at")
-            .from_("response_cache")
-            .where_eq("cache_key", cache_key)
-            .where("(expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)"),
+            """
+            SELECT id, cache_key, response_data, expires_at, created_at
+            FROM response_cache
+            WHERE cache_key = :cache_key
+              AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+            """,
+            cache_key=cache_key,
             schema_type=ResponseCache,
         )
 
     async def set_cached_response(
-        self, cache_key: str, response_data: dict[str, Any], ttl_minutes: int = 5,
+        self,
+        cache_key: str,
+        response_data: dict[str, Any],
+        ttl_minutes: int = 5,
     ) -> ResponseCache:
         """Cache a response with TTL.
 
@@ -44,23 +48,18 @@ class CacheService(SQLSpecService):
         Returns:
             Created cache entry
         """
-        expires_at = sql.raw(f"NOW() + INTERVAL '{ttl_minutes} minutes'")
-
         return await self.driver.select_one(
-            sql.insert("response_cache")
-            .columns("cache_key", "response_data", "expires_at")
-            .values(
-                cache_key=cache_key,
-                response_data=response_data,
-                expires_at=expires_at,
-            )
-            .on_conflict("cache_key")
-            .do_update(
-                response_data=sql.raw("EXCLUDED.response_data"),
-                expires_at=sql.raw("EXCLUDED.expires_at"),
-                created_at=sql.raw("CURRENT_TIMESTAMP"),
-            )
-            .returning("id", "cache_key", "response_data", "expires_at", "created_at"),
+            f"""
+            INSERT INTO response_cache (cache_key, response_data, expires_at)
+            VALUES (:cache_key, :response_data, NOW() + INTERVAL '{ttl_minutes} minutes')
+            ON CONFLICT (cache_key) DO UPDATE SET
+                response_data = EXCLUDED.response_data,
+                expires_at = EXCLUDED.expires_at,
+                created_at = CURRENT_TIMESTAMP
+            RETURNING id, cache_key, response_data, expires_at, created_at
+            """,
+            cache_key=cache_key,
+            response_data=response_data,
             schema_type=ResponseCache,
         )
 
@@ -77,9 +76,12 @@ class CacheService(SQLSpecService):
             ValueError: If cache entry not found
         """
         return await self.get_or_404(
-            sql.select("id", "cache_key", "response_data", "expires_at", "created_at")
-            .from_("response_cache")
-            .where_eq("id", cache_id),
+            """
+            SELECT id, cache_key, response_data, expires_at, created_at
+            FROM response_cache
+            WHERE id = :cache_id
+            """,
+            cache_id=cache_id,
             schema_type=ResponseCache,
             error_message=f"Cache entry {cache_id} not found",
         )
@@ -97,19 +99,27 @@ class CacheService(SQLSpecService):
         text_hash = hashlib.sha256(text.encode()).hexdigest()
 
         result = await self.driver.select_one_or_none(
-            sql.select("id", "text_hash", "embedding", "model", "hit_count", "last_accessed", "created_at")
-            .from_("embedding_cache")
-            .where_eq("text_hash", text_hash)
-            .where_eq("model", model_name),
+            """
+            SELECT id, text_hash, embedding, model, hit_count, last_accessed, created_at
+            FROM embedding_cache
+            WHERE text_hash = :text_hash
+              AND model = :model_name
+            """,
+            text_hash=text_hash,
+            model_name=model_name,
             schema_type=EmbeddingCache,
         )
 
         if result:
             # Update hit count and last accessed
             await self.driver.execute(
-                sql.update("embedding_cache")
-                .set(hit_count=sql.raw("hit_count + 1"), last_accessed=sql.raw("CURRENT_TIMESTAMP"))
-                .where_eq("id", result.id),
+                """
+                UPDATE embedding_cache
+                SET hit_count = hit_count + 1,
+                    last_accessed = CURRENT_TIMESTAMP
+                WHERE id = :result_id
+                """,
+                result_id=result.id,
             )
 
         return result
@@ -134,30 +144,18 @@ class CacheService(SQLSpecService):
 
         # Get result WITHOUT the embedding field to avoid vector type serialization issues
         result = await self.driver.select_one(
-            sql.insert("embedding_cache")
-            .columns("text_hash", "embedding", "model", "hit_count", "last_accessed")
-            .values(
-                text_hash=text_hash,
-                embedding=embedding,
-                model=model_name,
-                hit_count=1,
-                last_accessed=sql.raw("CURRENT_TIMESTAMP"),
-            )
-            .on_conflict("text_hash", "model")
-            .do_update(
-                embedding=sql.raw("EXCLUDED.embedding"),
-                hit_count=sql.raw("embedding_cache.hit_count + 1"),
-                last_accessed=sql.raw("CURRENT_TIMESTAMP"),
-            )
-            .returning(
-                "id",
-                "text_hash",
-                "model",
-                "hit_count",
-                "last_accessed",
-                "created_at",
-                # Note: "embedding" field removed from RETURNING to avoid vector deserialization issue
-            ),
+            """
+            INSERT INTO embedding_cache (text_hash, embedding, model, hit_count, last_accessed)
+            VALUES (:text_hash, :embedding, :model_name, 1, CURRENT_TIMESTAMP)
+            ON CONFLICT (text_hash, model) DO UPDATE SET
+                embedding = EXCLUDED.embedding,
+                hit_count = embedding_cache.hit_count + 1,
+                last_accessed = CURRENT_TIMESTAMP
+            RETURNING id, text_hash, model, hit_count, last_accessed, created_at
+            """,
+            text_hash=text_hash,
+            embedding=embedding,
+            model_name=model_name,
         )
 
         # Manually construct the complete object with the embedding we already have

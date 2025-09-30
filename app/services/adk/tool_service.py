@@ -118,18 +118,11 @@ LIMIT %s"""
 
         return {
             "products": product_list,
-            "timing": {
-                "total_ms": total_ms,
-                "embedding_ms": embedding_ms,
-                "search_ms": search_ms
-            },
+            "timing": {"total_ms": total_ms, "embedding_ms": embedding_ms, "search_ms": search_ms},
             "embedding_cache_hit": embedding_cache_hit,
             "sql_query": sql_query,
-            "params": {
-                "similarity_threshold": similarity_threshold,
-                "limit": limit
-            },
-            "results_count": len(product_list)
+            "params": {"similarity_threshold": similarity_threshold, "limit": limit},
+            "results_count": len(product_list),
         }
 
     async def get_product_details(self, product_id: str) -> dict[str, Any]:
@@ -182,31 +175,17 @@ LIMIT %s"""
             total_ms = (time.time() - start_time) * 1000
 
             # Include actual PostgreSQL query for intent classification
-            sql_query = """WITH
-    query_embedding AS (
-        SELECT
-            intent,
-            phrase,
+            sql_query = """WITH query_embedding AS (
+        SELECT intent, phrase,
             1 - (embedding <=> $1) AS similarity,
             confidence_threshold,
             usage_count
-        FROM
-            intent_exemplar
-    )
-SELECT
-    intent,
-    phrase,
-    similarity,
-    confidence_threshold,
-    usage_count
-FROM
-    query_embedding
-WHERE
-    similarity > $2
-ORDER BY
-    similarity DESC
-LIMIT
-    $3"""
+        FROM intent_exemplar)
+SELECT intent, phrase, similarity, confidence_threshold, usage_count
+FROM query_embedding
+WHERE similarity > $2
+ORDER BY similarity DESC
+LIMIT $3"""
 
             return {
                 "intent": result.intent,
@@ -215,7 +194,7 @@ LIMIT
                 "embedding_cache_hit": result.embedding_cache_hit,
                 "fallback_used": result.fallback_used,
                 "timing_ms": total_ms,
-                "sql_query": sql_query
+                "sql_query": sql_query,
             }
         except (ValueError, TypeError, AttributeError) as e:
             total_ms = (time.time() - start_time) * 1000
@@ -227,7 +206,7 @@ LIMIT
                 "fallback_used": True,
                 "error": str(e),
                 "timing_ms": total_ms,
-                "sql_query": "-- Error occurred during intent classification"
+                "sql_query": "-- Error occurred during intent classification",
             }
 
     async def get_conversation_history(
@@ -292,7 +271,11 @@ LIMIT
             # Calculate average similarity score from vector results
             avg_similarity = 0.0
             if vector_results:
-                similarity_scores = [result["similarity_score"] for result in vector_results if isinstance(result, dict) and "similarity_score" in result]
+                similarity_scores = [
+                    result["similarity_score"]
+                    for result in vector_results
+                    if isinstance(result, dict) and "similarity_score" in result
+                ]
 
                 if similarity_scores:
                     avg_similarity = sum(similarity_scores) / len(similarity_scores)

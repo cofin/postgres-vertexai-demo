@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlspec import sql
-
 from app.schemas import (
     ChatSession,
 )
@@ -32,9 +30,12 @@ class ChatService(SQLSpecService):
             ValueError: If session not found
         """
         return await self.get_or_404(
-            sql.select("id", "user_id", "session_data", "last_activity", "expires_at", "created_at", "updated_at")
-            .from_("chat_session")
-            .where_eq("id", session_id),
+            """
+            SELECT id, user_id, session_data, last_activity, expires_at, created_at, updated_at
+            FROM chat_session
+            WHERE id = :session_id
+            """,
+            session_id=session_id,
             schema_type=ChatSession,
             error_message=f"Session {session_id} not found",
         )

@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlspec import sql
-
 from app.schemas import SearchMetrics
 from app.services.base import SQLSpecService
 
@@ -50,48 +48,35 @@ class MetricsService(SQLSpecService):
             Created search metric
         """
         return await self.driver.select_one(
-            sql.insert("search_metric")
-            .columns(
-                "session_id",
-                "query_text",
-                "intent",
-                "confidence_score",
-                "vector_search_results",
-                "vector_search_time_ms",
-                "llm_response_time_ms",
-                "total_response_time_ms",
-                "embedding_cache_hit",
-                "intent_exemplar_used",
-                "avg_similarity_score",
+            """
+            INSERT INTO search_metric (
+                session_id, query_text, intent, confidence_score,
+                vector_search_results, vector_search_time_ms, llm_response_time_ms,
+                total_response_time_ms, embedding_cache_hit, intent_exemplar_used,
+                avg_similarity_score
+            ) VALUES (
+                :session_id, :query_text, :intent, :confidence_score,
+                :vector_search_results, :vector_search_time_ms, :llm_response_time_ms,
+                :total_response_time_ms, :embedding_cache_hit, :intent_exemplar_used,
+                :avg_similarity_score
             )
-            .values(
-                session_id=session_id,
-                query_text=query_text,
-                intent=intent,
-                confidence_score=confidence_score,
-                vector_search_results=vector_search_results,
-                vector_search_time_ms=vector_search_time_ms,
-                llm_response_time_ms=llm_response_time_ms,
-                total_response_time_ms=total_response_time_ms,
-                embedding_cache_hit=embedding_cache_hit,
-                intent_exemplar_used=intent_exemplar_used,
-                avg_similarity_score=avg_similarity_score,
-            )
-            .returning(
-                "id",
-                "session_id",
-                "query_text",
-                "intent",
-                "confidence_score",
-                "vector_search_results",
-                "vector_search_time_ms",
-                "llm_response_time_ms",
-                "total_response_time_ms",
-                "embedding_cache_hit",
-                "intent_exemplar_used",
-                "avg_similarity_score",
-                "created_at",
-            ),
+            RETURNING
+                id, session_id, query_text, intent, confidence_score,
+                vector_search_results, vector_search_time_ms, llm_response_time_ms,
+                total_response_time_ms, embedding_cache_hit, intent_exemplar_used,
+                avg_similarity_score, created_at
+            """,
+            session_id=session_id,
+            query_text=query_text,
+            intent=intent,
+            confidence_score=confidence_score,
+            vector_search_results=vector_search_results,
+            vector_search_time_ms=vector_search_time_ms,
+            llm_response_time_ms=llm_response_time_ms,
+            total_response_time_ms=total_response_time_ms,
+            embedding_cache_hit=embedding_cache_hit,
+            intent_exemplar_used=intent_exemplar_used,
+            avg_similarity_score=avg_similarity_score,
             schema_type=SearchMetrics,
         )
 
@@ -126,10 +111,8 @@ class MetricsService(SQLSpecService):
               ) as p99_response_time_ms,
               min(total_response_time_ms) as min_response_time_ms,
               max(total_response_time_ms) as max_response_time_ms
-            FROM
-              search_metric
-            WHERE
-              created_at >= current_timestamp - :hours_back * interval '1 hour'
+            FROM search_metric
+            WHERE created_at >= current_timestamp - :hours_back * interval '1 hour'
             """,
             hours_back=hours_back,
         )

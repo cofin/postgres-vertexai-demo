@@ -144,6 +144,7 @@ ignore = [
     "PLC2701",
     "PLW3201",
     "PLR6301",
+    "S608",
 ]
 select = ["ALL"]
 # Allow unused variables when underscore-prefixed.

@@ -196,22 +196,14 @@ function populateTooltip(tooltipElement, triggerElement, triggerId) {
 
         const queryElem = tooltipElement.querySelector('.sql-query-placeholder');
         if (queryElem) {
-            queryElem.textContent = sql || `WITH
-    query_embedding AS (
-        SELECT
-            intent,
-            phrase,
+            queryElem.textContent = sql || `WITH query_embedding AS (
+        SELECT intent, phrase,
             1 - (embedding <=> $1) AS similarity,
             confidence_threshold,
             usage_count
         FROM intent_exemplar
     )
-SELECT
-    intent,
-    phrase,
-    similarity,
-    confidence_threshold,
-    usage_count
+SELECT intent, phrase, similarity, confidence_threshold, usage_count
 FROM query_embedding
 WHERE similarity > $2
 ORDER BY similarity DESC

@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
-from sqlspec import sql
 
 from app.schemas import (
     IntentExemplar,
@@ -36,12 +35,14 @@ class ExemplarService(SQLSpecService):
         """
 
         return await self.driver.select(
-            sql.select(
-                "id", "intent", "phrase", "embedding", "confidence_threshold", "usage_count", "created_at", "updated_at",
-            )
-            .from_("intent_exemplar")
-            .where_eq("intent", intent)
-            .order_by("usage_count DESC"),
+            """
+            SELECT id, intent, phrase, embedding, confidence_threshold,
+                   usage_count, created_at, updated_at
+            FROM intent_exemplar
+            WHERE intent = :intent
+            ORDER BY usage_count DESC
+            """,
+            intent=intent,
             schema_type=IntentExemplar,
         )
 
@@ -56,24 +57,19 @@ class ExemplarService(SQLSpecService):
         """
         # Get result WITHOUT the embedding field to avoid vector type deserialization issues
         result = await self.driver.select_one(
-            sql.insert("intent_exemplar")
-            .columns("intent", "phrase", "embedding", "confidence_threshold")
-            .values(
-                intent=exemplar_data.intent,
-                phrase=exemplar_data.phrase,
-                embedding=exemplar_data.embedding,
-                confidence_threshold=exemplar_data.confidence_threshold,
-            )
-            .on_conflict("intent", "phrase")
-            .do_update(
-                embedding=sql.raw("EXCLUDED.embedding"),
-                confidence_threshold=sql.raw("EXCLUDED.confidence_threshold"),
-                updated_at=sql.raw("CURRENT_TIMESTAMP"),
-            )
-            .returning(
-                "id", "intent", "phrase", "confidence_threshold", "usage_count", "created_at", "updated_at",
-                # Note: "embedding" field removed from RETURNING to avoid vector deserialization issue
-            ),
+            """
+            INSERT INTO intent_exemplar (intent, phrase, embedding, confidence_threshold)
+            VALUES (:intent, :phrase, :embedding, :confidence_threshold)
+            ON CONFLICT (intent, phrase) DO UPDATE SET
+                embedding = EXCLUDED.embedding,
+                confidence_threshold = EXCLUDED.confidence_threshold,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING id, intent, phrase, confidence_threshold, usage_count, created_at, updated_at
+            """,
+            intent=exemplar_data.intent,
+            phrase=exemplar_data.phrase,
+            embedding=exemplar_data.embedding,
+            confidence_threshold=exemplar_data.confidence_threshold,
         )
 
         # Manually construct the complete object with the embedding we already have
@@ -95,7 +91,10 @@ class ExemplarService(SQLSpecService):
             exemplar_id: Intent exemplar ID
         """
 
-        await self.driver.execute(sql.delete("intent_exemplar").where_eq("id", exemplar_id))
+        await self.driver.execute(
+            "DELETE FROM intent_exemplar WHERE id = :exemplar_id",
+            exemplar_id=exemplar_id,
+        )
 
     async def search_similar_intents(
         self,
@@ -195,10 +194,13 @@ class ExemplarService(SQLSpecService):
             phrase: Exemplar phrase
         """
         await self.driver.execute(
-            sql.update("intent_exemplar")
-            .set(usage_count=sql.raw("usage_count + 1"))
-            .where_eq("intent", intent)
-            .where_eq("phrase", phrase),
+            """
+            UPDATE intent_exemplar
+            SET usage_count = usage_count + 1
+            WHERE intent = :intent AND phrase = :phrase
+            """,
+            intent=intent,
+            phrase=phrase,
         )
 
     async def load_exemplars_bulk(

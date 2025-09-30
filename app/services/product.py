@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlspec import sql
-
 from app.schemas import Product, ProductCreate, ProductSearchResult, ProductUpdate
 from app.services.base import SQLSpecService
 
@@ -70,39 +68,28 @@ class ProductService(SQLSpecService):
             Created or updated product
         """
         return await self.driver.select_one(
-            sql.insert("product")
-            .columns("name", "description", "price", "category", "sku", "in_stock", "metadata")
-            .values(
-                name=data.name,
-                description=data.description,
-                price=data.price,
-                category=data.category,
-                sku=data.sku,
-                in_stock=data.in_stock,
-                metadata=data.metadata,
-            )
-            .on_conflict("sku")  # Assuming sku is unique constraint
-            .do_update(
-                name=sql.raw("EXCLUDED.name"),
-                description=sql.raw("EXCLUDED.description"),
-                price=sql.raw("EXCLUDED.price"),
-                category=sql.raw("EXCLUDED.category"),
-                in_stock=sql.raw("EXCLUDED.in_stock"),
-                metadata=sql.raw("EXCLUDED.metadata"),
-                updated_at=sql.raw("CURRENT_TIMESTAMP"),
-            )
-            .returning(
-                "id",
-                "name",
-                "description",
-                "price",
-                "category",
-                "sku",
-                "in_stock",
-                "metadata",
-                "created_at",
-                "updated_at",
-            ),
+            """
+            INSERT INTO product (name, description, price, category, sku, in_stock, metadata)
+            VALUES (:name, :description, :price, :category, :sku, :in_stock, :metadata)
+            ON CONFLICT (sku) DO UPDATE SET
+                name = EXCLUDED.name,
+                description = EXCLUDED.description,
+                price = EXCLUDED.price,
+                category = EXCLUDED.category,
+                in_stock = EXCLUDED.in_stock,
+                metadata = EXCLUDED.metadata,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING
+                id, name, description, price, category, sku,
+                in_stock, metadata, created_at, updated_at
+            """,
+            name=data.name,
+            description=data.description,
+            price=data.price,
+            category=data.category,
+            sku=data.sku,
+            in_stock=data.in_stock,
+            metadata=data.metadata,
             schema_type=Product,
         )
 
@@ -114,7 +101,14 @@ class ProductService(SQLSpecService):
             embedding: Embedding vector (768 dimensions)
         """
         await self.driver.execute(
-            sql.update("product").set(embedding=embedding, updated_at=sql.raw("NOW()")).where_eq("id", product_id),
+            """
+            UPDATE product
+            SET embedding = :embedding,
+                updated_at = NOW()
+            WHERE id = :product_id
+            """,
+            embedding=embedding,
+            product_id=product_id,
         )
 
     async def get_products_without_embeddings(self, limit: int = 100) -> list[dict[str, Any]]:
@@ -127,20 +121,14 @@ class ProductService(SQLSpecService):
             List of products without embeddings
         """
         return await self.driver.select(
-            sql.select(
-                "id",
-                "name",
-                "description",
-                "price",
-                "category",
-                "sku",
-                "in_stock",
-                "metadata",
-                "created_at",
-                "updated_at",
-            )
-            .from_("product")
-            .where_is_null("embedding")
-            .order_by("created_at")
-            .limit(limit)
+            """
+            SELECT
+                id, name, description, price, category, sku,
+                in_stock, metadata, created_at, updated_at
+            FROM product
+            WHERE embedding IS NULL
+            ORDER BY created_at
+            LIMIT :limit
+            """,
+            limit=limit,
         )

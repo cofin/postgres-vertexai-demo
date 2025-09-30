@@ -4,10 +4,10 @@
      {% if debug_info and debug_info.timings %}data-timings='{{ debug_info.timings | tojson }}'{% endif %}
      {% if intent_detected %}data-intent="{{ intent_detected }}" data-intent-confidence="{{ intent_confidence }}"{% endif %}
      {% if search_results_count %}data-search-count="{{ search_results_count }}"{% endif %}>
-    <strong>AI Coffee Expert:</strong> <span class="ai-response-content">{{ ai_response | safe }}</span>
+    <strong>AI Coffee Expert:</strong> <span class="ai-response-content">{% if ai_response %}{{ ai_response | safe }}{% else %}I'm here to help! What can I get for you today?{% endif %}</span>
 
     <div class="help-triggers" style="display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle;">
-        {% if intent_detected and intent_detected != 'GENERAL' %}
+        {% if intent_detected %}
         <button type="button" class="help-trigger intent-indicator"
                 onclick="showIntentPopup(this)"
                 title="Intent: {{ intent_detected }}"

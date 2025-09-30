@@ -681,10 +681,10 @@ def clear_cache(
 
                 try:
                     # Count records first
-                    count = await cache_service.driver.select_value(f"SELECT COUNT(*) as count FROM {table_name}")  # noqa: S608
+                    count = await cache_service.driver.select_value(f"SELECT COUNT(*) as count FROM {table_name}")
 
                     # Delete all records
-                    await cache_service.driver.execute(f"DELETE FROM {table_name}")  # noqa: S608
+                    await cache_service.driver.execute(f"DELETE FROM {table_name}")
 
                     console.print(f"[green]✓ Cleared {count} records from {table_name}[/green]")
                 except Exception as e:  # noqa: BLE001
@@ -780,7 +780,7 @@ def truncate_tables(
                 try:
                     console.print(f"[cyan]Clearing {table_name}...[/cyan]")
                     # Use DELETE instead of TRUNCATE for safety
-                    await session.execute(f"DELETE FROM {table_name}")  # noqa: S608
+                    await session.execute(f"DELETE FROM {table_name}")
                     console.print(f"[green]✓ Cleared {table_name}[/green]")
                 except Exception as e:  # noqa: BLE001
                     console.print(f"[red]✗ Failed to clear {table_name}: {e}[/red]")

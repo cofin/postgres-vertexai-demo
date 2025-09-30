@@ -85,7 +85,7 @@ async def _reset_sequences(driver: AsyncDriverAdapterBase) -> None:
         # Use parameterized query to avoid SQL injection
         with contextlib.suppress(Exception):
             # Note: table and sequence names cannot be parameterized, but they are from a controlled list
-            # ruff: noqa: S608  # SQL injection is not possible here - table names are from controlled list
+            # SQL injection is not possible here - table names are from controlled list
             await driver.execute(
                 f"SELECT setval('{table}_id_seq', (SELECT COALESCE(MAX(id), 1) FROM {table}));",
             )
