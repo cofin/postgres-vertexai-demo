@@ -1,357 +1,331 @@
-"""Native Vertex AI service without LangChain."""
+"""Vertex AI integration service for embeddings and chat."""
 
 from __future__ import annotations
 
-import array
-import time
-import uuid
-from typing import TYPE_CHECKING, Any, cast
+import asyncio
+from typing import TYPE_CHECKING, overload
 
 import structlog
-import vertexai
-from google.api_core import exceptions as google_exceptions
-from vertexai.generative_models import GenerativeModel
-from vertexai.language_models import TextEmbeddingModel
+from google import genai
 
 from app.lib.settings import get_settings
-from app.schemas import SearchMetricsCreate
-from app.services.persona_manager import PersonaManager
-
-logger = structlog.get_logger()
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-    from app.services.embedding_cache import EmbeddingCache
-    from app.services.response_cache import ResponseCacheService
-    from app.services.search_metrics import SearchMetricsService
+
+logger = structlog.get_logger()
 
 
 class VertexAIService:
-    """Native Vertex AI service without LangChain."""
+    """Vertex AI service for embeddings and chat completions."""
 
-    def __init__(self) -> None:
-        settings = get_settings()
+    def __init__(self, cache_service: object | None = None) -> None:
+        """Initialize Vertex AI service.
+
+        Args:
+            cache_service: Optional cache service for embedding caching
+        """
+        from google import genai
+        from google.cloud import aiplatform
+
+        self.settings = get_settings()
+        self._genai_client: genai.Client | None = None
+        self._cache_service = cache_service
 
         # Initialize Vertex AI
-        vertexai.init(
-            project=settings.app.GOOGLE_PROJECT_ID,
-            location="us-central1",
-        )
+        if self.settings.vertex_ai.PROJECT_ID:
+            # Lazy import Google Cloud libraries
 
-        # Initialize models from settings
-        self.model_name = settings.app.GEMINI_MODEL
-        self.embedding_model = settings.app.EMBEDDING_MODEL
-
-        # Initialize the model
-        self.model = GenerativeModel(self.model_name)
-        logger.info("Initialized model", model=self.model_name)
-
-        # Oracle services for metrics and caching
-        self.metrics_service: SearchMetricsService | None = None
-        self.cache_service: ResponseCacheService | None = None
-
-    def set_services(self, metrics_service: SearchMetricsService, cache_service: ResponseCacheService) -> None:
-        """Inject Oracle services."""
-        self.metrics_service = metrics_service
-        self.cache_service = cache_service
-
-    def get_model_info(self) -> dict[str, str]:
-        """Get information about the currently active model."""
-        # Extract just the model name from the full path
-        active_model_full = self.model._model_name  # noqa: SLF001
-        active_model_name = active_model_full.split("/")[-1] if "/" in active_model_full else active_model_full
-
-        return {
-            "active_model": active_model_name,
-            "active_model_full": active_model_full,
-            "configured_model": self.model_name,
-            "embedding_model": self.embedding_model,
-        }
-
-    async def generate_content(
-        self,
-        prompt: str,
-        user_id: str = "default",
-        use_cache: bool = True,
-        temperature: float = 0.7,
-    ) -> tuple[str, bool]:
-        """Generate content with Oracle caching, returning cache status."""
-        return await self.generate_content_with_cache_key(prompt, prompt, user_id, use_cache, temperature)
-
-    async def generate_content_with_cache_key(
-        self,
-        prompt: str,
-        cache_key: str,
-        user_id: str = "default",
-        use_cache: bool = True,
-        temperature: float = 0.7,
-    ) -> tuple[str, bool]:
-        """Generate content with custom cache key, returning cache status."""
-
-        # Try cache first
-        if use_cache and self.cache_service:
-            cached = await self.cache_service.get_cached_response(cache_key, user_id)
-            if cached is not None:
-                content = cached.get("content", "")
-                if content:  # Only return cache hit if there's actual content
-                    return str(content), True  # Cache hit
-
-        # Record timing
-        start_time = time.time()
-
-        try:
-            # Configure generation with temperature
-            generation_config = {"temperature": temperature}
-            response = await self.model.generate_content_async(prompt, generation_config=generation_config)
-            content = response.text
-
-            # Cache successful response
-            if use_cache and self.cache_service:
-                try:
-                    await self.cache_service.cache_response(
-                        cache_key,
-                        {"content": content, "model": self.model_name},
-                        ttl_minutes=5,
-                        user_id=user_id,
-                    )
-                except Exception as cache_error:  # noqa: BLE001
-                    logger.warning("oracle_cache_write_error", error=str(cache_error), cache_key=cache_key[:50])
-
-        except google_exceptions.GoogleAPIError as e:
-            # Handle API errors gracefully
-            return f"I apologize, but I'm experiencing technical difficulties. Please try again. Error: {e!s}", False
-        else:
-            return cast("str", content), False  # Cache miss
-
-        finally:
-            # Record metrics
-            if self.metrics_service:
-                total_time = (time.time() - start_time) * 1000
-                await self.metrics_service.record_search(
-                    SearchMetricsCreate(
-                        query_id=str(uuid.uuid4()),
-                        user_id=user_id,
-                        search_time_ms=total_time,
-                        embedding_time_ms=0,  # Not applicable for generation
-                        oracle_time_ms=0,  # Measured separately
-                        result_count=1,
-                    ),
-                )
-
-    async def stream_content(
-        self,
-        prompt: str,
-        user_id: str = "default",
-        temperature: float = 0.7,
-    ) -> AsyncGenerator[str, None]:
-        """Stream content generation."""
-        try:
-            # Configure generation with temperature
-            generation_config = {"temperature": temperature}
-            response = await self.model.generate_content_async(
-                prompt,
-                stream=True,
-                generation_config=generation_config,
+            aiplatform.init(
+                project=self.settings.vertex_ai.PROJECT_ID,
+                location=self.settings.vertex_ai.LOCATION,
             )
+            # Initialize Google GenAI client
+            self._genai_client = genai.Client()
+            logger.info(
+                "Vertex AI initialized (private deployment)",
+                project=self.settings.vertex_ai.PROJECT_ID,
+                location=self.settings.vertex_ai.LOCATION,
+            )
+        else:
+            self._genai_client = None
+            logger.warning("Vertex AI not initialized: PROJECT_ID not configured")
 
-            async for chunk in response:
-                if chunk.text:
-                    yield chunk.text
 
-        except google_exceptions.GoogleAPIError as e:
-            yield f"Error: {e!s}"
+    async def _get_batch_text_embeddings(self, texts: list[str], model_name: str) -> list[list[float]]:
+        """Handle batch embedding generation with rate limiting."""
+        if not texts:
+            return []
 
-    async def create_embedding(self, text: str) -> list[float]:
-        """Create embeddings using Vertex AI."""
+        if not self._genai_client:
+            msg = "GenAI client not initialized"
+            raise RuntimeError(msg)
+
+        batch_size = 5
+        embeddings = []
+
+        for i in range(0, len(texts), batch_size):
+            if i > 0:
+                await asyncio.sleep(1)  # Rate limiting
+
+            batch = texts[i : i + batch_size]
+            response = await self._genai_client.aio.models.embed_content(model=model_name, contents=batch)
+
+            if not response.embeddings:
+                msg = f"No embeddings returned from Vertex AI for batch starting at index {i}"
+                raise ValueError(msg)
+
+            batch_embeddings = [list(e.values) for e in response.embeddings if e.values is not None]
+            embeddings.extend(batch_embeddings)
+
+        logger.debug(
+            "Generated batch embeddings",
+            batch_count=len(texts),
+            embedding_dimensions=len(embeddings[0]) if embeddings else 0,
+            model=model_name,
+        )
+        return embeddings
+
+    @overload
+    async def get_text_embedding(
+        self,
+        text: str,
+        model: str | None = None,
+    ) -> list[float]: ...
+
+    @overload
+    async def get_text_embedding(
+        self,
+        text: list[str],
+        model: str | None = None,
+    ) -> list[list[float]]: ...
+
+    async def get_text_embedding(
+        self,
+        text: str | list[str],
+        model: str | None = None,
+    ) -> list[float] | list[list[float]]:
+        """Generate text embedding(s) using Vertex AI."""
+        if not self._genai_client:
+            msg = "Vertex AI not initialized"
+            raise RuntimeError(msg)
+
+        model_name = model or self.settings.vertex_ai.EMBEDDING_MODEL
+
+        # Validate input type before try block
+        if isinstance(text, list):
+            return await self._get_batch_text_embeddings(text, model_name)
+
+        # At this point, text must be str (based on type hints)
+
         try:
-            # Use the native Vertex AI embedding model
+            # Check cache first if available
+            if self._cache_service and self.settings.cache.EMBEDDING_CACHE_ENABLED:
+                cached = await self._cache_service.get_cached_embedding(text, model_name)
+                if cached:
+                    logger.debug(
+                        "Retrieved cached embedding",
+                        text_length=len(text),
+                        embedding_dimensions=len(cached.embedding),
+                        model=model_name,
+                        hit_count=cached.hit_count,
+                    )
+                    return cached.embedding
 
-            model = TextEmbeddingModel.from_pretrained(self.embedding_model)
-            embeddings = await model.get_embeddings_async([text])
+            # Generate new embedding
+            embedding = await self._get_embedding_async(text, model_name)
 
-            if embeddings and len(embeddings) > 0:
-                return cast("list[float]", embeddings[0].values)
-            # Fallback to mock embedding for development
+            # Cache the result if cache service is available
+            if self._cache_service and self.settings.cache.EMBEDDING_CACHE_ENABLED:
+                try:
+                    await self._cache_service.set_cached_embedding(text, embedding, model_name)
+                    logger.debug("Cached new embedding", text_length=len(text), model=model_name)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("Failed to cache embedding", error=str(e))
 
-        except Exception:
-            # Log the error and fallback to mock embedding
-            logger.exception("Embedding generation failed, using fallback")
-            return [0.0] * 768  # Standard embedding dimension
+        except Exception as e:
+            logger.exception("Failed to generate embedding", model=model_name, error=str(e))
+            msg = f"Failed to generate embedding: {e}"
+            raise ValueError(msg) from e
         else:
-            return [0.0] * 768
+            return embedding
 
-    def create_system_message(
-        self, message: str | None = None, intent: str | None = None, persona: str = "enthusiast"
-    ) -> str:
-        """Create system message based on detected intent and persona."""
-
-        # Base system message varies by intent
-        if intent == "GENERAL_CONVERSATION":
-            base_message = """
-You are a friendly AI assistant for Cymbal Coffee. While you specialize in coffee, you can also help with general conversation.
-
-For general queries or greetings:
-- Be friendly and conversational
-- If asked about topics unrelated to coffee, politely acknowledge that your expertise is in coffee
-- You can engage in light conversation but gently guide back to how you can help with coffee-related questions
-- Never make up information about coffee products that weren't provided in the context
-            """.strip()
-        else:
-            base_message = """
-You are a helpful coffee expert for Cymbal Coffee. Give quick, friendly recommendations and advice.
-
-Keep responses SHORT and conversational - this is a chat interface:
-- 1-3 sentences max unless they ask for details
-- Be direct and helpful
-- Focus on practical recommendations
-- No bullet points or long explanations
-- Sound natural and friendly like you're talking to a customer at the counter
-            """.strip()
-
-        # If a custom message is provided, use it as the base
-        if message:
-            base_message = message
-
-        # Enhance with persona-specific context
-        return PersonaManager.get_system_prompt(persona, base_message)
-
-    async def chat_with_history(
+    async def get_text_embedding_with_cache_status(
         self,
-        query: str,
-        context: str = "",
-        conversation_history: list[dict] | None = None,
-        user_id: str = "default",
-        intent: str | None = None,
-        persona: str = "enthusiast",
-    ) -> tuple[str, bool]:
-        """Chat with conversation history and context, returning cache status."""
+        text: str,
+        model: str | None = None,
+    ) -> tuple[list[float], bool]:
+        """Generate text embedding with cache hit status.
 
-        # Build prompt with system message, history, and context
-        system_msg = self.create_system_message(intent=intent, persona=persona)
-
-        prompt_parts = [system_msg]
-
-        # Add conversation history
-        if conversation_history:
-            prompt_parts.append("\n# Conversation History:")
-            for msg in conversation_history[-10:]:  # Last 10 messages
-                role = msg.get("role", "user")
-                content = msg.get("content", "")
-                prompt_parts.append(f"{role.title()}: {content}")
-
-        # Add context if provided
-        if context:
-            prompt_parts.append(f"\n# Context:\n{context}")
-
-        # Add current query
-        prompt_parts.append(f"\n# Current Query:\n{query}")
-
-        prompt = "\n".join(prompt_parts)
-
-        # Get temperature from persona
-        temperature = PersonaManager.get_temperature(persona)
-
-        # Create a cache key based on query, context, and persona instead of full prompt
-        # This allows caching responses for similar queries with same context/persona
-        # but avoids false cache hits from different conversation histories
-        cache_key = f"{query}|{context}|{intent}|{persona}"
-
-        # TEMP DEBUG: Check for cache key collisions
-        logger.info("cache_key_debug", cache_key=cache_key, query=query, context_len=len(context), intent=intent, persona=persona)
-
-        return await self.generate_content_with_cache_key(prompt, cache_key, user_id, temperature=temperature)
-
-
-class OracleVectorSearchService:
-    """Oracle vector search without LangChain."""
-
-    def __init__(
-        self,
-        products_service: Any,
-        vertex_ai_service: VertexAIService,
-        embedding_cache: EmbeddingCache | None = None,
-    ) -> None:
-        self.products_service = products_service
-        self.vertex_ai_service = vertex_ai_service
-        self.embedding_cache = embedding_cache
-
-    async def similarity_search(self, query: str, k: int = 4) -> tuple[list[dict], bool, dict]:
-        """Perform Oracle vector similarity search.
+        Args:
+            text: Text to embed
+            model: Optional model override
 
         Returns:
-            - list of matched products
-            - boolean indicating embedding cache hit
-            - dict with timing data: {"embedding_ms": float, "oracle_ms": float, "total_ms": float}
+            Tuple of (embedding vector, cache_hit)
+
+        Raises:
+            RuntimeError: If Vertex AI not initialized
+            ValueError: If embedding generation fails
         """
-        start_time = time.time()
+        if not self._genai_client:
+            msg = "Vertex AI not initialized"
+            raise RuntimeError(msg)
+
+        # Type is guaranteed to be str by function signature
+
+        model_name = model or self.settings.vertex_ai.EMBEDDING_MODEL
+        cache_hit = False
 
         try:
-            # Create embedding for query (with caching if available)
-            embedding_start = time.time()
+            # Check cache first if available
+            if self._cache_service and self.settings.cache.EMBEDDING_CACHE_ENABLED:
+                cached = await self._cache_service.get_cached_embedding(text, model_name)
+                if cached:
+                    logger.debug(
+                        "Retrieved cached embedding",
+                        text_length=len(text),
+                        embedding_dimensions=len(cached.embedding),
+                        model=model_name,
+                        hit_count=cached.hit_count,
+                    )
+                    return cached.embedding, True
 
-            embedding_cache_hit = False
-            if self.embedding_cache:
-                logger.debug("product_search_using_cache", query=query[:50])
-                query_embedding, embedding_cache_hit = await self.embedding_cache.get_embedding(
-                    query, self.vertex_ai_service
-                )
-            else:
-                logger.debug("product_search_no_cache", query=query[:50])
-                query_embedding = await self.vertex_ai_service.create_embedding(query)
+            # Generate new embedding
+            embedding = await self._get_embedding_async(text, model_name)
 
-            embedding_time = (time.time() - embedding_start) * 1000
+            # Cache the result if cache service is available
+            if self._cache_service and self.settings.cache.EMBEDDING_CACHE_ENABLED:
+                try:
+                    await self._cache_service.set_cached_embedding(text, embedding, model_name)
+                    logger.debug("Cached new embedding", text_length=len(text), model=model_name)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("Failed to cache embedding", error=str(e))
 
-            # Perform Oracle vector search
-            oracle_start = time.time()
-
-            # Convert embedding to Oracle VECTOR format
-
-            # Convert to float32 array for Oracle VECTOR
-            vector_array = array.array("f", query_embedding)
-
-            # Execute search using raw Oracle SQL
-            async with self.products_service.get_cursor() as cursor:
-                await cursor.execute(
-                    """
-                    SELECT p.id, p.name, p.description,
-                           VECTOR_DISTANCE(p.embedding, :query_vector, COSINE) as distance
-                    FROM product p
-                    WHERE p.embedding IS NOT NULL
-                    ORDER BY VECTOR_DISTANCE(p.embedding, :query_vector, COSINE)
-                    FETCH FIRST :limit ROWS ONLY
-                    """,
-                    {
-                        "query_vector": vector_array,
-                        "limit": k,
-                    },
-                )
-
-                oracle_time = (time.time() - oracle_start) * 1000
-
-                # Format results
-                products = [
-                    {
-                        "id": row[0],
-                        "name": row[1],
-                        "description": row[2],
-                        "distance": row[3],
-                        "metadata": {"id": row[0]},
-                    }
-                    async for row in cursor
-                ]
-
-            # Calculate total time and return timing data
-            total_time = (time.time() - start_time) * 1000
-            timing_data = {
-                "embedding_ms": embedding_time,
-                "oracle_ms": oracle_time,
-                "total_ms": total_time,
-            }
-
-        except (KeyError, AttributeError) as e:
-            # Return empty results on error, but log it
-            logger.exception("Vector search error", error=str(e))
-            return [], False, {"embedding_ms": 0, "oracle_ms": 0, "total_ms": 0}
+        except Exception as e:
+            logger.exception("Failed to generate embedding", model=model_name, error=str(e))
+            msg = f"Failed to generate embedding: {e}"
+            raise ValueError(msg) from e
         else:
-            return products, embedding_cache_hit, timing_data
+            return embedding, cache_hit
+
+    async def generate_chat_response_stream(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float = 0.7,
+        max_output_tokens: int = 1024,
+    ) -> AsyncGenerator[str, None]:
+        """Generate streaming chat response using Vertex AI.
+
+        Args:
+            messages: List of chat messages with 'role' and 'content'
+            model: Optional model override
+            temperature: Response temperature (0.0-1.0)
+            max_output_tokens: Maximum response tokens
+
+        Yields:
+            Text chunks from the streaming response
+
+        Raises:
+            RuntimeError: If Vertex AI not initialized
+            ValueError: If streaming fails
+        """
+        if not self._genai_client:
+            msg = "Vertex AI not initialized"
+            raise RuntimeError(msg)
+
+        model_name = model or self.settings.vertex_ai.CHAT_MODEL
+
+        try:
+            async for chunk in self._generate_chat_response_stream_async(
+                messages,
+                model_name,
+                temperature,
+                max_output_tokens,
+            ):
+                yield chunk
+
+        except Exception as e:
+            logger.exception(
+                "Failed to generate streaming chat response",
+                message_count=len(messages),
+                model=model_name,
+                error=str(e),
+            )
+            msg = f"Failed to generate streaming chat response: {e}"
+            raise ValueError(msg) from e
+
+    async def _generate_chat_response_stream_async(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        temperature: float,
+        max_output_tokens: int,
+    ) -> AsyncGenerator[str, None]:
+        """Asynchronous streaming chat response generation using Google GenAI SDK."""
+        if not self._genai_client:
+            msg = "GenAI client not initialized"
+            raise RuntimeError(msg)
+
+        # Convert messages to Google GenAI format
+        formatted_messages = []
+        for message in messages:
+            role = "user" if message["role"] == "user" else "model"
+            formatted_messages.append({"role": role, "parts": [{"text": message["content"]}]})
+
+        # Generate streaming response using Google GenAI SDK
+        async for chunk in await self._genai_client.aio.models.generate_content_stream(
+            model=model,
+            contents=formatted_messages,
+            config=genai.types.GenerateContentConfig(
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
+            ),
+        ):
+            # Extract text from chunk
+            if hasattr(chunk, "candidates") and chunk.candidates:
+                candidate = chunk.candidates[0]
+                if (
+                    hasattr(candidate, "content")
+                    and candidate.content
+                    and hasattr(candidate.content, "parts")
+                    and candidate.content.parts
+                ):
+                    for part in candidate.content.parts:
+                        if hasattr(part, "text") and part.text:
+                            yield part.text
+
+    async def _get_embedding_async(self, text: str, model: str) -> list[float]:
+        """Asynchronous embedding generation using Google GenAI SDK."""
+        if not self._genai_client:
+            msg = "GenAI client not initialized"
+            raise RuntimeError(msg)
+
+        response = await self._genai_client.aio.models.embed_content(
+            model=model,
+            contents=text,
+        )
+        if not response.embeddings or len(response.embeddings) == 0:
+            msg = "No embeddings returned from API"
+            raise ValueError(msg)
+
+        # At this point response.embeddings is guaranteed to exist and have at least one element
+        first_embedding = response.embeddings[0]
+        embedding_values = first_embedding.values
+        if embedding_values is None:
+            msg = "No embeddings returned from API"
+            raise ValueError(msg)
+
+        # At this point embedding_values is guaranteed to be not None
+        return list(embedding_values)
+
+    @property
+    def is_initialized(self) -> bool:
+        """Check if Vertex AI is initialized."""
+        return self._genai_client is not None
+
+    def get_embedding_dimensions(self) -> int:
+        """Get embedding dimensions for current model."""
+        return self.settings.vertex_ai.EMBEDDING_DIMENSIONS

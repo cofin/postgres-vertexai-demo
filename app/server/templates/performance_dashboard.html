@@ -399,7 +399,7 @@
         <div class="cymbal-header" style="max-width: 1400px; margin: 0 auto; padding: 0 20px;">
             <div class="logo-section">
                 <img src="{{ url_for('static', file_path='cymbal-orig.jpg') }}" alt="Cymbal Coffee">
-                <p>Powered by Oracle 23AI + Google Vertex AI</p>
+                <p>Powered by PostgreSQL + pgvector + Google Vertex AI</p>
             </div>
             <div class="title-section">
                 <h1 style="font-size: 2.5rem;">Performance Dashboard</h1>
@@ -416,7 +416,7 @@
         <div class="section-header">
             <h3>Key Performance Metrics</h3>
             <span class="help-icon"
-                data-tippy-content="Real-time metrics showing the overall performance of the Oracle 23AI Vector Search and Google Vertex AI integration. These update every 10 seconds.">?</span>
+                data-tippy-content="Real-time metrics showing the overall performance of the PostgreSQL pgvector and Google Vertex AI integration. These update every 10 seconds.">?</span>
         </div>
 
         <!-- Key Metrics Cards -->
@@ -435,7 +435,7 @@
                 </div>
             </div>
             <div class="metric-card">
-                <div class="metric-label">Oracle Vector Time</div>
+                <div class="metric-label">PostgreSQL Vector Time</div>
                 <div class="metric-value">
                     <span class="loading-indicator"></span>
                 </div>
@@ -471,7 +471,7 @@
                 <div class="section-header">
                     <h3>Vector Search Performance</h3>
                     <span class="help-icon"
-                        data-tippy-content="Compares Oracle 23AI vector search time vs. total processing time, showing the efficiency of the vector similarity search operations">?</span>
+                        data-tippy-content="Compares PostgreSQL pgvector search time vs. total processing time, showing the efficiency of the vector similarity search operations">?</span>
                 </div>
                 <canvas id="vectorPerformanceChart"></canvas>
             </div>
@@ -492,7 +492,7 @@
             <div class="section-header">
                 <h3>🔍 Vector Search Demonstration</h3>
                 <span class="help-icon"
-                    data-tippy-content="Interactive demo of Oracle 23AI's vector similarity search. Natural language queries are converted to embeddings and matched against product vectors stored in the database">?</span>
+                    data-tippy-content="Interactive demo of PostgreSQL pgvector similarity search. Natural language queries are converted to embeddings and matched against product vectors stored in the database">?</span>
             </div>
             <p>Try searching for coffee products using natural language:</p>
 
@@ -586,7 +586,7 @@
                         backgroundColor: chartColors.primary + '20',
                         tension: 0.4
                     }, {
-                        label: 'Oracle Time',
+                        label: 'PostgreSQL Time',
                         data: [],
                         borderColor: chartColors.secondary,
                         backgroundColor: chartColors.secondary + '20',
@@ -691,7 +691,7 @@
             if (data.time_series && responseTimeChart) {
                 responseTimeChart.data.labels = data.time_series.labels;
                 responseTimeChart.data.datasets[0].data = data.time_series.total_latency;
-                responseTimeChart.data.datasets[1].data = data.time_series.oracle_latency;
+                responseTimeChart.data.datasets[1].data = data.time_series.postgres_latency;
                 responseTimeChart.update('none'); // Disable animation for smoother updates
             }
 

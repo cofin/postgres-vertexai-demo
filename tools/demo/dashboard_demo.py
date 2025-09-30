@@ -127,7 +127,7 @@ async def generate_demo_traffic(duration_minutes: int = 5, requests_per_minute: 
                 stats_table.add_column("Value", style="green")
                 stats_table.add_row("Total Requests", str(total_requests))
                 stats_table.add_row(
-                    "Successful", f"{successful_requests} ({successful_requests / total_requests * 100:.1f}%)"
+                    "Successful", f"{successful_requests} ({successful_requests / total_requests * 100:.1f}%)",
                 )
                 stats_table.add_row("Failed", str(failed_requests))
                 stats_table.add_row("Current Rate", f"{current_rate:.1f} req/min")

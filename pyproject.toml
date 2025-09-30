@@ -15,25 +15,29 @@ classifiers = [
 ]
 dependencies = [
     "litestar[jinja,jwt,cryptography,structlog]",
-    "litestar-oracledb",
     "litestar-granian[uvloop]",
+    "litestar-mcp",
+    "sqlspec[asyncpg,performance,mypyc]",
+    "google-adk",
+    "pgvector",
     "python-dotenv",
-    "google-cloud-aiplatform>=1.38.0",
-    "google-generativeai>=0.3.2",
-    "vertexai",
-    "numpy",
+    "google-cloud-aiplatform",
+    "google-genai",
+    "msgspec",
+    "rich-click",
+    "numpy>=2.3.3",
 ]
-description = "Reference application for Oracle 23AI and VertexAI integration."
-keywords = ["litestar", "vertexai", "oracledb", "google"]
+description = "Cymbal Coffee AI Agent Application using PostgreSQL and Vertex AI."
+keywords = ["litestar", "vertexai", "postgresql", "google", "agent", "coffee"]
 license = { text = "MIT" }
 maintainers = [{ name = "Cody Fincher", email = "cody.fincher@gmail.com" }]
 name = "app"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
-version = "0.2.0"
+version = "0.3.0"
 
 [project.scripts]
-app = "app.__init__:run_cli"
+app = "app.__main__:run_cli"
 
 [build-system]
 build-backend = "hatchling.build"
@@ -64,7 +68,7 @@ test = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
-    "pytest-databases[valkey,oracle]",
+    "pytest-databases[valkey,postgres]",
     "pytest-mock",
     "pytest-sugar",
     "pytest-xdist",
@@ -140,6 +144,7 @@ ignore = [
     "PLC2701",
     "PLW3201",
     "PLR6301",
+    "S608",
 ]
 select = ["ALL"]
 # Allow unused variables when underscore-prefixed.
@@ -193,6 +198,7 @@ exclude = '''(?x)(
 )'''
 implicit_reexport = false
 plugins = []
+python_version = "3.12"
 strict = true
 warn_redundant_casts = true
 warn_return_any = true
@@ -204,10 +210,6 @@ warn_unused_ignores = true
 disallow_untyped_decorators = false
 module = ["tests.*"]
 
-[[tool.mypy.overrides]]
-disallow_untyped_calls = false
-disallow_untyped_decorators = false
-module = ["aisoql.*"]
 
 [[tool.mypy.overrides]]
 ignore_missing_imports = true
