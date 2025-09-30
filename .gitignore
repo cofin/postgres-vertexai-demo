@@ -16,7 +16,6 @@ downloads/
 eggs/
 .eggs/
 lib/
-requirements/reference/
 !resources/lib
 !app/lib
 lib64/

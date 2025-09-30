@@ -1,6 +1,6 @@
-# ☕ PostgreSQL + pgvector + Vertex AI Coffee Demo
+# ☕ Oracle + Vertex AI Coffee Demo
 
-An intelligent coffee recommendation system showcasing PostgreSQL with pgvector for vector search and Google Vertex AI integration.
+An intelligent coffee recommendation system showcasing Oracle 23AI vector search with Google Vertex AI integration.
 
 ## 🚀 Quick Start
 
@@ -12,7 +12,7 @@ make install
 # Setup environment
 cp .env.example .env  # Edit with your API keys
 
-# Start PostgreSQL
+# Start Oracle 23AI
 make start-infra
 uv run app load-fixtures
 
@@ -39,14 +39,14 @@ _AI-powered coffee recommendations with real-time performance metrics_
 ### Performance Dashboard
 
 ![Performance Dashboard](docs/screenshots/performance_dashboard.png)
-_Live monitoring of PostgreSQL pgvector search performance and system metrics_
+_Live monitoring of Oracle vector search performance and system metrics_
 
 ## 📚 Documentation
 
 For complete implementation and development guides, see the [`docs/system/`](docs/system/) directory:
 
 - **[Technical Overview](docs/system/01-technical-overview.md)** - High-level technical concepts
-- **[PostgreSQL Architecture](docs/system/02-postgresql-architecture.md)** - PostgreSQL with pgvector extension
+- **[Oracle Architecture](docs/system/02-oracle-architecture.md)** - Oracle 23AI unified platform
 - **[Implementation Guide](docs/system/05-implementation-guide.md)** - Step-by-step build guide
 
 ### Recent Architecture Updates
@@ -64,9 +64,9 @@ For complete implementation and development guides, see the [`docs/system/`](doc
 
 This demo uses:
 
-- **PostgreSQL + pgvector** - Open-source database with vector similarity search extension
+- **Oracle 23AI** - Complete data platform with native vector search
 - **Vertex AI** - Google's generative AI platform for embeddings and chat
-- **Minimal Abstractions** - Direct PostgreSQL database access for clarity (and performance). No ORM
+- **Minimal Abstractions** - Direct Oracle database access for clarity (and performance). No ORM
 - **Litestar** - High-performance async Python framework
 - **HTMX** - Real-time UI updates without JavaScript complexity
 
@@ -75,8 +75,8 @@ This demo uses:
 This implementation is designed for conference demonstration with:
 
 - **Real-time Chat Interface** - Personalized coffee recommendations with AI personas
-- **Live Performance Metrics** - PostgreSQL pgvector search timing and cache hit rates
-- **In-Memory Caching** - High-performance response caching using PostgreSQL
+- **Live Performance Metrics** - Oracle vector search timing and cache hit rates
+- **In-Memory Caching** - High-performance response caching using Oracle
 - **Native Vector Search** - Semantic similarity search without external dependencies
 - **Intent Routing** - Natural language understanding via exemplar matching
 - **Performance Dashboard** - Real-time monitoring of all system components
@@ -103,7 +103,7 @@ make lint                      # Code quality checks
 
 ## 📖 Additional Resources
 
-- **PostgreSQL pgvector** - Open-source vector similarity search for AI applications
-- [pgvector Documentation](https://github.com/pgvector/pgvector) - PostgreSQL extension for vector similarity search
+- [Original Blog Post](https://cloud.google.com/blog/topics/partners/ai-powered-coffee-nirvana-runs-on-oracle-database-on-google-cloud/) - Origin story
+- [Oracle 23AI Vector Guide](https://docs.oracle.com/en/database/oracle/oracle-database/23/vecse/) - Vector search documentation
 - [Litestar Documentation](https://docs.litestar.dev) - Framework documentation
 - [System Documentation](docs/system/) - Complete technical guides

@@ -30,7 +30,8 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.anyio
 pytest_plugins = [
-    "pytest_databases.docker.postgres",
+    "pytest_databases.docker",
+    "pytest_databases.docker.oracle",
 ]
 
 
@@ -54,7 +55,7 @@ def _patch_settings(monkeypatch: MonkeyPatch) -> None:
 @pytest.fixture
 def app() -> Litestar:
     """Create test app instance."""
-    from app.server.asgi import create_app
+    from app.asgi import create_app
 
     return create_app()
 

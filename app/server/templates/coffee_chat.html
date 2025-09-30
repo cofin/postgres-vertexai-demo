@@ -37,8 +37,8 @@
     <!-- Tooltip Positioning System -->
     <script src="{{ url_for('static', file_path='js/tooltip-positioning.js') }}"></script>
 
-    <!-- Help Tooltips JavaScript - defer to ensure DOM is ready -->
-    <script src="{{ url_for('static', file_path='js/help-tooltips-htmx.js') }}" defer></script>
+    <!-- Help Tooltips JavaScript -->
+    <script src="{{ url_for('static', file_path='js/help-tooltips-htmx.js') }}"></script>
 
     <style>
         /* Coffee Chat specific styles */
@@ -228,45 +228,6 @@
         .typing-indicator {
             color: var(--coffee-medium);
             font-style: italic;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .typing-dots {
-            display: inline-flex;
-            gap: 3px;
-        }
-
-        .typing-dots span {
-            width: 4px;
-            height: 4px;
-            background-color: var(--coffee-medium);
-            border-radius: 50%;
-            animation: typing-pulse 1.4s infinite ease-in-out both;
-        }
-
-        .typing-dots span:nth-child(1) {
-            animation-delay: -0.32s;
-        }
-
-        .typing-dots span:nth-child(2) {
-            animation-delay: -0.16s;
-        }
-
-        .typing-dots span:nth-child(3) {
-            animation-delay: 0s;
-        }
-
-        @keyframes typing-pulse {
-            0%, 80%, 100% {
-                opacity: 0.3;
-                transform: scale(0.8);
-            }
-            40% {
-                opacity: 1;
-                transform: scale(1);
-            }
         }
 
         .chat-form {
@@ -517,7 +478,7 @@
         <div class="cymbal-header">
             <div class="logo-section">
                 <img src="{{ url_for('static', file_path='cymbal-orig.jpg') }}" alt="Coffee Connoisseur">
-                <p>Powered by PostgreSQL + pgvector + Google Vertex AI</p>
+                <p>Powered by Oracle 23AI + Google Vertex AI</p>
             </div>
             <div class="title-section">
                 <h1>Connoisseur</h1>
@@ -554,11 +515,8 @@
             </div>
 
             <!-- Chat Form -->
-            <form class="chat-form"
-                  hx-post="{{ url_for('coffee_chat.get') }}"
-                  hx-target="#chat-container"
-                  hx-swap="beforeend scroll:#chat-container:bottom"
-                  hx-indicator="#send-btn">
+            <form class="chat-form" hx-post="{{ url_for('coffee_chat.get') }}" hx-target="#chat-container"
+                hx-swap="beforeend">
                 {{ csrf_input | safe }}
                 <input type="hidden" id="persona" name="persona" value="enthusiast">
                 <div style="position: relative; flex: 1; display: flex; align-items: center;">
@@ -685,94 +643,9 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
-        // Function to add user message immediately
-        function addUserMessage(message) {
-            const chatContainer = document.getElementById('chat-container');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message user';
-
-            // Safely escape HTML and create the message
-            const strongEl = document.createElement('strong');
-            strongEl.textContent = 'You:';
-            const textNode = document.createTextNode(' ' + message);
-
-            messageDiv.appendChild(strongEl);
-            messageDiv.appendChild(textNode);
-            chatContainer.appendChild(messageDiv);
-
-            // Add typing indicator
-            const typingDiv = document.createElement('div');
-            typingDiv.className = 'message assistant typing-response';
-            typingDiv.id = 'typing-indicator';
-            typingDiv.innerHTML = `
-                <strong>AI Coffee Expert:</strong>
-                <span class="typing-indicator">
-                    <span class="typing-dots">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </span>
-                    Thinking about your question...
-                </span>
-            `;
-            chatContainer.appendChild(typingDiv);
-            scrollChatToBottom();
-        }
-
-        // Function to remove typing indicator
-        function removeTypingIndicator() {
-            const typingIndicator = document.getElementById('typing-indicator');
-            if (typingIndicator) {
-                typingIndicator.remove();
-            }
-        }
-
-        // Helper function to escape HTML
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // HTMX event listeners with improved error handling
+        // HTMX event listeners
         document.body.addEventListener('htmx:beforeRequest', function (evt) {
             if (evt.detail.elt.classList.contains('chat-form') || evt.detail.elt.closest('.chat-form')) {
-                const chatContainer = document.getElementById('chat-container');
-                const messageInput = document.getElementById('message');
-                const messageValue = messageInput.value.trim();
-
-                // Add user message immediately for better UX
-                if (messageValue) {
-                    const userMessageDiv = document.createElement('div');
-                    userMessageDiv.className = 'message user';
-                    userMessageDiv.innerHTML = `<strong>You:</strong> ${messageValue}`;
-                    chatContainer.appendChild(userMessageDiv);
-
-                    // Clear the input immediately
-                    messageInput.value = '';
-
-                    // Scroll to show the new message
-                    scrollChatToBottom();
-                }
-
-                // Then add typing indicator
-                const typingDiv = document.createElement('div');
-                typingDiv.className = 'message assistant typing-response';
-                typingDiv.id = 'typing-indicator';
-                typingDiv.innerHTML = `
-                    <strong>AI Coffee Expert:</strong>
-                    <span class="typing-indicator">
-                        <span class="typing-dots">
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                        </span>
-                        Thinking about your question...
-                    </span>
-                `;
-                chatContainer.appendChild(typingDiv);
-                scrollChatToBottom();
-
                 const sendBtn = document.getElementById('send-btn');
                 sendBtn.classList.add('htmx-request');
                 sendBtn.disabled = true;
@@ -780,61 +653,12 @@
         });
 
         document.body.addEventListener('htmx:afterRequest', function (evt) {
-            // Remove typing indicator when response arrives
-            removeTypingIndicator();
+            scrollChatToBottom();
 
+            // Reset form and button
             if (evt.detail.elt.classList.contains('chat-form') || evt.detail.elt.closest('.chat-form')) {
-                const chatContainer = document.getElementById('chat-container');
-                scrollChatToBottom();
-
-                // Form already cleared in beforeRequest, just reset focus
+                document.getElementById('message').value = '';
                 document.getElementById('message').focus();
-                const sendBtn = document.getElementById('send-btn');
-                sendBtn.classList.remove('htmx-request');
-                sendBtn.disabled = false;
-            }
-        });
-
-        // Handle HTMX errors
-        document.body.addEventListener('htmx:responseError', function (evt) {
-            console.error('HTMX response error:', evt.detail);
-
-            // Remove typing indicator
-            removeTypingIndicator();
-
-            // Add error message
-            const chatContainer = document.getElementById('chat-container');
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'message assistant';
-            errorDiv.innerHTML = '<strong>AI Coffee Expert:</strong> I apologize, but I encountered an error processing your request. Please try again.';
-            chatContainer.appendChild(errorDiv);
-            scrollChatToBottom();
-
-            // Reset form and button
-            if (evt.detail.elt.classList.contains('chat-form') || evt.detail.elt.closest('.chat-form')) {
-                const sendBtn = document.getElementById('send-btn');
-                sendBtn.classList.remove('htmx-request');
-                sendBtn.disabled = false;
-            }
-        });
-
-        // Handle timeout errors
-        document.body.addEventListener('htmx:timeout', function (evt) {
-            console.error('HTMX request timeout:', evt.detail);
-
-            // Remove typing indicator
-            removeTypingIndicator();
-
-            // Add timeout message
-            const chatContainer = document.getElementById('chat-container');
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'message assistant';
-            errorDiv.innerHTML = '<strong>AI Coffee Expert:</strong> The request is taking longer than expected. Please try again.';
-            chatContainer.appendChild(errorDiv);
-            scrollChatToBottom();
-
-            // Reset form and button
-            if (evt.detail.elt.classList.contains('chat-form') || evt.detail.elt.closest('.chat-form')) {
                 const sendBtn = document.getElementById('send-btn');
                 sendBtn.classList.remove('htmx-request');
                 sendBtn.disabled = false;
@@ -864,12 +688,12 @@
                             <div class="metric-label">Total Searches</div>
                         </div>
                         <div class="metric-item">
-                            <div class="metric-value">${(data.avg_response_time_ms || 0).toFixed(2)}ms</div>
+                            <div class="metric-value">${Math.round(data.avg_search_time_ms || 0)}ms</div>
                             <div class="metric-label">Avg Response Time</div>
                         </div>
                         <div class="metric-item">
-                            <div class="metric-value">${(data.avg_vector_search_time_ms || 0).toFixed(2)}ms</div>
-                            <div class="metric-label">Vector Search Time</div>
+                            <div class="metric-value">${Math.round(data.avg_oracle_time_ms || 0)}ms</div>
+                            <div class="metric-label">Oracle Vector Time</div>
                         </div>
                         <div class="metric-item">
                             <div class="metric-value">${(data.avg_similarity_score || 0).toFixed(2)}</div>
@@ -892,164 +716,6 @@
 
         // Refresh metrics every 30 seconds
         setInterval(loadMetrics, 30000);
-
-        // Click outside to close popup
-        function handleClickOutside(event) {
-            if (window.activeTooltip && !window.activeTooltip.contains(event.target) &&
-                !event.target.classList.contains('help-trigger')) {
-                hideIntentSearchTooltip();
-                document.removeEventListener('click', handleClickOutside);
-            }
-        }
-
-        // Center popup in viewport
-        function centerTooltip(tooltip) {
-            const rect = tooltip.getBoundingClientRect();
-            const left = (window.innerWidth - rect.width) / 2;
-            const top = (window.innerHeight - rect.height) / 2;
-
-            tooltip.style.left = `${Math.max(10, left)}px`;
-            tooltip.style.top = `${Math.max(10, top)}px`;
-        }
-
-        // Show intent classification popup
-        function showIntentPopup(triggerElement) {
-            hideIntentSearchTooltip();
-
-            const intent = triggerElement.getAttribute('data-intent');
-            const confidence = triggerElement.getAttribute('data-confidence');
-            const sql = triggerElement.getAttribute('data-sql');
-
-            const tooltip = document.createElement("div");
-            tooltip.className = "help-tooltip show";
-            // Add inline styles for proper constraints
-            tooltip.style.cssText = `
-                max-width: 600px;
-                max-height: 80vh;
-                overflow: visible;
-            `;
-            tooltip.innerHTML = `
-                <div class="help-tooltip-content">
-                    <div class="help-tooltip-header">
-                        <span class="help-tooltip-title">🎯 Intent Detection</span>
-                        <button class="help-tooltip-close" onclick="hideIntentSearchTooltip()">×</button>
-                    </div>
-                    <div class="help-tooltip-body" style="max-height: 400px; overflow-y: auto;">
-                        <div class="help-tooltip-section">
-                            <div class="help-tooltip-section-title">Detection Results</div>
-                            <div class="help-tooltip-metric">
-                                <span class="help-tooltip-metric-label">Intent</span>
-                                <span class="help-tooltip-metric-value">${intent}</span>
-                            </div>
-                            <div class="help-tooltip-metric">
-                                <span class="help-tooltip-metric-label">Confidence</span>
-                                <span class="help-tooltip-metric-value">${(parseFloat(confidence) * 100).toFixed(1)}%</span>
-                            </div>
-                        </div>
-                        ${sql ? `
-                        <div class="help-tooltip-section">
-                            <div class="help-tooltip-section-title">PostgreSQL Query</div>
-                            <pre style="font-size: 0.75rem; overflow-x: auto; max-width: 550px; white-space: pre-wrap; word-break: break-all;"><code>${sql}</code></pre>
-                        </div>` : ''}
-                    </div>
-                </div>
-            `;
-
-            document.body.appendChild(tooltip);
-
-            // Store reference for closing
-            window.activeTooltip = tooltip;
-
-            // Position the tooltip centered in viewport
-            tooltip.style.position = 'fixed';
-            tooltip.style.zIndex = '10000';
-
-            // Center the tooltip
-            centerTooltip(tooltip);
-
-            // Add click outside to close
-            setTimeout(() => {
-                document.addEventListener('click', handleClickOutside);
-            }, 100);
-        }
-
-        // Show vector search popup
-        function showSearchPopup(triggerElement) {
-            hideIntentSearchTooltip();
-
-            const results = triggerElement.getAttribute('data-results');
-            const sql = triggerElement.getAttribute('data-sql');
-            const params = JSON.parse(triggerElement.getAttribute('data-params') || '{}');
-
-            const tooltip = document.createElement("div");
-            tooltip.className = "help-tooltip show";
-            // Add inline styles for proper constraints
-            tooltip.style.cssText = `
-                max-width: 600px;
-                max-height: 80vh;
-                overflow: visible;
-            `;
-            tooltip.innerHTML = `
-                <div class="help-tooltip-content">
-                    <div class="help-tooltip-header">
-                        <span class="help-tooltip-title">🔍 Product Vector Search</span>
-                        <button class="help-tooltip-close" onclick="hideIntentSearchTooltip()">×</button>
-                    </div>
-                    <div class="help-tooltip-body" style="max-height: 400px; overflow-y: auto;">
-                        <div class="help-tooltip-section">
-                            <div class="help-tooltip-section-title">Search Results</div>
-                            <div class="help-tooltip-metric">
-                                <span class="help-tooltip-metric-label">Products Found</span>
-                                <span class="help-tooltip-metric-value">${results}</span>
-                            </div>
-                            ${params.similarity_threshold ? `
-                            <div class="help-tooltip-metric">
-                                <span class="help-tooltip-metric-label">Similarity Threshold</span>
-                                <span class="help-tooltip-metric-value">${params.similarity_threshold}</span>
-                            </div>` : ''}
-                        </div>
-                        ${sql ? `
-                        <div class="help-tooltip-section">
-                            <div class="help-tooltip-section-title">PostgreSQL pgvector Query</div>
-                            <pre style="font-size: 0.75rem; overflow-x: auto; max-width: 550px; white-space: pre-wrap; word-break: break-all;"><code>${sql}</code></pre>
-                        </div>` : ''}
-                    </div>
-                </div>
-            `;
-
-            document.body.appendChild(tooltip);
-
-            // Store reference for closing
-            window.activeTooltip = tooltip;
-
-            // Position the tooltip centered in viewport
-            tooltip.style.position = 'fixed';
-            tooltip.style.zIndex = '10000';
-
-            // Center the tooltip
-            centerTooltip(tooltip);
-
-            // Add click outside to close
-            setTimeout(() => {
-                document.addEventListener('click', handleClickOutside);
-            }, 100);
-        }
-
-        // Enhanced hideTooltip function - renamed to avoid conflict
-        function hideIntentSearchTooltip() {
-            if (window.activeTooltip) {
-                window.activeTooltip.remove();
-                window.activeTooltip = null;
-                document.removeEventListener('click', handleClickOutside);
-            }
-        }
-
-        // Global hideTooltip for backward compatibility
-        window.hideTooltip = hideIntentSearchTooltip;
-
-        // Make popup functions globally accessible for dynamically added content
-        window.showIntentPopup = showIntentPopup;
-        window.showSearchPopup = showSearchPopup;
     </script>
 </body>
 

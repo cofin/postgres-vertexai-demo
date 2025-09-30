@@ -1,118 +1,110 @@
-"""Application settings management following SQLStack pattern."""
+# Copyright 2024 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from __future__ import annotations
 
 import binascii
 import json
 import os
-import sys
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final
 
-from litestar.data_extractors import RequestExtractorField
-
-from app.utils.env import get_env
+from litestar.utils.module_loader import module_to_os_path
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from litestar.data_extractors import RequestExtractorField, ResponseExtractorField
 
-    from litestar.data_extractors import ResponseExtractorField
 
 DEFAULT_MODULE_NAME = "app"
-BASE_DIR = Path(__file__).parent.parent
-SERVER_DIR = Path(BASE_DIR / "server")
-STATIC_DIR = Path(SERVER_DIR / "static")
-TEMPLATE_DIR = Path(SERVER_DIR / "templates")
+BASE_DIR: Final[Path] = module_to_os_path(DEFAULT_MODULE_NAME)
+
+TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
 
 
 @dataclass
 class DatabaseSettings:
-    """Database configuration settings."""
+    """Oracle Database connection settings."""
 
-    ECHO: bool = field(default_factory=get_env("DATABASE_ECHO", False))
-    """Enable database query logs."""
-    POOL_MIN_SIZE: int = field(default_factory=get_env("DATABASE_POOL_MIN_SIZE", 2))
-    """Min size for database connection pool"""
-    POOL_MAX_SIZE: int = field(default_factory=get_env("DATABASE_POOL_MAX_SIZE", 10))
-    """Max size for database connection pool"""
-    POOL_TIMEOUT: int = field(default_factory=get_env("DATABASE_POOL_TIMEOUT", 30))
-    """Time in seconds for timing connections out of the connection pool."""
-    POOL_RECYCLE: int = field(default_factory=get_env("DATABASE_POOL_RECYCLE", 3600))
-    """Amount of time to wait before recycling connections."""
-    URL: str = field(default_factory=get_env("DATABASE_URL", "postgresql://app:app@localhost:15432/app"))
-    """Database URL."""
-    MIGRATION_PATH: str = field(default_factory=get_env("DATABASE_MIGRATION_PATH", f"{BASE_DIR}/db/migrations"))
-    """The path to database migrations."""
-    FIXTURE_PATH: str = field(default_factory=get_env("DATABASE_FIXTURE_PATH", f"{BASE_DIR}/db/fixtures"))
+    USER: str = field(
+        default_factory=lambda: os.getenv("DATABASE_USER", "app"),
+    )
+    """Oracle Database User."""
+    PASSWORD: str = field(
+        default_factory=lambda: os.getenv("DATABASE_PASSWORD", "super-secret"),
+    )
+    """Oracle Database Password."""
+    HOST: str = field(
+        default_factory=lambda: os.getenv("DATABASE_HOST", "localhost"),
+    )
+    """Oracle Database Host."""
+    PORT: str = field(
+        default_factory=lambda: os.getenv("DATABASE_PORT", "1521"),
+    )
+    """Oracle Database Port."""
+    SERVICE_NAME: str = field(
+        default_factory=lambda: os.getenv("DATABASE_SERVICE_NAME", "FREEPDB1"),
+    )
+    """Oracle Database Service Name."""
+    DSN: str = field(
+        default_factory=lambda: os.getenv(
+            "DATABASE_DSN",
+            f"{os.getenv('DATABASE_HOST', 'localhost')}:{os.getenv('DATABASE_PORT', '1521')}/{os.getenv('DATABASE_SERVICE_NAME', 'FREEPDB1')}",
+        ),
+    )
+    """Oracle Database DSN."""
+    FIXTURE_PATH: str = f"{BASE_DIR}/db/fixtures"
     """The path to JSON fixture files to load into tables."""
 
 
 @dataclass
-class VertexAISettings:
-    """Vertex AI configuration settings."""
+class ServerSettings:
+    """Server configurations."""
 
-    PROJECT_ID: str = field(default_factory=get_env("VERTEX_AI_PROJECT_ID", ""))
-    """Google Cloud Project ID for Vertex AI."""
-    LOCATION: str = field(default_factory=get_env("VERTEX_AI_LOCATION", "us-central1"))
-    """Vertex AI location/region."""
-    EMBEDDING_MODEL: str = field(default_factory=get_env("VERTEX_AI_EMBEDDING_MODEL", "text-embedding-004"))
-    """Vertex AI embedding model."""
-    EMBEDDING_DIMENSIONS: int = field(default_factory=get_env("VERTEX_AI_EMBEDDING_DIMENSIONS", 768))
-    """Embedding vector dimensions."""
-    CHAT_MODEL: str = field(default_factory=get_env("VERTEX_AI_CHAT_MODEL", "gemini-2.5-flash-lite"))
-    """Vertex AI chat model."""
-
-    # Context Caching Settings
-    CACHE_TTL_SECONDS: int = field(default_factory=get_env("VERTEX_AI_CACHE_TTL_SECONDS", 3600))
-    """Context cache TTL in seconds (default: 1 hour)."""
-    CACHE_PREFIX: str = field(default_factory=get_env("VERTEX_AI_CACHE_PREFIX", "cymbal-coffee"))
-    """Prefix for cache names."""
-
-    # Streaming Settings
-    STREAM_BUFFER_SIZE: int = field(default_factory=get_env("VERTEX_AI_STREAM_BUFFER_SIZE", 1024))
-    """Buffer size for streaming responses."""
-    STREAM_TIMEOUT_SECONDS: int = field(default_factory=get_env("VERTEX_AI_STREAM_TIMEOUT_SECONDS", 30))
-    """Timeout for streaming responses."""
-
-
-@dataclass
-class AgentSettings:
-    """Agent system configuration."""
-
-    INTENT_THRESHOLD: float = field(default_factory=get_env("AGENT_INTENT_THRESHOLD", 0.8))
-    """Intent detection confidence threshold."""
-    VECTOR_SEARCH_THRESHOLD: float = field(default_factory=get_env("AGENT_VECTOR_SEARCH_THRESHOLD", 0.7))
-    """Vector search similarity threshold."""
-    VECTOR_SEARCH_LIMIT: int = field(default_factory=get_env("AGENT_VECTOR_SEARCH_LIMIT", 5))
-    """Maximum number of vector search results."""
-    CONVERSATION_HISTORY_LIMIT: int = field(default_factory=get_env("AGENT_CONVERSATION_HISTORY_LIMIT", 10))
-    """Maximum conversation history to maintain."""
-    SESSION_EXPIRE_HOURS: int = field(default_factory=get_env("AGENT_SESSION_EXPIRE_HOURS", 24))
-    """Session expiration in hours."""
-
-
-@dataclass
-class CacheSettings:
-    """Caching configuration."""
-
-    RESPONSE_TTL_MINUTES: int = field(default_factory=get_env("CACHE_RESPONSE_TTL_MINUTES", 5))
-    """Response cache TTL in minutes."""
-    EMBEDDING_CACHE_ENABLED: bool = field(default_factory=get_env("CACHE_EMBEDDING_ENABLED", True))
-    """Enable embedding caching."""
+    APP_LOC: str = "app.asgi:app"
+    """Path to app executable, or factory."""
+    HOST: str = field(default_factory=lambda: os.getenv("LITESTAR_HOST", "0.0.0.0"))  # noqa: S104
+    """Server network host."""
+    PORT: int = field(default_factory=lambda: int(os.getenv("LITESTAR_PORT", "8000")))
+    """Server port."""
+    KEEPALIVE: int = field(default_factory=lambda: int(os.getenv("LITESTAR_KEEPALIVE", "65")))
+    """Seconds to hold connections open (65 is > AWS lb idle timeout)."""
+    RELOAD: bool = field(
+        default_factory=lambda: os.getenv("LITESTAR_RELOAD", "False") in TRUE_VALUES,
+    )
+    """Turn on hot reloading."""
+    RELOAD_DIRS: list[str] = field(default_factory=lambda: [f"{BASE_DIR}"])
+    """Directories to watch for reloading."""
+    HTTP_WORKERS: int | None = field(
+        default_factory=lambda: int(os.getenv("WEB_CONCURRENCY")) if os.getenv("WEB_CONCURRENCY") is not None else None,  # type: ignore[arg-type]
+    )
+    """Number of HTTP Worker processes to be spawned by Uvicorn."""
 
 
 @dataclass
 class LogSettings:
-    """Logger configuration."""
+    """Logger configuration"""
 
     # https://stackoverflow.com/a/1845097/6560549
     EXCLUDE_PATHS: str = r"\A(?!x)x"
     """Regex to exclude paths from logging."""
+    HTTP_EVENT: str = "HTTP"
+    """Log event name for logs from Litestar handlers."""
     INCLUDE_COMPRESSED_BODY: bool = False
     """Include 'body' of compressed responses in log output."""
-    LEVEL: int = field(default_factory=get_env("LOG_LEVEL", 30))
+    LEVEL: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "ERROR").upper())
     """Stdlib log levels.
 
     Only emit logs at this level, or higher.
@@ -122,124 +114,96 @@ class LogSettings:
     OBFUSCATE_HEADERS: set[str] = field(default_factory=lambda: {"Authorization", "X-API-KEY", "X-XSRF-TOKEN"})
     """Request header keys to obfuscate."""
     REQUEST_FIELDS: list[RequestExtractorField] = field(
-        default_factory=get_env(
-            "LOG_REQUEST_FIELDS",
-            [
-                "path",
-                "method",
-                "query",
-                "path_params",
-            ],
-            list[RequestExtractorField],
-        ),
+        default_factory=lambda: [
+            "path",
+            "method",
+            "query",
+            "path_params",
+        ],
     )
-    """Attributes of the Request to be logged."""
+    """Attributes of the [Request][litestar.connection.request.Request] to be
+    logged."""
     RESPONSE_FIELDS: list[ResponseExtractorField] = field(
-        default_factory=cast(
-            "Callable[[],list[ResponseExtractorField]]",
-            get_env(
-                "LOG_RESPONSE_FIELDS",
-                ["status_code"],
-            ),
-        ),
+        default_factory=lambda: [
+            "status_code",
+        ],
     )
-    """Attributes of the Response to be logged."""
-    SQLSPEC_LEVEL: int = field(default_factory=get_env("SQLSPEC_LOG_LEVEL", 30))
-    """Level to log SQLSpec logs."""
-    SQLGLOT_LEVEL: int = field(default_factory=get_env("SQLGLOT_LOG_LEVEL", 40))
-    """Level to log SQLGlot logs."""
-    ASGI_ACCESS_LEVEL: int = field(default_factory=get_env("ASGI_ACCESS_LOG_LEVEL", 30))
+    """Attributes of the [Response][litestar.response.Response] to be
+    logged."""
+    GRANIAN_ACCESS_LEVEL: int = 30
     """Level to log uvicorn access logs."""
-    ASGI_ERROR_LEVEL: int = field(default_factory=get_env("ASGI_ERROR_LOG_LEVEL", 30))
+    GRANIAN_ERROR_LEVEL: int = 20
     """Level to log uvicorn error logs."""
 
 
 @dataclass
 class AppSettings:
-    """Application configuration."""
+    """Application configuration"""
 
-    NAME: str = field(default_factory=lambda: "PostgreSQL + Vertex AI Demo")
-    """Application name."""
-    VERSION: str = field(default="0.3.0")
-    """Current application version."""
-    DEBUG: bool = field(default_factory=get_env("DEBUG", False))
-    """Run application with debug mode."""
+    URL: str = field(default_factory=lambda: os.getenv("APP_URL", "http://localhost:8000"))
+    """The frontend base URL"""
+    DEBUG: bool = field(default_factory=lambda: os.getenv("LITESTAR_DEBUG", "False") in TRUE_VALUES)
+    """Run `Litestar` with `debug=True`."""
     SECRET_KEY: str = field(
-        default_factory=get_env("SECRET_KEY", binascii.hexlify(os.urandom(32)).decode(encoding="utf-8")),
+        default_factory=lambda: os.getenv("SECRET_KEY", binascii.hexlify(os.urandom(32)).decode(encoding="utf-8")),
     )
     """Application secret key."""
-    URL: str = field(default_factory=get_env("APP_URL", "http://localhost:8000"))
-    """Application base URL."""
-    STATIC_DIR: Path = field(default_factory=get_env("STATIC_DIR", STATIC_DIR))
-    """Default URL where static assets are located."""
-    TEMPLATE_DIR: Path = field(default_factory=get_env("TEMPLATE_DIR", TEMPLATE_DIR))
-    """Template directory path."""
-    ALLOWED_CORS_ORIGINS: list[str] | str = field(default_factory=get_env("ALLOWED_CORS_ORIGINS", ["*"], list[str]))
+    NAME: str = field(default_factory=lambda: "app")
+    """Application name."""
+    ALLOWED_CORS_ORIGINS: list[str] | str = field(default_factory=lambda: os.getenv("ALLOWED_CORS_ORIGINS", '["*"]'))
     """Allowed CORS Origins"""
-    CSRF_COOKIE_NAME: str = field(default_factory=get_env("CSRF_COOKIE_NAME", "XSRF-TOKEN"))
+    CSRF_COOKIE_NAME: str = field(default_factory=lambda: "XSRF-TOKEN")
     """CSRF Cookie Name"""
-    SESSION_MAX_AGE: int = field(default_factory=get_env("SESSION_MAX_AGE", 86400 * 7))
-    """Session cookie max age in seconds (default: 7 days)"""
-    CSRF_HEADER_NAME: str = field(default_factory=get_env("CSRF_HEADER_NAME", "X-XSRF-TOKEN"))
+    CSRF_HEADER_NAME: str = field(default_factory=lambda: "X-XSRF-TOKEN")
     """CSRF Header Name"""
-    CSRF_COOKIE_SECURE: bool = field(default_factory=get_env("CSRF_COOKIE_SECURE", False))
+    CSRF_COOKIE_SECURE: bool = field(default_factory=lambda: False)
     """CSRF Secure Cookie"""
-    ENV_SECRETS: str = field(default_factory=get_env("ENV_SECRETS", "runtime-secrets"))
-    """Path to environment secrets."""
+    GOOGLE_PROJECT_ID: str = field(default_factory=lambda: os.getenv("GOOGLE_PROJECT_ID", ""))
+    """Google Project ID"""
+    # AI Model Configuration
+    GEMINI_MODEL: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-2.5-flash-preview-05-20"))
+    """Gemini model identifier - defaults to latest 2.5 Flash"""
+    EMBEDDING_MODEL: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "text-embedding-004"))
+    """Text embedding model identifier"""
 
     def __post_init__(self) -> None:
+        # Check if the ALLOWED_CORS_ORIGINS is a string.
         if isinstance(self.ALLOWED_CORS_ORIGINS, str):
+            # Check if the string starts with "[" and ends with "]", indicating a list.
             if self.ALLOWED_CORS_ORIGINS.startswith("[") and self.ALLOWED_CORS_ORIGINS.endswith("]"):
                 try:
-                    self.ALLOWED_CORS_ORIGINS = json.loads(self.ALLOWED_CORS_ORIGINS)  # pyright: ignore[reportConstantRedefinition]
+                    # Safely evaluate the string as a Python list.
+                    self.ALLOWED_CORS_ORIGINS = json.loads(self.ALLOWED_CORS_ORIGINS)
                 except (SyntaxError, ValueError):
+                    # Handle potential errors if the string is not a valid Python literal.
                     msg = "ALLOWED_CORS_ORIGINS is not a valid list representation."
                     raise ValueError(msg) from None
             else:
-                self.ALLOWED_CORS_ORIGINS = [host.strip() for host in self.ALLOWED_CORS_ORIGINS.split(",")]  # pyright: ignore[reportConstantRedefinition]
+                # Split the string by commas into a list if it is not meant to be a list representation.
+                self.ALLOWED_CORS_ORIGINS = [host.strip() for host in self.ALLOWED_CORS_ORIGINS.split(",")]
 
 
 @dataclass
 class Settings:
-    """Main application settings."""
-
     app: AppSettings = field(default_factory=AppSettings)
     db: DatabaseSettings = field(default_factory=DatabaseSettings)
-    vertex_ai: VertexAISettings = field(default_factory=VertexAISettings)
-    agents: AgentSettings = field(default_factory=AgentSettings)
-    cache: CacheSettings = field(default_factory=CacheSettings)
+    server: ServerSettings = field(default_factory=ServerSettings)
     log: LogSettings = field(default_factory=LogSettings)
 
     @classmethod
     @lru_cache(maxsize=1, typed=True)
     def from_env(cls, dotenv_filename: str = ".env") -> Settings:
-        from dotenv import load_dotenv
+        from litestar.cli._utils import console
 
         env_file = Path(f"{os.curdir}/{dotenv_filename}")
-        env_file_exists = env_file.is_file()
-        if env_file_exists:
-            import structlog
+        if env_file.is_file():
+            from dotenv import load_dotenv
 
-            logger = structlog.get_logger()
+            console.print(f"[yellow]Loading environment configuration from {dotenv_filename}[/]")
+
             load_dotenv(env_file, override=True)
-
-        try:
-            database: DatabaseSettings = DatabaseSettings()
-            app: AppSettings = AppSettings()
-            vertex_ai: VertexAISettings = VertexAISettings()
-            agents: AgentSettings = AgentSettings()
-            cache: CacheSettings = CacheSettings()
-            log: LogSettings = LogSettings()
-        except (ValueError, TypeError, KeyError) as e:
-            import structlog
-
-            logger = structlog.get_logger()
-            logger.fatal("Could not load settings", error=str(e))
-            sys.exit(1)
-
-        return Settings(app=app, db=database, vertex_ai=vertex_ai, agents=agents, cache=cache, log=log)
+        return Settings()
 
 
-def get_settings(dotenv_filename: str = ".env") -> Settings:
-    """Get application settings."""
-    return Settings.from_env(dotenv_filename)
+def get_settings() -> Settings:
+    return Settings.from_env()

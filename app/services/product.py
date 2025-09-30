@@ -1,191 +1,341 @@
-"""Product service for managing product data and vector search."""
+"""Product service using raw Oracle SQL."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import array
+from typing import Any
 
-from app.schemas import Product, ProductCreate, ProductSearchResult, ProductUpdate
-from app.services.base import SQLSpecService
-
-if TYPE_CHECKING:
-    from uuid import UUID
+from app.services.base import BaseService
 
 
-class ProductService(SQLSpecService):
-    """Handles database operations for products using SQLSpec patterns."""
+class ProductService(BaseService):
+    """Handles database operations for products using raw SQL."""
 
-    async def vector_similarity_search(
+    async def get_all(self) -> list[dict[str, Any]]:
+        """Get all products with company information."""
+        async with self.get_cursor() as cursor:
+            await cursor.execute(
+                """SELECT p.id, p.name, p.current_price, p.description, p.embedding, p.embedding_generated_on, p.created_at, p.updated_at, p.company_id, c.name as company_name FROM product p JOIN company c ON p.company_id = c.id ORDER BY p.name"""
+            )
+
+            return [
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "current_price": row[2],
+                    "description": row[3],
+                    "embedding": list(row[4]) if row[4] else None,
+                    "embedding_generated_on": row[5],
+                    "created_at": row[6],
+                    "updated_at": row[7],
+                    "company_id": row[8],
+                    "company_name": row[9],
+                }
+                async for row in cursor
+            ]
+
+    async def get_by_id(self, product_id: int) -> dict[str, Any] | None:
+        """Get product by ID with company information."""
+        async with self.get_cursor() as cursor:
+            await cursor.execute(
+                """SELECT p.id, p.name, p.current_price, p.description, p.embedding, p.embedding_generated_on, p.created_at, p.updated_at, p.company_id, c.name as company_name FROM product p JOIN company c ON p.company_id = c.id WHERE p.id = :id""",
+                {"id": product_id},
+            )
+
+            row = await cursor.fetchone()
+            if row:
+                return {
+                    "id": row[0],
+                    "name": row[1],
+                    "current_price": row[2],
+                    "description": row[3],
+                    "embedding": list(row[4]) if row[4] else None,
+                    "embedding_generated_on": row[5],
+                    "created_at": row[6],
+                    "updated_at": row[7],
+                    "company_id": row[8],
+                    "company_name": row[9],
+                }
+            return None
+
+    async def get_by_name(self, name: str) -> dict[str, Any] | None:
+        """Get product by name."""
+        async with self.get_cursor() as cursor:
+            await cursor.execute(
+                """
+                SELECT
+                    p.id,
+                    p.name,
+                    p.current_price,
+                    p.description,
+                    p.embedding,
+                    p.embedding_generated_on,
+                    p.created_at,
+                    p.updated_at,
+                    p.company_id,
+                    c.name as company_name
+                FROM product p
+                JOIN company c ON p.company_id = c.id
+                WHERE p.name = :name
+            """,
+                {"name": name},
+            )
+
+            row = await cursor.fetchone()
+            if row:
+                return {
+                    "id": row[0],
+                    "name": row[1],
+                    "current_price": row[2],
+                    "description": row[3],
+                    "embedding": list(row[4]) if row[4] else None,
+                    "embedding_generated_on": row[5],
+                    "created_at": row[6],
+                    "updated_at": row[7],
+                    "company_id": row[8],
+                    "company_name": row[9],
+                }
+            return None
+
+    async def search_by_description(self, search_term: str) -> list[dict[str, Any]]:
+        """Search products by description."""
+        async with self.get_cursor() as cursor:
+            await cursor.execute(
+                """
+                SELECT
+                    p.id,
+                    p.name,
+                    p.current_price,
+                    p.description,
+                    p.embedding,
+                    p.embedding_generated_on,
+                    p.created_at,
+                    p.updated_at,
+                    p.company_id,
+                    c.name as company_name
+                FROM product p
+                JOIN company c ON p.company_id = c.id
+                WHERE UPPER(p.description) LIKE UPPER(:search_term)
+                ORDER BY p.name
+            """,
+                {"search_term": f"%{search_term}%"},
+            )
+
+            return [
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "current_price": row[2],
+                    "description": row[3],
+                    "embedding": list(row[4]) if row[4] else None,
+                    "embedding_generated_on": row[5],
+                    "created_at": row[6],
+                    "updated_at": row[7],
+                    "company_id": row[8],
+                    "company_name": row[9],
+                }
+                async for row in cursor
+            ]
+
+    async def get_products_without_embeddings(
+        self, limit: int = 100, offset: int = 0
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Get products that have null embeddings with pagination."""
+        async with self.get_cursor() as cursor:
+            # Get total count
+            await cursor.execute("""
+                SELECT COUNT(*) FROM product WHERE embedding IS NULL
+            """)
+            total_count = (await cursor.fetchone())[0]
+
+            # Get paginated results
+            await cursor.execute(
+                """
+                SELECT
+                    p.id,
+                    p.name,
+                    p.current_price,
+                    p.description,
+                    p.embedding,
+                    p.embedding_generated_on,
+                    p.created_at,
+                    p.updated_at,
+                    p.company_id,
+                    c.name as company_name
+                FROM product p
+                JOIN company c ON p.company_id = c.id
+                WHERE p.embedding IS NULL
+                ORDER BY p.id
+                OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY
+            """,
+                {"limit": limit, "offset": offset},
+            )
+
+            products = [
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "current_price": row[2],
+                    "description": row[4],
+                    "embedding": None,
+                    "embedding_generated_on": row[6],
+                    "created_at": row[7],
+                    "updated_at": row[8],
+                    "company_id": row[9],
+                    "company_name": row[10],
+                }
+                async for row in cursor
+            ]
+
+            return products, total_count
+
+    async def search_by_vector(
+        self, query_embedding: list[float], limit: int = 10, similarity_threshold: float = 0.5
+    ) -> list[dict[str, Any]]:
+        """Search products by vector similarity using Oracle 23AI."""
+        async with self.get_cursor() as cursor:
+            # Convert Python list to Oracle VECTOR format
+            oracle_vector = array.array("f", query_embedding)
+
+            # Oracle 23AI vector similarity search
+            await cursor.execute(
+                """
+                SELECT
+                    p.id,
+                    p.name,
+                    p.current_price,
+                    p.description,
+                    p.embedding,
+                    p.embedding_generated_on,
+                    p.created_at,
+                    p.updated_at,
+                    p.company_id,
+                    c.name as company_name,
+                    VECTOR_DISTANCE(p.embedding, :query_embedding, COSINE) as similarity_score
+                FROM product p
+                JOIN company c ON p.company_id = c.id
+                WHERE p.embedding IS NOT NULL
+                AND VECTOR_DISTANCE(p.embedding, :query_embedding, COSINE) <= :threshold
+                ORDER BY similarity_score
+                FETCH FIRST :limit ROWS ONLY
+            """,
+                {
+                    "query_embedding": oracle_vector,
+                    "threshold": 1 - similarity_threshold,  # Convert similarity to distance
+                    "limit": limit,
+                },
+            )
+
+            return [
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "current_price": row[2],
+                    "description": row[4],
+                    "embedding": list(row[5]) if row[5] else None,
+                    "embedding_generated_on": row[6],
+                    "created_at": row[7],
+                    "updated_at": row[8],
+                    "company_id": row[9],
+                    "company_name": row[10],
+                    "similarity_score": 1 - row[11],  # Convert distance back to similarity
+                }
+                async for row in cursor
+            ]
+
+    async def update_embedding(self, product_id: int, embedding: list[float]) -> bool:
+        """Update product embedding."""
+        async with self.get_cursor() as cursor:
+            # Convert Python list to Oracle VECTOR format
+            oracle_vector = array.array("f", embedding)
+
+            await cursor.execute(
+                """
+                UPDATE product
+                SET embedding = :embedding,
+                    embedding_generated_on = SYSTIMESTAMP
+                WHERE id = :id
+            """,
+                {"id": product_id, "embedding": oracle_vector},
+            )
+
+            await self.connection.commit()
+            return cursor.rowcount > 0
+
+    async def create_product(
         self,
-        query_embedding: list[float],
-        similarity_threshold: float = 0.7,
-        limit: int = 5,
-    ) -> list[ProductSearchResult]:
-        """Search products using vector similarity.
+        name: str,
+        company_id: int,
+        current_price: float,
+        size: str,
+        description: str,
+        embedding: list[float] | None = None,
+    ) -> dict[str, Any] | None:
+        """Create a new product."""
+        async with self.get_cursor() as cursor:
+            # Convert Python list to Oracle VECTOR format if provided
+            oracle_vector = array.array("f", embedding) if embedding else None
 
-        Args:
-            query_embedding: Query embedding vector (768 dimensions)
-            similarity_threshold: Minimum similarity score (0.0 to 1.0)
-            limit: Maximum number of results
-
-        Returns:
-            List of products with similarity scores
-        """
-        return await self.driver.select(
-            """
-            SELECT
-              id,
-              name,
-              description,
-              price,
-              category,
-              sku,
-              in_stock,
-              metadata,
-              created_at,
-              updated_at,
-              1 - (embedding <=> :query_embedding) as similarity_score
-            FROM
-              product
-            WHERE
-              embedding IS NOT NULL
-              AND in_stock = true
-              AND 1 - (embedding <=> :query_embedding) >= :similarity_threshold
-            ORDER BY
-              embedding <=> :query_embedding
-            LIMIT
-              :limit_count
+            await cursor.execute(
+                """
+                INSERT INTO product (
+                    company_id, name, current_price, description, embedding, embedding_generated_on
+                ) VALUES (
+                    :company_id, :name, :current_price, :description, :embedding,
+                    CASE WHEN :embedding2 IS NOT NULL THEN SYSTIMESTAMP ELSE NULL END
+                )
+                RETURNING id INTO :id
             """,
-            query_embedding=query_embedding,
-            similarity_threshold=similarity_threshold,
-            limit_count=limit,
-            schema_type=ProductSearchResult,
-        )
+                {
+                    "company_id": company_id,
+                    "name": name,
+                    "current_price": current_price,
+                    "description": description,
+                    "embedding": oracle_vector,
+                    "embedding2": oracle_vector,
+                    "id": cursor.var(int),
+                },
+            )
 
-    async def upsert_product(self, data: ProductCreate | ProductUpdate) -> Product:
-        """Create or update a product using upsert pattern.
+            product_id = cursor.bindvars["id"].getvalue()  # type: ignore[call-overload]
+            await self.connection.commit()
 
-        Args:
-            data: Product creation or update data
+            # Return the created product
+            return await self.get_by_id(product_id)
 
-        Returns:
-            Created or updated product
-        """
-        return await self.driver.select_one(
-            """
-            INSERT INTO product (name, description, price, category, sku, in_stock, metadata)
-            VALUES (:name, :description, :price, :category, :sku, :in_stock, :metadata)
-            ON CONFLICT (sku) DO UPDATE SET
-                name = EXCLUDED.name,
-                description = EXCLUDED.description,
-                price = EXCLUDED.price,
-                category = EXCLUDED.category,
-                in_stock = EXCLUDED.in_stock,
-                metadata = EXCLUDED.metadata,
-                updated_at = CURRENT_TIMESTAMP
-            RETURNING
-                id, name, description, price, category, sku,
-                in_stock, metadata, created_at, updated_at
-            """,
-            name=data.name,
-            description=data.description,
-            price=data.price,
-            category=data.category,
-            sku=data.sku,
-            in_stock=data.in_stock,
-            metadata=data.metadata,
-            schema_type=Product,
-        )
+    async def update_product(self, product_id: int, updates: dict[str, Any]) -> dict[str, Any] | None:
+        """Update a product."""
+        async with self.get_cursor() as cursor:
+            # Build UPDATE statement with safe field mapping
+            field_mapping = {
+                "name": "name = :name",
+                "current_price": "current_price = :current_price",
+                "description": "description = :description",
+            }
 
-    async def update_product_embedding(self, product_id: int, embedding: list[float]) -> None:
-        """Update product embedding vector.
+            set_clauses = []
+            params = {"id": product_id}
 
-        Args:
-            product_id: Product ID
-            embedding: Embedding vector (768 dimensions)
-        """
-        await self.driver.execute(
-            """
-            UPDATE product
-            SET embedding = :embedding,
-                updated_at = NOW()
-            WHERE id = :product_id
-            """,
-            embedding=embedding,
-            product_id=product_id,
-        )
+            for field, value in updates.items():
+                if field in field_mapping:
+                    set_clauses.append(field_mapping[field])
+                    params[field] = value
 
-    async def get_products_without_embeddings(self, limit: int = 100) -> list[dict[str, Any]]:
-        """Get products that don't have embeddings yet.
+            if not set_clauses:
+                return await self.get_by_id(product_id)
 
-        Args:
-            limit: Maximum number of products to return
+            sql = f"UPDATE product SET {', '.join(set_clauses)} WHERE id = :id"  # noqa: S608
 
-        Returns:
-            List of products without embeddings
-        """
-        return await self.driver.select(
-            """
-            SELECT
-                id, name, description, price, category, sku,
-                in_stock, metadata, created_at, updated_at
-            FROM product
-            WHERE embedding IS NULL
-            ORDER BY created_at
-            LIMIT :limit
-            """,
-            limit=limit,
-        )
+            await cursor.execute(sql, params)
+            await self.connection.commit()
 
-    async def get_by_id(self, product_id: UUID) -> Product | None:
-        """Get a product by ID.
+            if cursor.rowcount > 0:
+                return await self.get_by_id(product_id)
+            return None
 
-        Args:
-            product_id: Product UUID
-
-        Returns:
-            Product or None if not found
-        """
-        return await self.driver.select_one_or_none(
-            """
-            SELECT
-                id, name, description, price, category, sku,
-                in_stock, metadata, created_at, updated_at
-            FROM product
-            WHERE id = :product_id
-            """,
-            product_id=product_id,
-            schema_type=Product,
-        )
-
-    async def search_by_name(self, query: str, limit: int = 10) -> list[Product]:
-        """Search products by name using text search.
-
-        Args:
-            query: Search query string
-            limit: Maximum number of results
-
-        Returns:
-            List of matching products
-        """
-        return await self.driver.select(
-            """
-            SELECT
-                id, name, description, price, category, sku,
-                in_stock, metadata, created_at, updated_at
-            FROM product
-            WHERE LOWER(name) LIKE LOWER(:query) OR LOWER(description) LIKE LOWER(:query)
-            ORDER BY
-                CASE
-                    WHEN LOWER(name) LIKE LOWER(:exact_query) THEN 0
-                    WHEN LOWER(name) LIKE LOWER(:start_query) THEN 1
-                    ELSE 2
-                END,
-                name
-            LIMIT :limit
-            """,
-            query=f"%{query}%",
-            exact_query=query,
-            start_query=f"{query}%",
-            limit=limit,
-            schema_type=Product,
-        )
+    async def delete_product(self, product_id: int) -> bool:
+        """Delete a product."""
+        async with self.get_cursor() as cursor:
+            await cursor.execute("DELETE FROM product WHERE id = :id", {"id": product_id})
+            await self.connection.commit()
+            return cursor.rowcount > 0

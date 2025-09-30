@@ -94,23 +94,22 @@
     "docker-compose.yml": "docker-compose.yml, .dockerignore, docker-compose.*.yml, docker-compose.*.yaml",
     "package.json": "package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb, tsconfig.*.json, tsconfig.json, .stylelintrc.json,angular.json,proxy.conf.json,cypress.*.ts,extra-webpack*.cjs,.eslintrc.json, tailwind.config.*, vite.config.ts, postcss.config.*, components.json, .prettierignore, .prettierrc.json, .eslintrc.cjs"
   },
+  "sqltools.connections": [
+    {
+      "previewLimit": 50,
+      "driver": "DuckDB",
+      "name": "Local",
+      "database": "/Users/codyfincher/Downloads/test.db"
+    },
+    {
+      "previewLimit": 50,
+      "driver": "SQLite",
+      "name": "cymba-coffee-ocw-messages",
+      "group": "OCW",
+      "database": "${workspaceFolder:oracledb-vertexai-demo}/.memory.db"
+    }
+  ],
   "sqltools.useNodeRuntime": true,
   "python.analysis.extraPaths": ["${workspaceFolder}"],
-  "geminicodeassist.enable": true,
-  "sqltools.format": {
-
-    "linesBetweenQueries": 2,
-    "reservedWordCase": "null",
-    "language": "pl/sql"
-  },
-  "SQL-Formatter-VSCode.linesBetweenQueries": 2,
-  "SQL-Formatter-VSCode.expressionWidth": 180,
-  "SQL-Formatter-VSCode.indentStyle": "standard",
-  "SQL-Formatter-VSCode.dialect": "postgresql",
-  "SQL-Formatter-VSCode.paramTypes": {
-    "positional":true, "numbered":[":","$"], "named": [":", "$"]
-  },
-  "SQL-Formatter-VSCode.functionCase": "lower",
-  "SQL-Formatter-VSCode.identifierCase": "lower",
-  "SQL-Formatter-VSCode.dataTypeCase": "lower"
+  "geminicodeassist.enable": true
 }
