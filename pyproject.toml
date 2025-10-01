@@ -133,6 +133,8 @@ ignore = [
     "PERF203", # ignore for now; investigate
     "PD011",   # pandas
     "PLR0912",
+    "PLR0915", # too many statements (>50)
+    "C901",    # too complex
     "ISC001",
     "COM812",
     "CPY001",

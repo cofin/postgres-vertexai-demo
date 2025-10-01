@@ -303,37 +303,21 @@ class CoffeeChatController(Controller):
     @get(path="/api/metrics/charts", name="metrics.charts")
     async def get_chart_data(self, metrics_service: MetricsService) -> dict[str, Any]:
         """Get chart data for dashboard visualizations."""
-        try:
-            # Get data for all three charts
-            time_series = await metrics_service.get_time_series_data(minutes=60)
-            scatter_data = await metrics_service.get_scatter_data(hours=1)
-            breakdown = await metrics_service.get_performance_breakdown()
+        # Get data for all three charts - look back 24 hours to ensure we get data
+        time_series = await metrics_service.get_time_series_data(minutes=1440)  # 24 hours
+        scatter_data = await metrics_service.get_scatter_data(hours=1)
+        breakdown = await metrics_service.get_performance_breakdown()
 
-            return {
-                "time_series": {
-                    "labels": time_series["labels"],
-                    "total_latency": time_series["total_latency"],
-                    "postgres_latency": time_series["postgres_latency"],
-                    "llm_latency": time_series["llm_latency"],
-                },
-                "scatter_data": scatter_data,
-                "breakdown_data": breakdown,
-            }
-        except Exception:  # noqa: BLE001
-            # Return empty chart data on error
-            return {
-                "time_series": {
-                    "labels": [],
-                    "total_latency": [],
-                    "postgres_latency": [],
-                    "llm_latency": [],
-                },
-                "scatter_data": [],
-                "breakdown_data": {
-                    "labels": ["Embedding Generation", "Vector Search", "AI Processing", "Other"],
-                    "data": [0, 0, 0, 0],
-                },
-            }
+        return {
+            "time_series": {
+                "labels": time_series["labels"],
+                "total_latency": time_series["total_latency"],
+                "postgres_latency": time_series["postgres_latency"],
+                "llm_latency": time_series["llm_latency"],
+            },
+            "scatter_data": scatter_data,
+            "breakdown_data": breakdown,
+        }
 
     @post(path="/api/vector-demo", name="vector.demo")
     @mcp_tool(name="Search Coffee Products")
@@ -379,6 +363,8 @@ class CoffeeChatController(Controller):
             vector_search_results=len(results),
             total_response_time_ms=int(total_time),
             vector_search_time_ms=int(detailed_timings["search_ms"]),
+            embedding_generation_time_ms=int(detailed_timings["embedding_ms"]),
+            embedding_cache_hit=detailed_timings["embedding_cache_hit"],
             avg_similarity_score=avg_similarity,
         )
 

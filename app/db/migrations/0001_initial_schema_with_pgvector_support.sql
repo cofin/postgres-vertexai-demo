@@ -112,6 +112,7 @@ CREATE TABLE search_metric (
     vector_search_time_ms integer,
     llm_response_time_ms integer,
     total_response_time_ms integer,
+    embedding_generation_time_ms integer,
     embedding_cache_hit boolean DEFAULT false,
     intent_exemplar_used varchar(255),
     avg_similarity_score real,

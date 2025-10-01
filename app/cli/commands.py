@@ -417,13 +417,13 @@ def bulk_embed(batch_size: int, force: bool) -> None:
     console.print()
 
     async def _bulk_embed_products() -> None:
-        from app.server.deps import create_service_provider, provide_vertex_ai_service_with_cache
+        from app.server.deps import create_service_provider, provide_vertex_ai_service
         from app.services.product import ProductService
 
         # Create service providers
         product_provider = create_service_provider(ProductService)
         product_service_gen = product_provider()
-        vertex_ai_service_gen = provide_vertex_ai_service_with_cache()
+        vertex_ai_service_gen = provide_vertex_ai_service()
 
         try:
             product_service = await anext(product_service_gen)
@@ -528,13 +528,13 @@ def embed_new(limit: int) -> None:
     console.print()
 
     async def _embed_new_products() -> None:
-        from app.server.deps import create_service_provider, provide_vertex_ai_service_with_cache
+        from app.server.deps import create_service_provider, provide_vertex_ai_service
         from app.services.product import ProductService
 
         # Create service providers
         product_provider = create_service_provider(ProductService)
         product_service_gen = product_provider()
-        vertex_ai_service_gen = provide_vertex_ai_service_with_cache()
+        vertex_ai_service_gen = provide_vertex_ai_service()
 
         try:
             product_service = await anext(product_service_gen)
@@ -899,11 +899,11 @@ def populate_intents(force: bool, intent: str | None) -> None:
             console.print("[dim]Loading exemplars for all intents[/dim]")
         console.print()
 
-        from app.server.deps import provide_vertex_ai_service_with_cache
+        from app.server.deps import provide_vertex_ai_service
 
         provider = create_service_provider(ExemplarService)
         service_gen = provider()
-        vertex_ai_gen = provide_vertex_ai_service_with_cache()
+        vertex_ai_gen = provide_vertex_ai_service()
 
         try:
             exemplar_service = await anext(service_gen)
@@ -947,11 +947,11 @@ def test_intent(query: str) -> None:
         console.print(f"Query: [cyan]{query}[/cyan]")
         console.print()
 
-        from app.server.deps import provide_vertex_ai_service_with_cache
+        from app.server.deps import provide_vertex_ai_service
 
         provider = create_service_provider(ExemplarService)
         service_gen = provider()
-        vertex_ai_gen = provide_vertex_ai_service_with_cache()
+        vertex_ai_gen = provide_vertex_ai_service()
 
         try:
             exemplar_service = await anext(service_gen)

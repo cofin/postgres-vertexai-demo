@@ -1,4 +1,4 @@
-# ruff: noqa: PLR0911,C901
+# ruff: noqa: PLR0911
 """Environment variable utilities with type-safe parsing."""
 
 from __future__ import annotations

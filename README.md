@@ -52,10 +52,10 @@ For complete implementation and development guides, see the [`docs/system/`](doc
 ### Recent Architecture Updates
 
 - **[Architecture Updates](docs/architecture-updates.md)** - Recent improvements including:
-  - Native HTMX integration with Litestar
-  - Centralized exception handling system
-  - Unified cache information API
-  - Enhanced cache hit tracking
+    - Native HTMX integration with Litestar
+    - Centralized exception handling system
+    - Unified cache information API
+    - Enhanced cache hit tracking
 - **[HTMX Events Reference](docs/htmx-events.md)** - Complete list of custom HTMX events
 - **[HTMX Migration Summary](docs/htmx-migration-summary.md)** - Details of the HTMX native integration
 - **[Demo Scenarios](docs/system/07-demo-scenarios.md)** - Live demonstration scripts

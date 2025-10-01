@@ -27,6 +27,7 @@ class MetricsService(SQLSpecService):
         confidence_score: float | None = None,
         vector_search_time_ms: int | None = None,
         llm_response_time_ms: int | None = None,
+        embedding_generation_time_ms: int | None = None,
         embedding_cache_hit: bool = False,
         intent_exemplar_used: str | None = None,
         avg_similarity_score: float | None = None,
@@ -42,6 +43,7 @@ class MetricsService(SQLSpecService):
             confidence_score: Confidence score for intent classification
             vector_search_time_ms: Vector search time in milliseconds
             llm_response_time_ms: LLM response time in milliseconds
+            embedding_generation_time_ms: Embedding generation time in milliseconds
             embedding_cache_hit: Whether embedding was cached
             intent_exemplar_used: Which intent exemplar was used
             avg_similarity_score: Average similarity score for vector search results
@@ -54,19 +56,19 @@ class MetricsService(SQLSpecService):
             INSERT INTO search_metric (
                 session_id, query_text, intent, confidence_score,
                 vector_search_results, vector_search_time_ms, llm_response_time_ms,
-                total_response_time_ms, embedding_cache_hit, intent_exemplar_used,
-                avg_similarity_score
+                total_response_time_ms, embedding_generation_time_ms, embedding_cache_hit,
+                intent_exemplar_used, avg_similarity_score
             ) VALUES (
                 :session_id, :query_text, :intent, :confidence_score,
                 :vector_search_results, :vector_search_time_ms, :llm_response_time_ms,
-                :total_response_time_ms, :embedding_cache_hit, :intent_exemplar_used,
-                :avg_similarity_score
+                :total_response_time_ms, :embedding_generation_time_ms, :embedding_cache_hit,
+                :intent_exemplar_used, :avg_similarity_score
             )
             RETURNING
                 id, session_id, query_text, intent, confidence_score,
                 vector_search_results, vector_search_time_ms, llm_response_time_ms,
-                total_response_time_ms, embedding_cache_hit, intent_exemplar_used,
-                avg_similarity_score, created_at
+                total_response_time_ms, embedding_generation_time_ms, embedding_cache_hit,
+                intent_exemplar_used, avg_similarity_score, created_at
             """,
             session_id=session_id,
             query_text=query_text,
@@ -76,6 +78,7 @@ class MetricsService(SQLSpecService):
             vector_search_time_ms=vector_search_time_ms,
             llm_response_time_ms=llm_response_time_ms,
             total_response_time_ms=total_response_time_ms,
+            embedding_generation_time_ms=embedding_generation_time_ms,
             embedding_cache_hit=embedding_cache_hit,
             intent_exemplar_used=intent_exemplar_used,
             avg_similarity_score=avg_similarity_score,
@@ -97,6 +100,7 @@ class MetricsService(SQLSpecService):
               count(*) as total_queries,
               avg(vector_search_time_ms) as avg_vector_search_time_ms,
               avg(llm_response_time_ms) as avg_llm_response_time_ms,
+              avg(embedding_generation_time_ms) as avg_embedding_time_ms,
               avg(total_response_time_ms) as avg_total_response_time_ms,
               avg(avg_similarity_score) as avg_similarity_score,
               percentile_cont(0.50) WITHIN GROUP (
@@ -128,6 +132,7 @@ class MetricsService(SQLSpecService):
                 "avg_response_time_ms": metrics.get("avg_total_response_time_ms", 0.0),
                 "avg_vector_search_time_ms": metrics.get("avg_vector_search_time_ms", 0.0),
                 "avg_llm_response_time_ms": metrics.get("avg_llm_response_time_ms", 0.0),
+                "avg_embedding_time_ms": metrics.get("avg_embedding_time_ms", 0.0),
                 "p50_response_time_ms": metrics.get("median_response_time_ms", 0.0),
                 "p95_response_time_ms": metrics.get("p95_response_time_ms", 0.0),
                 "p99_response_time_ms": metrics.get("p99_response_time_ms", 0.0),
@@ -186,9 +191,9 @@ class MetricsService(SQLSpecService):
 
         for row in data:
             labels.append(row.get("time_bucket"))
-            total_latency.append(round(row.get("avg_total", 0) or 0, 2))
-            postgres_latency.append(round(row.get("avg_postgres", 0) or 0, 2))
-            llm_latency.append(round(row.get("avg_llm", 0) or 0, 2))
+            total_latency.append(round(float(row.get("avg_total", 0) or 0), 2))
+            postgres_latency.append(round(float(row.get("avg_postgres", 0) or 0), 2))
+            llm_latency.append(round(float(row.get("avg_llm", 0) or 0), 2))
 
         # If no data, provide demo data for visualization
         if not data:
@@ -210,7 +215,7 @@ class MetricsService(SQLSpecService):
             "llm_latency": llm_latency,
         }
 
-    async def get_scatter_data(self, hours: int = 1) -> list[dict[str, float]]:
+    async def get_scatter_data(self, hours: int = 1) -> list[dict[str, float | int]]:
         """Get similarity score vs response time for scatter plot.
 
         Args:
@@ -236,11 +241,11 @@ class MetricsService(SQLSpecService):
             since_time=since_time,
         )
 
-        result = [
+        result: list[dict[str, float | int]] = [
             {
                 "x": round(row.get("avg_similarity_score", 0) or 0, 3),
-                "y": round(row.get("vector_search_time_ms", 0) or 0, 2),
-                "total": round(row.get("total_response_time_ms", 0) or 0, 2),
+                "y": int(row.get("vector_search_time_ms", 0) or 0),
+                "total": int(row.get("total_response_time_ms", 0) or 0),
             }
             for row in data
         ]
@@ -252,9 +257,9 @@ class MetricsService(SQLSpecService):
                 # Higher similarity usually means faster search
                 base_time = 100 - similarity * 50
                 result.append({
-                    "x": round(similarity, 3),
-                    "y": round(base_time + random.uniform(-20, 30), 2),
-                    "total": round(base_time * 3 + random.uniform(-30, 50), 2),
+                    "x": int(similarity * 1000) / 1000,  # Keep as float but ensure it's numeric
+                    "y": int(base_time + random.uniform(-20, 30)),
+                    "total": int(base_time * 3 + random.uniform(-30, 50)),
                 })
 
         return result  # type: ignore[return-value]
@@ -271,6 +276,7 @@ class MetricsService(SQLSpecService):
         avg_total = stats["avg_response_time_ms"]
         avg_postgres = stats.get("avg_vector_search_time_ms", 0) or 0
         avg_llm = stats.get("avg_llm_response_time_ms", 0) or 0
+        avg_embedding = stats.get("avg_embedding_time_ms", 0) or 0
 
         # If no data, provide demo breakdown
         if avg_total == 0:
@@ -280,16 +286,22 @@ class MetricsService(SQLSpecService):
                 "data": [30.0, 45.0, 85.0, 25.0],  # Demo values in ms
             }
 
-        # Estimate embedding generation time (typically small, ~10-50ms)
-        embedding_time_estimate = min(avg_total * 0.1, 50) if avg_total > 0 else 0
+        # Convert Decimals to float for calculations
+        avg_total = float(avg_total)
+        avg_postgres = float(avg_postgres)
+        avg_llm = float(avg_llm)
+        avg_embedding = float(avg_embedding)
+
+        # Use actual embedding time if available
+        embedding_time = avg_embedding
 
         # Calculate remaining time for app logic
-        remaining_time = max(0, avg_total - avg_postgres - avg_llm - embedding_time_estimate)
+        remaining_time = max(0, avg_total - avg_postgres - avg_llm - embedding_time)
 
         return {
             "labels": ["Embedding Generation", "Vector Search", "AI Processing", "Other"],
             "data": [
-                round(embedding_time_estimate, 1),
+                round(embedding_time, 1),
                 round(avg_postgres, 1),
                 round(avg_llm, 1),
                 round(remaining_time, 1),

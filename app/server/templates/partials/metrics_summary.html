@@ -46,21 +46,3 @@
     </div>
 </div>
 
-<!-- Cache Hit Rate -->
-<div class="metric-card {{ 'success' if metrics.cache_hit_rate > 80 else 'warning' if metrics.cache_hit_rate > 50 else 'danger' }}">
-    <div class="metric-label">Cache Hit Rate <span class="help-icon" data-tippy-content="Percentage of requests served from PostgreSQL-based response cache, avoiding redundant vector searches and AI model calls">?</span></div>
-    <div class="metric-value">{{ "{:.0f}".format(metrics.cache_hit_rate) }}%</div>
-    <div class="metric-trend {{ 'trend-up' if metrics.cache_trend > 0 else 'trend-down' if metrics.cache_trend < 0 else 'trend-neutral' }}">
-        {% if metrics.cache_trend > 0 %}
-            ↑ {{ metrics.cache_trend }}% improvement
-        {% elif metrics.cache_trend < 0 %}
-            ↓ {{ metrics.cache_trend|abs }}% decrease
-        {% else %}
-            → Consistent
-        {% endif %}
-    </div>
-    <div class="metric-tip">
-        <span class="tip-icon" data-tippy-content="💡 Tip: Low cache hit rates (< 50%) suggest diverse queries. Consider: 1) Implementing semantic query clustering, 2) Increasing cache TTL for popular searches, 3) Pre-warming cache with common queries.">💡</span>
-    </div>
-</div>
-

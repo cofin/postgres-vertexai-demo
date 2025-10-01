@@ -39,11 +39,6 @@ provide_cache_service = create_service_provider(CacheService)
 
 # Providers that don't require a database connection directly
 async def provide_vertex_ai_service() -> AsyncGenerator[VertexAIService, None]:
-    """Provide Vertex AI service."""
-    yield VertexAIService()
-
-
-async def provide_vertex_ai_service_with_cache() -> AsyncGenerator[VertexAIService, None]:
     """Provide Vertex AI service with cache support."""
     async with sqlspec.provide_session(db) as session:
         cache_service = CacheService(session)

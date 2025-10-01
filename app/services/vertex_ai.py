@@ -1,3 +1,4 @@
+# ruff: noqa: TC001
 """Vertex AI integration service for embeddings and chat."""
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ import structlog
 from google import genai
 
 from app.lib.settings import get_settings
+from app.services.cache import CacheService
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -20,7 +22,7 @@ logger = structlog.get_logger()
 class VertexAIService:
     """Vertex AI service for embeddings and chat completions."""
 
-    def __init__(self, cache_service: object | None = None) -> None:
+    def __init__(self, cache_service: CacheService | None = None) -> None:
         """Initialize Vertex AI service.
 
         Args:
@@ -31,7 +33,7 @@ class VertexAIService:
 
         self.settings = get_settings()
         self._genai_client: genai.Client | None = None
-        self._cache_service = cache_service
+        self._cache_service: CacheService | None = cache_service
 
         # Initialize Vertex AI
         if self.settings.vertex_ai.PROJECT_ID:
@@ -51,7 +53,6 @@ class VertexAIService:
         else:
             self._genai_client = None
             logger.warning("Vertex AI not initialized: PROJECT_ID not configured")
-
 
     async def _get_batch_text_embeddings(self, texts: list[str], model_name: str) -> list[list[float]]:
         """Handle batch embedding generation with rate limiting."""

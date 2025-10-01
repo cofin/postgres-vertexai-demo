@@ -235,10 +235,10 @@ LIMIT $3"""
             return [
                 {
                     "id": str(conv.id),
-                    "user_message": conv.user_message,
-                    "assistant_response": conv.assistant_response,
-                    "created_at": conv.created_at.isoformat(),
-                    "response_time_ms": conv.response_time_ms,
+                    "role": conv.role,
+                    "content": conv.content,
+                    "created_at": conv.created_at.isoformat() if conv.created_at else None,
+                    "metadata": conv.metadata,
                 }
                 for conv in conversations
             ]

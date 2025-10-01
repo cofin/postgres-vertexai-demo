@@ -12,11 +12,6 @@ import time
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
-
-    from google.adk.sessions import Session
-
 import structlog
 from google.adk import Runner
 from google.genai import errors, types
@@ -24,9 +19,14 @@ from google.genai import errors, types
 from app.config import db, service_locator, sqlspec
 from app.services.adk.agent import CoffeeAssistantAgent  # This now imports the router agent
 from app.services.adk.session import ChatSessionService
-from app.services.adk.tools import get_and_clear_timing_context
+from app.services.adk.tools import get_and_clear_timing_context, search_products_by_vector
 from app.services.cache import CacheService
 from app.services.metrics import MetricsService
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+    from google.adk.sessions import Session
 
 logger = structlog.get_logger()
 
@@ -85,11 +85,7 @@ class ADKOrchestrator:
         return "\n".join(result_lines)
 
     async def process_request(
-        self,
-        query: str,
-        user_id: str = "default",
-        session_id: str | None = None,
-        persona: str = "enthusiast",
+        self, query: str, user_id: str = "default", session_id: str | None = None, persona: str = "enthusiast"
     ) -> dict[str, Any]:
         """Process user request through ADK agent system with detailed timing."""
         start_time = time.time()
@@ -123,6 +119,16 @@ class ADKOrchestrator:
                     try:
                         events = await self._run_agent(query, user_id, session.id)
                         event_data = await self._process_events(events, query, timings)
+
+                        # Check if the agent failed to follow workflow for PRODUCT_SEARCH
+                        if event_data.get("intent_details", {}).get(
+                            "intent"
+                        ) == "PRODUCT_SEARCH" and not event_data.get("products_found"):
+                            logger.warning("Agent failed workflow, retrying with reminder", query=query)
+                            # Retry with workflow reminder
+                            events_retry = await self._run_agent(query, user_id, session.id, retry_for_workflow=True)
+                            event_data = await self._process_events(events_retry, query, timings)
+
                     except errors.ServerError as e:
                         # If all retries failed, return a graceful fallback
                         if getattr(e, "status", None) == HTTP_SERVICE_UNAVAILABLE:
@@ -138,9 +144,23 @@ class ADKOrchestrator:
                             raise
                     timings["agent_processing_ms"] = round((time.time() - agent_start) * 1000, 2)
 
-                    # Cache the response
-                    await cache_service.set(cache_key, event_data, ttl=5)  # 5-minute TTL
-                    logger.debug("Cached response", cache_key=cache_key)
+                    # Only cache valid responses
+                    # Don't cache if PRODUCT_SEARCH was detected but no products were found
+                    should_cache = True
+                    if event_data.get("intent_details", {}).get("intent") == "PRODUCT_SEARCH" and not event_data.get("products_found"):
+                        logger.warning(
+                            "Not caching incomplete PRODUCT_SEARCH response",
+                            cache_key=cache_key,
+                            intent="PRODUCT_SEARCH",
+                            products_found=0,
+                        )
+                        should_cache = False
+
+                    if should_cache:
+                        await cache_service.set(cache_key, event_data, ttl=5)  # 5-minute TTL
+                        logger.debug("Cached response", cache_key=cache_key)
+                    else:
+                        logger.debug("Skipped caching due to validation failure", cache_key=cache_key)
 
             # Get timing data from tool context
             tool_timings = get_and_clear_timing_context()
@@ -186,9 +206,30 @@ class ADKOrchestrator:
             state={},
         )
 
-    async def _run_agent(self, query: str, user_id: str, session_id: str) -> AsyncGenerator:
-        """Run the ADK agent with the user query with retry logic."""
-        content = types.Content(role="user", parts=[types.Part(text=query)])
+    async def _run_agent(
+        self, query: str, user_id: str, session_id: str, retry_for_workflow: bool = False
+    ) -> AsyncGenerator:
+        """Run the ADK agent with the user query with retry logic.
+
+        Args:
+            query: The user's query
+            user_id: The user ID
+            session_id: The session ID
+            retry_for_workflow: If True, add a reminder about following the workflow
+        """
+        # Add workflow reminder if this is a retry for incomplete workflow
+        if retry_for_workflow:
+            reminder = (
+                "\n\nREMINDER: You MUST follow the workflow exactly:\n"
+                "1. Call classify_intent first\n"
+                "2. If intent is PRODUCT_SEARCH, you MUST call search_products_by_vector\n"
+                "Please process this query again following all steps: "
+            )
+            query_with_reminder = reminder + query
+            content = types.Content(role="user", parts=[types.Part(text=query_with_reminder)])
+            logger.warning("Retrying with workflow reminder", original_query=query)
+        else:
+            content = types.Content(role="user", parts=[types.Part(text=query)])
 
         # Retry logic for transient errors
         max_retries = 3
@@ -281,11 +322,51 @@ LIMIT %s""",
             return "Hey there! What can I get you today?"
         return "I'm here to help! What can I get for you today?"
 
-    def _validate_and_apply_fallbacks(
+    async def _perform_fallback_search(self, query: str) -> tuple[list, str, dict]:
+        """Perform a fallback product search when agent fails to follow workflow.
+
+        Returns:
+            Tuple of (products, response_text, timing_info)
+        """
+        try:
+            # Import the search function and timing context getter
+
+            # Perform the search directly
+            logger.warning("Performing fallback search", query=query)
+            products = await search_products_by_vector(query=query, limit=5, similarity_threshold=0.3)
+
+            # Get the timing context from the search (including embedding_cache_hit)
+            fallback_timing = get_and_clear_timing_context()
+
+            if products and isinstance(products, list):
+                # Build a response from the found products
+                product_names = [
+                    f"{p['name']} (${p['price']:.2f})"
+                    for p in products[:3]
+                    if isinstance(p, dict) and "name" in p and "price" in p
+                ]
+
+                if product_names:
+                    response = f"I found some great options for you: {', '.join(product_names)}. Would you like to know more about any of these?"
+                    return products, response, fallback_timing
+
+        except Exception as e:
+            logger.exception("Fallback search failed", error=str(e))
+            return [], "I'd recommend our Hazelnut Haiku ($5.49) or Mocha Marvel ($5.99).", {}
+        else:
+            # If search failed or returned no products
+            return [], "I'd recommend our Hazelnut Haiku ($5.49) or Mocha Marvel ($5.99).", fallback_timing
+
+    async def _validate_and_apply_fallbacks(
         self, intent_details: dict, products_found: list, query: str, all_text_responses: list
-    ) -> tuple[dict, str]:
-        """Validate intent and products, apply fallbacks if needed."""
+    ) -> tuple[dict, list, str, dict]:
+        """Validate intent and products, apply fallbacks if needed.
+
+        Returns:
+            Tuple of (intent_details, products_found, final_response_text, fallback_timing)
+        """
         final_response_text = ""
+        fallback_timing = {}
 
         if not intent_details or not intent_details.get("intent"):
             logger.error("CRITICAL: Agent did NOT call classify_intent!", query=query)
@@ -296,9 +377,10 @@ LIMIT %s""",
             }
         elif intent_details.get("intent") == "PRODUCT_SEARCH" and not products_found:
             logger.error("CRITICAL: Agent detected PRODUCT_SEARCH but didn't search!", query=query)
-            final_response_text = "I'd recommend our Hazelnut Haiku ($5.49) or Mocha Marvel ($5.99)."
+            # Perform the search ourselves as a fallback
+            products_found, final_response_text, fallback_timing = await self._perform_fallback_search(query)
 
-        return intent_details, final_response_text
+        return intent_details, products_found, final_response_text, fallback_timing
 
     async def _process_events(self, events: AsyncGenerator, query: str, timings: dict) -> dict[str, Any]:
         """Process ADK events and extract relevant information with timing."""
@@ -332,11 +414,22 @@ LIMIT %s""",
                         products_found, search_details = self._process_search_response(func_response, query)
 
         # Validate and apply fallbacks
-        intent_details, fallback_text = self._validate_and_apply_fallbacks(
+        intent_details, products_found, fallback_text, fallback_timing = await self._validate_and_apply_fallbacks(
             intent_details, products_found, query, all_text_responses
         )
         if fallback_text:
             final_response_text = fallback_text
+            # Merge fallback timing into main timings if we did a fallback search
+            if fallback_timing and "vector_search" in fallback_timing:
+                timings["vector_search_ms"] = fallback_timing["vector_search"]["total_ms"]
+                timings["embedding_generation_ms"] = fallback_timing["vector_search"]["embedding_ms"]
+                timings["embedding_cache_hit"] = fallback_timing["vector_search"]["embedding_cache_hit"]
+                # Update search details with fallback search info
+                search_details.update({
+                    "sql": fallback_timing["vector_search"]["sql_query"],
+                    "params": fallback_timing["vector_search"]["params"],
+                    "results_count": fallback_timing["vector_search"]["results_count"],
+                })
 
         # Use collected responses if no final response
         if not final_response_text:
@@ -403,6 +496,9 @@ LIMIT %s""",
                     else None,
                     llm_response_time_ms=int(timings.get("agent_processing_ms", 0))
                     if timings.get("agent_processing_ms")
+                    else None,
+                    embedding_generation_time_ms=int(timings.get("embedding_generation_ms", 0))
+                    if timings.get("embedding_generation_ms")
                     else None,
                     embedding_cache_hit=timings.get("embedding_cache_hit", False),
                     intent_exemplar_used=event_data.get("intent_details", {}).get("exemplar_used"),
