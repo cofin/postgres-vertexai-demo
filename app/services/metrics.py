@@ -272,14 +272,13 @@ class MetricsService(SQLSpecService):
         """
         stats = await self.get_performance_metrics(hours_back=1)
 
-        # Get the averages
-        avg_total = stats["avg_response_time_ms"]
+        avg_total = stats.get("avg_response_time_ms") or 0
         avg_postgres = stats.get("avg_vector_search_time_ms", 0) or 0
         avg_llm = stats.get("avg_llm_response_time_ms", 0) or 0
         avg_embedding = stats.get("avg_embedding_time_ms", 0) or 0
 
         # If no data, provide demo breakdown
-        if avg_total == 0:
+        if not avg_total or avg_total == 0:
             # Provide realistic demo values
             return {
                 "labels": ["Embedding Generation", "Vector Search", "AI Processing", "Other"],
