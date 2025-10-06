@@ -29,6 +29,7 @@ class MetricsService(SQLSpecService):
         llm_response_time_ms: int | None = None,
         embedding_generation_time_ms: int | None = None,
         embedding_cache_hit: bool = False,
+        vector_search_cache_hit: bool = False,
         intent_exemplar_used: str | None = None,
         avg_similarity_score: float | None = None,
     ) -> SearchMetrics:
@@ -45,6 +46,7 @@ class MetricsService(SQLSpecService):
             llm_response_time_ms: LLM response time in milliseconds
             embedding_generation_time_ms: Embedding generation time in milliseconds
             embedding_cache_hit: Whether embedding was cached
+            vector_search_cache_hit: Whether vector search results were cached
             intent_exemplar_used: Which intent exemplar was used
             avg_similarity_score: Average similarity score for vector search results
 
@@ -57,18 +59,18 @@ class MetricsService(SQLSpecService):
                 session_id, query_text, intent, confidence_score,
                 vector_search_results, vector_search_time_ms, llm_response_time_ms,
                 total_response_time_ms, embedding_generation_time_ms, embedding_cache_hit,
-                intent_exemplar_used, avg_similarity_score
+                vector_search_cache_hit, intent_exemplar_used, avg_similarity_score
             ) VALUES (
                 :session_id, :query_text, :intent, :confidence_score,
                 :vector_search_results, :vector_search_time_ms, :llm_response_time_ms,
                 :total_response_time_ms, :embedding_generation_time_ms, :embedding_cache_hit,
-                :intent_exemplar_used, :avg_similarity_score
+                :vector_search_cache_hit, :intent_exemplar_used, :avg_similarity_score
             )
             RETURNING
                 id, session_id, query_text, intent, confidence_score,
                 vector_search_results, vector_search_time_ms, llm_response_time_ms,
                 total_response_time_ms, embedding_generation_time_ms, embedding_cache_hit,
-                intent_exemplar_used, avg_similarity_score, created_at
+                vector_search_cache_hit, intent_exemplar_used, avg_similarity_score, created_at
             """,
             session_id=session_id,
             query_text=query_text,
@@ -80,6 +82,7 @@ class MetricsService(SQLSpecService):
             total_response_time_ms=total_response_time_ms,
             embedding_generation_time_ms=embedding_generation_time_ms,
             embedding_cache_hit=embedding_cache_hit,
+            vector_search_cache_hit=vector_search_cache_hit,
             intent_exemplar_used=intent_exemplar_used,
             avg_similarity_score=avg_similarity_score,
             schema_type=SearchMetrics,

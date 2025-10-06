@@ -1,7 +1,7 @@
 """Data schemas using msgspec for high-performance serialization."""
 
 from app.schemas.base import BaseStruct, CamelizedBaseStruct, Message
-from app.schemas.cache import EmbeddingCache, ResponseCache
+from app.schemas.cache import EmbeddingCache, ResponseCache, VectorSearchCache
 from app.schemas.chat import (
     ChatConversation,
     ChatConversationCreate,
@@ -52,4 +52,5 @@ __all__ = (
     "StoreCreate",
     "StoreUpdate",
     "VectorDemoRequest",
+    "VectorSearchCache",
 )

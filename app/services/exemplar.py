@@ -328,17 +328,18 @@ class ExemplarService(SQLSpecService):
         Returns:
             Number of deleted exemplars
         """
-        result = await self.driver.select_value_or_none(
+        result = await self.driver.execute(
             """
             DELETE FROM intent_exemplar
             WHERE
                 usage_count = 0
-                AND created_at < now() - interval ':days_old days'
+                AND created_at < now() - :days_old * INTERVAL '1 day'
             """,
             days_old=days_old,
         )
-        if result is not None:
-            logger.info("Cleaned unused exemplars", deleted_count=result)
-            return result  # type: ignore[no-any-return]
 
-        return 0
+        deleted_count = result.rows_affected
+        if deleted_count > 0:
+            logger.info("Cleaned unused exemplars", deleted_count=deleted_count)
+
+        return deleted_count

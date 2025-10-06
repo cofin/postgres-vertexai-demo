@@ -24,7 +24,7 @@ from litestar.plugins.problem_details import ProblemDetailsConfig
 from litestar.plugins.structlog import StructlogConfig
 from litestar_mcp import MCPConfig
 from sqlspec.adapters.asyncpg import AsyncpgConfig
-from sqlspec.extensions.litestar import DatabaseConfig, SQLSpec
+from sqlspec.base import SQLSpec
 
 from app.lib import log as log_conf
 from app.lib.settings import get_settings
@@ -57,8 +57,21 @@ db = AsyncpgConfig(
     },
 )
 
+# Configure Litestar extension settings
+db.extension_config = {
+    "litestar": {
+        "commit_mode": "autocommit",
+    }
+}
+
+# Fix connection_type to avoid UnionType issue with Litestar's signature namespace
+# The pool always returns PoolConnectionProxy, so we use that as the connection type
+from asyncpg.pool import PoolConnectionProxy
+db.__class__.connection_type = PoolConnectionProxy
+
 # SQLSpec database manager
-sqlspec = SQLSpec(config=DatabaseConfig(commit_mode="autocommit", config=db))
+sqlspec = SQLSpec()
+sqlspec.add_config(db)
 
 # Load SQL files
 sqlspec.load_sql_files(Path(__file__).parent / "db" / "sql")

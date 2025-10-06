@@ -9,10 +9,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.config import db, service_locator, sqlspec
+from app.lib.context import clear_timing_context, set_timing_data
 from app.services.adk.tool_service import AgentToolsService
-
-# Context to store timing data for orchestrator access
-_timing_context: dict[str, Any] = {}
 
 
 def get_and_clear_timing_context() -> dict[str, Any]:
@@ -21,9 +19,7 @@ def get_and_clear_timing_context() -> dict[str, Any]:
     Returns:
         The current timing context data
     """
-    context = _timing_context.copy()
-    _timing_context.clear()
-    return context
+    return clear_timing_context()
 
 
 async def search_products_by_vector(
@@ -49,15 +45,16 @@ async def search_products_by_vector(
         result = await tools_service.search_products_by_vector(query, limit, similarity_threshold)
 
         # Store timing data for orchestrator access
-        _timing_context["vector_search"] = {
+        set_timing_data("vector_search", {
             "total_ms": result["timing"]["total_ms"],
             "embedding_ms": result["timing"]["embedding_ms"],
             "search_ms": result["timing"]["search_ms"],
             "embedding_cache_hit": result["embedding_cache_hit"],
+            "vector_search_cache_hit": result["vector_search_cache_hit"],
             "sql_query": result["sql_query"],
             "params": result["params"],
             "results_count": result["results_count"]
-        }
+        })
 
         # Return just the products list for ADK compatibility
         return result["products"]
@@ -91,10 +88,10 @@ async def classify_intent(query: str) -> dict[str, Any]:
         result = await tools_service.classify_intent(query)
 
         # Store timing data for orchestrator access
-        _timing_context["intent_classification"] = {
+        set_timing_data("intent_classification", {
             "timing_ms": result["timing_ms"],
             "sql_query": result["sql_query"]
-        }
+        })
 
         return result
 

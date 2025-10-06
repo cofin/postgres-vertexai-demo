@@ -108,7 +108,6 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         from litestar.plugins.htmx import HTMXRequest
         from litestar.static_files import create_static_files_router
         from litestar.template.config import TemplateConfig
-        from sqlspec import ConnectionT, PoolT
 
         from app import config
         from app import schemas as s
@@ -200,8 +199,6 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
             "MetricsService": MetricsService,
             "ProductService": ProductService,
             "VertexAIService": VertexAIService,
-            "ConnectionT": ConnectionT,
-            "PoolT": PoolT,
             "UUID": UUID,
             "datetime": datetime,
             "CompressionFacade": CompressionFacade,

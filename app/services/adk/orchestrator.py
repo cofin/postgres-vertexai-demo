@@ -173,6 +173,7 @@ class ADKOrchestrator:
                 timings["vector_search_ms"] = tool_timings["vector_search"]["total_ms"]
                 timings["embedding_generation_ms"] = tool_timings["vector_search"]["embedding_ms"]
                 timings["embedding_cache_hit"] = tool_timings["vector_search"]["embedding_cache_hit"]
+                timings["vector_search_cache_hit"] = tool_timings["vector_search"]["vector_search_cache_hit"]
                 # Update search details with actual data from tools
                 event_data["search_details"].update({
                     "sql": tool_timings["vector_search"]["sql_query"],
@@ -501,6 +502,7 @@ LIMIT %s""",
                     if timings.get("embedding_generation_ms")
                     else None,
                     embedding_cache_hit=timings.get("embedding_cache_hit", False),
+                    vector_search_cache_hit=timings.get("vector_search_cache_hit", False),
                     intent_exemplar_used=event_data.get("intent_details", {}).get("exemplar_used"),
                     avg_similarity_score=avg_similarity,
                 )

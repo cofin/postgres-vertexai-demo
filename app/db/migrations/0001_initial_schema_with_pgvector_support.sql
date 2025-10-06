@@ -114,9 +114,26 @@ CREATE TABLE search_metric (
     total_response_time_ms integer,
     embedding_generation_time_ms integer,
     embedding_cache_hit boolean DEFAULT false,
+    vector_search_cache_hit boolean DEFAULT false,
     intent_exemplar_used varchar(255),
     avg_similarity_score real,
     created_at timestamp with time zone DEFAULT current_timestamp
+);
+
+
+-- Vector search result cache for reducing latency
+CREATE TABLE vector_search_cache (
+    id serial PRIMARY KEY,
+    embedding_hash varchar(32) NOT NULL,
+    similarity_threshold real NOT NULL,
+    result_limit integer NOT NULL,
+    product_ids integer[] NOT NULL,
+    results_count integer NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT current_timestamp,
+    last_accessed timestamp with time zone DEFAULT current_timestamp,
+    hit_count integer DEFAULT 1,
+    UNIQUE (embedding_hash, similarity_threshold, result_limit)
 );
 
 
@@ -210,6 +227,15 @@ CREATE INDEX search_metric_created_at_idx ON search_metric (created_at);
 
 
 CREATE INDEX search_metric_similarity_score_idx ON search_metric (avg_similarity_score) WHERE avg_similarity_score IS NOT NULL;
+
+
+-- Vector search cache indexes
+CREATE INDEX idx_vector_search_cache_expires ON vector_search_cache (expires_at)
+WHERE
+    expires_at IS NOT NULL;
+
+
+CREATE INDEX idx_vector_search_cache_lookup ON vector_search_cache (embedding_hash, similarity_threshold, result_limit);
 
 
 -- Functions for automatic updated_at timestamps
@@ -357,7 +383,14 @@ DROP INDEX if EXISTS search_metrics_created_at_idx;
 DROP INDEX if EXISTS search_metric_similarity_score_idx;
 
 
+DROP INDEX if EXISTS idx_vector_search_cache_expires;
+
+
+DROP INDEX if EXISTS idx_vector_search_cache_lookup;
+
+
 -- Drop tables in reverse dependency order
+DROP TABLE IF EXISTS vector_search_cache cascade;
 DROP TABLE IF EXISTS search_metric cascade;
 DROP TABLE IF EXISTS search_metrics cascade;
 

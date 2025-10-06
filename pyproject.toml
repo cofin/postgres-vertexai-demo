@@ -17,7 +17,7 @@ dependencies = [
     "litestar[jinja,jwt,cryptography,structlog]",
     "litestar-granian[uvloop]",
     "litestar-mcp",
-    "sqlspec[asyncpg,performance,mypyc]",
+    "sqlspec[asyncpg,performance,mypyc] @ git+https://github.com/litestar-org/sqlspec.git@adk-session",
     "google-adk",
     "pgvector",
     "python-dotenv",

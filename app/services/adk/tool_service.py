@@ -85,9 +85,9 @@ class AgentToolsService(SQLSpecService):
         query_embedding, embedding_cache_hit = await self.vertex_ai_service.get_text_embedding_with_cache_status(query)
         embedding_ms = (time.time() - embedding_start) * 1000
 
-        # Time vector search
+        # Time vector search with result caching
         search_start = time.time()
-        products = await self.product_service.vector_similarity_search(
+        products, vector_search_cache_hit = await self.product_service.vector_similarity_search_with_cache(
             query_embedding=query_embedding,
             similarity_threshold=similarity_threshold,
             limit=limit,
@@ -120,6 +120,7 @@ LIMIT %s"""
             "products": product_list,
             "timing": {"total_ms": total_ms, "embedding_ms": embedding_ms, "search_ms": search_ms},
             "embedding_cache_hit": embedding_cache_hit,
+            "vector_search_cache_hit": vector_search_cache_hit,
             "sql_query": sql_query,
             "params": {"similarity_threshold": similarity_threshold, "limit": limit},
             "results_count": len(product_list),

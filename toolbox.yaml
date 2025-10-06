@@ -1,0 +1,8 @@
+sources:
+  postgres-local:
+    kind: postgres
+    host: ${POSTGRES_HOST}
+    port: ${POSTGRES_PORT}
+    database: ${POSTGRES_DATABASE}
+    user: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
