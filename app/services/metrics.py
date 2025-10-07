@@ -5,13 +5,10 @@ from __future__ import annotations
 
 import random
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from app.schemas import SearchMetrics
 from app.services.base import SQLSpecService
-
-if TYPE_CHECKING:
-    from uuid import UUID
 
 
 class MetricsService(SQLSpecService):
@@ -19,7 +16,7 @@ class MetricsService(SQLSpecService):
 
     async def record_search_metric(
         self,
-        session_id: UUID | None,
+        session_id: str | None,
         query_text: str,
         intent: str | None,
         vector_search_results: int,
@@ -36,7 +33,7 @@ class MetricsService(SQLSpecService):
         """Record a search metric.
 
         Args:
-            session_id: Optional session UUID
+            session_id: Optional session ID (string from ADK sessions)
             query_text: Search query text
             intent: Detected intent
             vector_search_results: Number of vector search results returned

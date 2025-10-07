@@ -20,10 +20,13 @@ from litestar.logging.config import (
     default_logger_factory,
 )
 from litestar.middleware.logging import LoggingMiddlewareConfig
+from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.plugins.problem_details import ProblemDetailsConfig
 from litestar.plugins.structlog import StructlogConfig
+from litestar.stores.registry import StoreRegistry
 from litestar_mcp import MCPConfig
 from sqlspec.adapters.asyncpg import AsyncpgConfig
+from sqlspec.adapters.asyncpg.litestar.store import AsyncpgStore
 from sqlspec.base import SQLSpec
 
 from app.lib import log as log_conf
@@ -42,7 +45,12 @@ csrf = CSRFConfig(
 )
 cors = CORSConfig(allow_origins=cast("list[str]", settings.app.ALLOWED_CORS_ORIGINS))
 problem_details = ProblemDetailsConfig(enable_for_all_http_exceptions=True)
-db = AsyncpgConfig(
+
+# SQLSpec database manager
+sqlspec = SQLSpec()
+
+# Database config with extension support
+db_config = AsyncpgConfig(
     pool_config={
         "dsn": settings.db.URL,
         "min_size": settings.db.POOL_MIN_SIZE,
@@ -54,27 +62,39 @@ db = AsyncpgConfig(
         "version_table_name": "migrations",
         "script_location": settings.db.MIGRATION_PATH,
         "project_root": Path(__file__).parent.parent,
+        "include_extensions": ["adk", "litestar"],
+    },
+    extension_config={
+        "adk": {
+            "session_table": "adk_sessions",
+            "events_table": "adk_events",
+        },
+        "litestar": {
+            "session_table": "app_session",
+            "commit_mode": "autocommit",
+            "connection_key": "db_connection",
+            "pool_key": "db_pool",
+            "session_key": "db_session",
+        },
     },
 )
 
-# Configure Litestar extension settings
-db.extension_config = {
-    "litestar": {
-        "commit_mode": "autocommit",
-    }
-}
+# Add config to sqlspec and get the class reference
+db = sqlspec.add_config(db_config)
 
 # Fix connection_type to avoid UnionType issue with Litestar's signature namespace
 # The pool always returns PoolConnectionProxy, so we use that as the connection type
 from asyncpg.pool import PoolConnectionProxy
-db.__class__.connection_type = PoolConnectionProxy
 
-# SQLSpec database manager
-sqlspec = SQLSpec()
-sqlspec.add_config(db)
+db.__class__.connection_type = PoolConnectionProxy
 
 # Load SQL files
 sqlspec.load_sql_files(Path(__file__).parent / "db" / "sql")
+
+# Session store for Litestar - all config from extension_config (use db_config, not db class)
+session_store = AsyncpgStore(config=db_config)
+stores = StoreRegistry(stores={"sessions": session_store})
+session_config = ServerSideSessionConfig(store="sessions")
 
 # Global service locator
 service_locator = ServiceLocator()

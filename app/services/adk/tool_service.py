@@ -15,7 +15,6 @@ import structlog
 from app.services.base import SQLSpecService
 
 if TYPE_CHECKING:
-    from app.services.chat import ChatService
     from app.services.intent import IntentService
     from app.services.metrics import MetricsService
     from app.services.product import ProductService
@@ -37,7 +36,6 @@ class AgentToolsService(SQLSpecService):
         self,
         driver: Any,
         product_service: ProductService,
-        chat_service: ChatService,
         metrics_service: MetricsService,
         intent_service: IntentService,
         vertex_ai_service: VertexAIService,
@@ -48,7 +46,6 @@ class AgentToolsService(SQLSpecService):
         Args:
             driver: Database driver
             product_service: Service for product operations
-            chat_service: Service for chat operations
             metrics_service: Service for metrics operations
             intent_service: Service for intent classification
             vertex_ai_service: Service for AI operations
@@ -56,7 +53,6 @@ class AgentToolsService(SQLSpecService):
         """
         super().__init__(driver)
         self.product_service = product_service
-        self.chat_service = chat_service
         self.metrics_service = metrics_service
         self.intent_service = intent_service
         self.vertex_ai_service = vertex_ai_service
@@ -210,42 +206,6 @@ LIMIT $3"""
                 "sql_query": "-- Error occurred during intent classification",
             }
 
-    async def get_conversation_history(
-        self,
-        session_id: str,
-        limit: int = 10,
-    ) -> list[dict[str, Any]]:
-        """Get recent conversation history for a session.
-
-        Args:
-            session_id: Session identifier
-            limit: Maximum number of messages to return
-
-        Returns:
-            List of conversation messages
-        """
-        try:
-            # Convert session_id to UUID if it's not already
-            session_uuid = uuid.UUID(session_id) if isinstance(session_id, str) else session_id
-
-            conversations = await self.chat_service.get_recent_conversations(
-                session_id=session_uuid,
-                limit=limit,
-            )
-
-            return [
-                {
-                    "id": str(conv.id),
-                    "role": conv.role,
-                    "content": conv.content,
-                    "created_at": conv.created_at.isoformat() if conv.created_at else None,
-                    "metadata": conv.metadata,
-                }
-                for conv in conversations
-            ]
-        except (ValueError, TypeError, AttributeError) as e:
-            return [{"error": f"Failed to retrieve history: {e!s}"}]  # type: ignore[list-item]
-
     async def record_search_metric(
         self,
         session_id: str,
@@ -282,7 +242,7 @@ LIMIT $3"""
                     avg_similarity = sum(similarity_scores) / len(similarity_scores)
 
             await self.metrics_service.record_search_metric(
-                session_id=uuid.UUID(session_id),
+                session_id=session_id,  # Keep as string
                 query_text=query_text,
                 intent=intent,
                 vector_search_results=len(vector_results),  # Fix: pass count not list

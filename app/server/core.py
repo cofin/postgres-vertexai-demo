@@ -101,7 +101,6 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         from litestar.contrib.jinja import JinjaTemplateEngine
         from litestar.enums import RequestEncodingType
         from litestar.middleware.compression.facade import CompressionFacade
-        from litestar.middleware.session.client_side import CookieBackendConfig
         from litestar.openapi import OpenAPIConfig
         from litestar.openapi.plugins import ScalarRenderPlugin
         from litestar.params import Body
@@ -118,7 +117,6 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         from app.server.exceptions import exception_handlers
         from app.services.adk.orchestrator import ADKOrchestrator
         from app.services.cache import CacheService
-        from app.services.chat import ChatService
         from app.services.metrics import MetricsService
         from app.services.product import ProductService
         from app.services.vertex_ai import VertexAIService
@@ -142,15 +140,10 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         app_config.middleware.insert(0, StructlogMiddleware)
         app_config.after_exception.append(after_exception_hook_handler)
 
-        # Session configuration
-        session_config = CookieBackendConfig(
-            secret=(settings.app.SECRET_KEY or "your-super-secret-session-key").encode(),
-            key="session",
-            secure=not app_config.debug,
-            httponly=True,
-            samesite="lax",
-            max_age=settings.app.SESSION_MAX_AGE,
-        )
+        # Server-side session configuration
+        from app.config import session_config, stores
+
+        app_config.stores = stores
         app_config.middleware.append(session_config.middleware)
 
         # OpenAPI configuration
@@ -195,7 +188,6 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
             "s": s,
             "ADKOrchestrator": ADKOrchestrator,
             "CacheService": CacheService,
-            "ChatService": ChatService,
             "MetricsService": MetricsService,
             "ProductService": ProductService,
             "VertexAIService": VertexAIService,

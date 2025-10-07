@@ -39,7 +39,6 @@ class CoffeeChatController(Controller):
         "adk_orchestrator": Provide(deps.provide_adk_orchestrator),
         "vertex_ai_service": Provide(deps.provide_vertex_ai_service),
         "product_service": Provide(deps.provide_product_service),
-        "chat_service": Provide(deps.provide_chat_service),
         "metrics_service": Provide(deps.provide_metrics_service),
     }
 

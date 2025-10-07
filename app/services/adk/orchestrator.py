@@ -16,9 +16,11 @@ import structlog
 from google.adk import Runner
 from google.genai import errors, types
 
-from app.config import db, service_locator, sqlspec
+from sqlspec.adapters.asyncpg.adk.store import AsyncpgADKStore
+from sqlspec.extensions.adk import SQLSpecSessionService
+
+from app.config import db, db_config, service_locator, sqlspec
 from app.services.adk.agent import CoffeeAssistantAgent  # This now imports the router agent
-from app.services.adk.session import ChatSessionService
 from app.services.adk.tools import get_and_clear_timing_context, search_products_by_vector
 from app.services.cache import CacheService
 from app.services.metrics import MetricsService
@@ -37,19 +39,20 @@ HTTP_SERVICE_UNAVAILABLE = 503
 class ADKOrchestrator:
     """Main orchestrator for the ADK-based coffee assistant system.
 
-    This class uses the proper ADK Runner pattern with our custom session service
-    that bridges ADK sessions with our existing chat infrastructure.
+    This class uses the proper ADK Runner pattern with SQLSpec session service
+    for persistent session and event storage.
     """
 
     def __init__(self) -> None:
-        """Initialize the ADK orchestrator with proper ADK components."""
-        self.session_service = ChatSessionService(db_config=db)
+        """Initialize the ADK orchestrator with SQLSpec session service."""
+        store = AsyncpgADKStore(config=db_config)
+        self.session_service = SQLSpecSessionService(store)
         self.runner = Runner(
             agent=CoffeeAssistantAgent,
             app_name="coffee-assistant",
             session_service=self.session_service,
         )
-        logger.debug("ADK Orchestrator initialized with an Agent Pattern")
+        logger.debug("ADK Orchestrator initialized with SQLSpec session service")
 
     def _convert_markdown_to_html(self, text: str) -> str:
         """Convert simple markdown formatting to HTML."""
@@ -198,9 +201,19 @@ class ADKOrchestrator:
             return self._build_error_response(e, session_id, start_time, user_id, persona)
 
     async def _ensure_session(self, user_id: str, session_id: str | None) -> Session:
-        """Ensure session exists using upsert pattern."""
-        # Returns google.adk.sessions.Session, not our ChatSession schema
-        return await self.session_service.upsert_session(
+        """Ensure session exists using get-or-create pattern."""
+        # Try to get existing session if session_id provided
+        if session_id:
+            existing = await self.session_service.get_session(
+                app_name="coffee-assistant",
+                user_id=user_id,
+                session_id=session_id,
+            )
+            if existing:
+                return existing
+
+        # Create new session if not found or no session_id provided
+        return await self.session_service.create_session(
             app_name="coffee-assistant",
             user_id=user_id,
             session_id=session_id,
@@ -486,7 +499,7 @@ LIMIT %s""",
                         avg_similarity = sum(similarity_scores) / len(similarity_scores)
 
                 await metrics_service.record_search_metric(
-                    session_id=UUID(session_id),
+                    session_id=session_id,  # Already a string from ADK
                     query_text=query,
                     intent=event_data.get("intent_details", {}).get("intent"),
                     confidence_score=event_data.get("intent_details", {}).get("confidence"),

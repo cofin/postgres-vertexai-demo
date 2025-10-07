@@ -40,30 +40,6 @@ CREATE TABLE store (
 );
 
 
--- Chat sessions for user conversations
-CREATE TABLE chat_session (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id varchar(255), -- Session identifier
-    session_data jsonb, -- Session metadata
-    last_activity timestamp with time zone DEFAULT current_timestamp,
-    expires_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT current_timestamp,
-    updated_at timestamp with time zone DEFAULT current_timestamp
-);
-
-
--- Chat conversations for message history
-CREATE TABLE chat_conversation (
-    id serial PRIMARY KEY,
-    session_id uuid REFERENCES chat_session (id) ON DELETE CASCADE,
-    role varchar(100) NOT NULL,
-    content text NOT NULL,
-    metadata jsonb, -- Intent classification, confidence scores, etc.
-    intent_classification jsonb, -- Stores intent, confidence, exemplar_match
-    created_at timestamp with time zone DEFAULT current_timestamp
-);
-
-
 -- Response cache for LLM responses
 CREATE TABLE response_cache (
     id serial PRIMARY KEY,
@@ -104,7 +80,7 @@ CREATE TABLE intent_exemplar (
 -- Search metrics for performance tracking
 CREATE TABLE search_metric (
     id serial PRIMARY KEY,
-    session_id uuid REFERENCES chat_session (id),
+    session_id varchar(128), -- References adk_sessions.session_id (created by extension)
     query_text text,
     intent varchar(100),
     confidence_score real,
@@ -177,21 +153,6 @@ CREATE INDEX store_state_idx ON store (state);
 CREATE INDEX store_zip_idx ON store (zip);
 
 
-CREATE INDEX chat_session_user_id_idx ON chat_session (user_id);
-
-
-CREATE INDEX chat_session_expires_at_idx ON chat_session (expires_at);
-
-
-CREATE INDEX chat_session_last_activity_idx ON chat_session (last_activity);
-
-
-CREATE INDEX chat_conversation_session_id_idx ON chat_conversation (session_id);
-
-
-CREATE INDEX chat_conversation_created_at_idx ON chat_conversation (created_at);
-
-
 CREATE INDEX response_cache_expires_at_idx ON response_cache (expires_at);
 
 
@@ -259,12 +220,6 @@ UPDATE ON intent_exemplar FOR each ROW
 EXECUTE function update_updated_at_column ();
 
 
--- Trigger for chat_session updated_at
-CREATE TRIGGER chat_session_updated_at_trigger before
-UPDATE ON chat_session FOR each ROW
-EXECUTE function update_updated_at_column ();
-
-
 -- Trigger for search_metric updated_at
 CREATE TRIGGER search_metric_updated_at_trigger before
 UPDATE ON search_metric FOR each ROW
@@ -279,10 +234,6 @@ EXECUTE function update_updated_at_column ();
 
 -- name: migrate-0001-down
 -- Drop triggers and functions
-DROP TRIGGER if EXISTS chat_session_updated_at_trigger ON chat_session cascade;
-DROP TRIGGER if EXISTS update_chat_session_updated_at ON chat_session cascade;
-
-
 DROP TRIGGER if EXISTS intent_exemplar_updated_at_trigger ON intent_exemplar cascade;
 DROP TRIGGER if EXISTS update_intent_exemplar_updated_at ON intent_exemplar cascade;
 
@@ -341,21 +292,6 @@ DROP INDEX if EXISTS store_state_idx;
 DROP INDEX if EXISTS store_zip_idx;
 
 
-DROP INDEX if EXISTS chat_session_user_id_idx;
-
-
-DROP INDEX if EXISTS chat_session_expires_at_idx;
-
-
-DROP INDEX if EXISTS chat_session_last_activity_idx;
-
-
-DROP INDEX if EXISTS chat_conversation_session_id_idx;
-
-
-DROP INDEX if EXISTS chat_conversation_created_at_idx;
-
-
 DROP INDEX if EXISTS response_cache_expires_at_idx;
 
 
@@ -402,12 +338,6 @@ DROP TABLE IF EXISTS embedding_cache cascade;
 
 
 DROP TABLE IF EXISTS response_cache cascade;
-
-
-DROP TABLE IF EXISTS chat_conversation cascade;
-
-
-DROP TABLE IF EXISTS chat_session cascade;
 
 
 DROP TABLE IF EXISTS store cascade;

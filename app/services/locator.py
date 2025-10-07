@@ -64,7 +64,6 @@ class ServiceLocator:
             return VertexAIService(cache_service=cache_service)  # type: ignore[return-value]
 
         if service_cls == AgentToolsService:
-            from app.services.chat import ChatService
             from app.services.metrics import MetricsService
             from app.services.product import ProductService
             from app.services.store import StoreService
@@ -72,7 +71,6 @@ class ServiceLocator:
             return AgentToolsService(  # type: ignore[return-value]
                 driver=session,
                 product_service=self.get(ProductService, session),
-                chat_service=self.get(ChatService, session),
                 metrics_service=self.get(MetricsService, session),
                 intent_service=self.get(IntentService, session),
                 vertex_ai_service=self.get(VertexAIService, session),
