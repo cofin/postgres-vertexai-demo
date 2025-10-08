@@ -49,9 +49,9 @@ class CacheService(SQLSpecService):
             Created cache entry
         """
         return await self.driver.select_one(
-            f"""
+            """
             INSERT INTO response_cache (cache_key, response_data, expires_at)
-            VALUES (:cache_key, :response_data, NOW() + INTERVAL '{ttl_minutes} minutes')
+            VALUES (:cache_key, :response_data, NOW() + :ttl_minutes * INTERVAL '1 minute')
             ON CONFLICT (cache_key) DO UPDATE SET
                 response_data = EXCLUDED.response_data,
                 expires_at = EXCLUDED.expires_at,
@@ -60,6 +60,7 @@ class CacheService(SQLSpecService):
             """,
             cache_key=cache_key,
             response_data=response_data,
+            ttl_minutes=ttl_minutes,
             schema_type=ResponseCache,
         )
 

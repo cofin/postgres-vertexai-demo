@@ -20,11 +20,14 @@ from litestar.logging.config import (
     default_logger_factory,
 )
 from litestar.middleware.logging import LoggingMiddlewareConfig
+from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.plugins.problem_details import ProblemDetailsConfig
 from litestar.plugins.structlog import StructlogConfig
+from litestar.stores.registry import StoreRegistry
 from litestar_mcp import MCPConfig
 from sqlspec.adapters.asyncpg import AsyncpgConfig
-from sqlspec.extensions.litestar import DatabaseConfig, SQLSpec
+from sqlspec.adapters.asyncpg.litestar.store import AsyncpgStore
+from sqlspec.base import SQLSpec
 
 from app.lib import log as log_conf
 from app.lib.settings import get_settings
@@ -42,6 +45,8 @@ csrf = CSRFConfig(
 )
 cors = CORSConfig(allow_origins=cast("list[str]", settings.app.ALLOWED_CORS_ORIGINS))
 problem_details = ProblemDetailsConfig(enable_for_all_http_exceptions=True)
+
+db_manager = SQLSpec()
 db = AsyncpgConfig(
     pool_config={
         "dsn": settings.db.URL,
@@ -54,16 +59,27 @@ db = AsyncpgConfig(
         "version_table_name": "migrations",
         "script_location": settings.db.MIGRATION_PATH,
         "project_root": Path(__file__).parent.parent,
+        "include_extensions": ["adk", "litestar"],
+    },
+    extension_config={
+        "adk": {
+            "session_table": "adk_sessions",
+            "events_table": "adk_events",
+        },
+        "litestar": {
+            "session_table": "app_session",
+            "commit_mode": "autocommit",
+            "connection_key": "db_connection",
+            "pool_key": "db_pool",
+            "session_key": "db_session",
+        },
     },
 )
+db_manager.add_config(db)
+db_manager.load_sql_files(Path(__file__).parent / "db" / "sql")
 
-# SQLSpec database manager
-sqlspec = SQLSpec(config=DatabaseConfig(commit_mode="autocommit", config=db))
-
-# Load SQL files
-sqlspec.load_sql_files(Path(__file__).parent / "db" / "sql")
-
-# Global service locator
+stores = StoreRegistry(stores={"sessions": AsyncpgStore(config=db)})  # type: ignore[dict-item]
+session_config = ServerSideSessionConfig(store="sessions")
 service_locator = ServiceLocator()
 
 

@@ -10,15 +10,15 @@ import asyncio
 import re
 import time
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
 
 import structlog
 from google.adk import Runner
 from google.genai import errors, types
+from sqlspec.adapters.asyncpg.adk.store import AsyncpgADKStore
+from sqlspec.extensions.adk import SQLSpecSessionService
 
-from app.config import db, service_locator, sqlspec
+from app.config import db, db_manager, service_locator
 from app.services.adk.agent import CoffeeAssistantAgent  # This now imports the router agent
-from app.services.adk.session import ChatSessionService
 from app.services.adk.tools import get_and_clear_timing_context, search_products_by_vector
 from app.services.cache import CacheService
 from app.services.metrics import MetricsService
@@ -37,19 +37,20 @@ HTTP_SERVICE_UNAVAILABLE = 503
 class ADKOrchestrator:
     """Main orchestrator for the ADK-based coffee assistant system.
 
-    This class uses the proper ADK Runner pattern with our custom session service
-    that bridges ADK sessions with our existing chat infrastructure.
+    This class uses the proper ADK Runner pattern with SQLSpec session service
+    for persistent session and event storage.
     """
 
     def __init__(self) -> None:
-        """Initialize the ADK orchestrator with proper ADK components."""
-        self.session_service = ChatSessionService(db_config=db)
+        """Initialize the ADK orchestrator with SQLSpec session service."""
+        store = AsyncpgADKStore(config=db)
+        self.session_service = SQLSpecSessionService(store)
         self.runner = Runner(
             agent=CoffeeAssistantAgent,
             app_name="coffee-assistant",
             session_service=self.session_service,
         )
-        logger.debug("ADK Orchestrator initialized with an Agent Pattern")
+        logger.debug("ADK Orchestrator initialized with SQLSpec session service")
 
     def _convert_markdown_to_html(self, text: str) -> str:
         """Convert simple markdown formatting to HTML."""
@@ -104,7 +105,7 @@ class ADKOrchestrator:
 
             # Check cache first using database session
             cache_key = f"adk_response:{hash(query)}:{persona}"
-            async with sqlspec.provide_session(db) as cache_session:
+            async with db_manager.provide_session(db) as cache_session:
                 cache_service = service_locator.get(CacheService, cache_session)
                 cached_response = await cache_service.get(cache_key)
                 from_cache = cached_response is not None
@@ -147,7 +148,9 @@ class ADKOrchestrator:
                     # Only cache valid responses
                     # Don't cache if PRODUCT_SEARCH was detected but no products were found
                     should_cache = True
-                    if event_data.get("intent_details", {}).get("intent") == "PRODUCT_SEARCH" and not event_data.get("products_found"):
+                    if event_data.get("intent_details", {}).get("intent") == "PRODUCT_SEARCH" and not event_data.get(
+                        "products_found"
+                    ):
                         logger.warning(
                             "Not caching incomplete PRODUCT_SEARCH response",
                             cache_key=cache_key,
@@ -173,6 +176,7 @@ class ADKOrchestrator:
                 timings["vector_search_ms"] = tool_timings["vector_search"]["total_ms"]
                 timings["embedding_generation_ms"] = tool_timings["vector_search"]["embedding_ms"]
                 timings["embedding_cache_hit"] = tool_timings["vector_search"]["embedding_cache_hit"]
+                timings["vector_search_cache_hit"] = tool_timings["vector_search"]["vector_search_cache_hit"]
                 # Update search details with actual data from tools
                 event_data["search_details"].update({
                     "sql": tool_timings["vector_search"]["sql_query"],
@@ -197,9 +201,19 @@ class ADKOrchestrator:
             return self._build_error_response(e, session_id, start_time, user_id, persona)
 
     async def _ensure_session(self, user_id: str, session_id: str | None) -> Session:
-        """Ensure session exists using upsert pattern."""
-        # Returns google.adk.sessions.Session, not our ChatSession schema
-        return await self.session_service.upsert_session(
+        """Ensure session exists using get-or-create pattern."""
+        # Try to get existing session if session_id provided
+        if session_id:
+            existing = await self.session_service.get_session(
+                app_name="coffee-assistant",
+                user_id=user_id,
+                session_id=session_id,
+            )
+            if existing:
+                return existing
+
+        # Create new session if not found or no session_id provided
+        return await self.session_service.create_session(
             app_name="coffee-assistant",
             user_id=user_id,
             session_id=session_id,
@@ -366,7 +380,7 @@ LIMIT %s""",
             Tuple of (intent_details, products_found, final_response_text, fallback_timing)
         """
         final_response_text = ""
-        fallback_timing = {}
+        fallback_timing: dict[str, Any] = {}
 
         if not intent_details or not intent_details.get("intent"):
             logger.error("CRITICAL: Agent did NOT call classify_intent!", query=query)
@@ -469,7 +483,7 @@ LIMIT %s""",
     async def _record_metrics(self, session_id: str, query: str, event_data: dict, timings: dict) -> None:
         """Record detailed metrics."""
         try:
-            async with sqlspec.provide_session(db) as session:
+            async with db_manager.provide_session(db) as session:
                 metrics_service = service_locator.get(MetricsService, session)
                 # Calculate average similarity score from products
                 products = event_data.get("products_found", [])
@@ -485,7 +499,7 @@ LIMIT %s""",
                         avg_similarity = sum(similarity_scores) / len(similarity_scores)
 
                 await metrics_service.record_search_metric(
-                    session_id=UUID(session_id),
+                    session_id=session_id,  # Already a string from ADK
                     query_text=query,
                     intent=event_data.get("intent_details", {}).get("intent"),
                     confidence_score=event_data.get("intent_details", {}).get("confidence"),
@@ -501,6 +515,7 @@ LIMIT %s""",
                     if timings.get("embedding_generation_ms")
                     else None,
                     embedding_cache_hit=timings.get("embedding_cache_hit", False),
+                    vector_search_cache_hit=timings.get("vector_search_cache_hit", False),
                     intent_exemplar_used=event_data.get("intent_details", {}).get("exemplar_used"),
                     avg_similarity_score=avg_similarity,
                 )

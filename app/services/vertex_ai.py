@@ -106,19 +106,40 @@ class VertexAIService:
         self,
         text: str | list[str],
         model: str | None = None,
-    ) -> list[float] | list[list[float]]:
-        """Generate text embedding(s) using Vertex AI."""
+        *,
+        return_cache_status: bool = False,
+    ) -> list[float] | list[list[float]] | tuple[list[float], bool]:
+        """Generate text embedding(s) using Vertex AI with optional cache status.
+
+        Args:
+            text: Text or list of texts to embed
+            model: Optional model override
+            return_cache_status: If True, return (embedding, cache_hit) tuple for single text
+
+        Returns:
+            - For single text without cache status: embedding vector
+            - For single text with cache status: (embedding vector, cache_hit)
+            - For batch text: list of embedding vectors
+
+        Raises:
+            RuntimeError: If Vertex AI not initialized
+            ValueError: If embedding generation fails or cache status requested for batch
+        """
         if not self._genai_client:
             msg = "Vertex AI not initialized"
             raise RuntimeError(msg)
 
         model_name = model or self.settings.vertex_ai.EMBEDDING_MODEL
 
-        # Validate input type before try block
+        # Handle batch embeddings
         if isinstance(text, list):
+            if return_cache_status:
+                msg = "Cache status not supported for batch embeddings"
+                raise ValueError(msg)
             return await self._get_batch_text_embeddings(text, model_name)
 
-        # At this point, text must be str (based on type hints)
+        # Single text embedding with optional cache tracking
+        cache_hit = False
 
         try:
             # Check cache first if available
@@ -132,6 +153,8 @@ class VertexAIService:
                         model=model_name,
                         hit_count=cached.hit_count,
                     )
+                    if return_cache_status:
+                        return cached.embedding, True
                     return cached.embedding
 
             # Generate new embedding
@@ -149,8 +172,10 @@ class VertexAIService:
             logger.exception("Failed to generate embedding", model=model_name, error=str(e))
             msg = f"Failed to generate embedding: {e}"
             raise ValueError(msg) from e
-        else:
-            return embedding
+
+        if return_cache_status:
+            return embedding, cache_hit
+        return embedding
 
     async def get_text_embedding_with_cache_status(
         self,
@@ -158,6 +183,9 @@ class VertexAIService:
         model: str | None = None,
     ) -> tuple[list[float], bool]:
         """Generate text embedding with cache hit status.
+
+        .. deprecated::
+            Use get_text_embedding(text, model, return_cache_status=True) instead.
 
         Args:
             text: Text to embed
@@ -170,46 +198,7 @@ class VertexAIService:
             RuntimeError: If Vertex AI not initialized
             ValueError: If embedding generation fails
         """
-        if not self._genai_client:
-            msg = "Vertex AI not initialized"
-            raise RuntimeError(msg)
-
-        # Type is guaranteed to be str by function signature
-
-        model_name = model or self.settings.vertex_ai.EMBEDDING_MODEL
-        cache_hit = False
-
-        try:
-            # Check cache first if available
-            if self._cache_service and self.settings.cache.EMBEDDING_CACHE_ENABLED:
-                cached = await self._cache_service.get_cached_embedding(text, model_name)
-                if cached:
-                    logger.debug(
-                        "Retrieved cached embedding",
-                        text_length=len(text),
-                        embedding_dimensions=len(cached.embedding),
-                        model=model_name,
-                        hit_count=cached.hit_count,
-                    )
-                    return cached.embedding, True
-
-            # Generate new embedding
-            embedding = await self._get_embedding_async(text, model_name)
-
-            # Cache the result if cache service is available
-            if self._cache_service and self.settings.cache.EMBEDDING_CACHE_ENABLED:
-                try:
-                    await self._cache_service.set_cached_embedding(text, embedding, model_name)
-                    logger.debug("Cached new embedding", text_length=len(text), model=model_name)
-                except Exception as e:  # noqa: BLE001
-                    logger.warning("Failed to cache embedding", error=str(e))
-
-        except Exception as e:
-            logger.exception("Failed to generate embedding", model=model_name, error=str(e))
-            msg = f"Failed to generate embedding: {e}"
-            raise ValueError(msg) from e
-        else:
-            return embedding, cache_hit
+        return await self.get_text_embedding(text, model, return_cache_status=True)  # type: ignore[return-value]
 
     async def generate_chat_response_stream(
         self,

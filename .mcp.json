@@ -1,0 +1,34 @@
+{
+  "mcpServers": {
+    "postgres-local": {
+      "command": "toolbox",
+      "args": [
+        "--prebuilt",
+        "postgres",
+        "--stdio"
+      ],
+      "env": {
+        "POSTGRES_HOST": "${POSTGRES_HOST}",
+        "POSTGRES_PORT": "${POSTGRES_PORT}",
+        "POSTGRES_DATABASE": "${POSTGRES_DATABASE}",
+        "POSTGRES_USER": "${POSTGRES_USER}",
+        "POSTGRES_PASSWORD": "${POSTGRES_PASSWORD}"
+      }
+    },
+    "sequential-thinking": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ]
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ]
+    }
+  }
+}
