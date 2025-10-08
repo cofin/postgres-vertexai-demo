@@ -262,7 +262,7 @@ class MetricsService(SQLSpecService):
                     "total": int(base_time * 3 + random.uniform(-30, 50)),
                 })
 
-        return result  # type: ignore[return-value]
+        return result
 
     async def get_performance_breakdown(self) -> dict[str, Any]:
         """Get average time breakdown for doughnut chart.

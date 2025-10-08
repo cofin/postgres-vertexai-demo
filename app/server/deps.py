@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from app.config import db, sqlspec
+from app.config import db, db_manager
 from app.services.cache import CacheService
 from app.services.metrics import MetricsService
 from app.services.product import ProductService
@@ -24,7 +24,7 @@ def create_service_provider(service_cls: type[T]) -> Callable[..., AsyncGenerato
     async def provider() -> AsyncGenerator[T, None]:
         """Generic provider function using SQLSpec's built-in database management."""
         # Use SQLSpec's database configuration to provide a session
-        async with sqlspec.provide_session(db) as session:
+        async with db_manager.provide_session(db) as session:
             yield service_cls(session)  # type: ignore[call-arg]
 
     return provider
@@ -38,7 +38,7 @@ provide_cache_service = create_service_provider(CacheService)
 # Providers that don't require a database connection directly
 async def provide_vertex_ai_service() -> AsyncGenerator[VertexAIService, None]:
     """Provide Vertex AI service with cache support."""
-    async with sqlspec.provide_session(db) as session:
+    async with db_manager.provide_session(db) as session:
         cache_service = CacheService(session)
         yield VertexAIService(cache_service=cache_service)
 

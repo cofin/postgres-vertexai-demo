@@ -10,16 +10,14 @@ import asyncio
 import re
 import time
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
 
 import structlog
 from google.adk import Runner
 from google.genai import errors, types
-
 from sqlspec.adapters.asyncpg.adk.store import AsyncpgADKStore
 from sqlspec.extensions.adk import SQLSpecSessionService
 
-from app.config import db, db_config, service_locator, sqlspec
+from app.config import db, db_manager, service_locator
 from app.services.adk.agent import CoffeeAssistantAgent  # This now imports the router agent
 from app.services.adk.tools import get_and_clear_timing_context, search_products_by_vector
 from app.services.cache import CacheService
@@ -45,7 +43,7 @@ class ADKOrchestrator:
 
     def __init__(self) -> None:
         """Initialize the ADK orchestrator with SQLSpec session service."""
-        store = AsyncpgADKStore(config=db_config)
+        store = AsyncpgADKStore(config=db)
         self.session_service = SQLSpecSessionService(store)
         self.runner = Runner(
             agent=CoffeeAssistantAgent,
@@ -107,7 +105,7 @@ class ADKOrchestrator:
 
             # Check cache first using database session
             cache_key = f"adk_response:{hash(query)}:{persona}"
-            async with sqlspec.provide_session(db) as cache_session:
+            async with db_manager.provide_session(db) as cache_session:
                 cache_service = service_locator.get(CacheService, cache_session)
                 cached_response = await cache_service.get(cache_key)
                 from_cache = cached_response is not None
@@ -150,7 +148,9 @@ class ADKOrchestrator:
                     # Only cache valid responses
                     # Don't cache if PRODUCT_SEARCH was detected but no products were found
                     should_cache = True
-                    if event_data.get("intent_details", {}).get("intent") == "PRODUCT_SEARCH" and not event_data.get("products_found"):
+                    if event_data.get("intent_details", {}).get("intent") == "PRODUCT_SEARCH" and not event_data.get(
+                        "products_found"
+                    ):
                         logger.warning(
                             "Not caching incomplete PRODUCT_SEARCH response",
                             cache_key=cache_key,
@@ -380,7 +380,7 @@ LIMIT %s""",
             Tuple of (intent_details, products_found, final_response_text, fallback_timing)
         """
         final_response_text = ""
-        fallback_timing = {}
+        fallback_timing: dict[str, Any] = {}
 
         if not intent_details or not intent_details.get("intent"):
             logger.error("CRITICAL: Agent did NOT call classify_intent!", query=query)
@@ -483,7 +483,7 @@ LIMIT %s""",
     async def _record_metrics(self, session_id: str, query: str, event_data: dict, timings: dict) -> None:
         """Record detailed metrics."""
         try:
-            async with sqlspec.provide_session(db) as session:
+            async with db_manager.provide_session(db) as session:
                 metrics_service = service_locator.get(MetricsService, session)
                 # Calculate average similarity score from products
                 products = event_data.get("products_found", [])

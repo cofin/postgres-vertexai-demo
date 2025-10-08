@@ -46,11 +46,8 @@ csrf = CSRFConfig(
 cors = CORSConfig(allow_origins=cast("list[str]", settings.app.ALLOWED_CORS_ORIGINS))
 problem_details = ProblemDetailsConfig(enable_for_all_http_exceptions=True)
 
-# SQLSpec database manager
-sqlspec = SQLSpec()
-
-# Database config with extension support
-db_config = AsyncpgConfig(
+db_manager = SQLSpec()
+db = AsyncpgConfig(
     pool_config={
         "dsn": settings.db.URL,
         "min_size": settings.db.POOL_MIN_SIZE,
@@ -78,25 +75,11 @@ db_config = AsyncpgConfig(
         },
     },
 )
+db_manager.add_config(db)
+db_manager.load_sql_files(Path(__file__).parent / "db" / "sql")
 
-# Add config to sqlspec and get the class reference
-db = sqlspec.add_config(db_config)
-
-# Fix connection_type to avoid UnionType issue with Litestar's signature namespace
-# The pool always returns PoolConnectionProxy, so we use that as the connection type
-from asyncpg.pool import PoolConnectionProxy
-
-db.__class__.connection_type = PoolConnectionProxy
-
-# Load SQL files
-sqlspec.load_sql_files(Path(__file__).parent / "db" / "sql")
-
-# Session store for Litestar - all config from extension_config (use db_config, not db class)
-session_store = AsyncpgStore(config=db_config)
-stores = StoreRegistry(stores={"sessions": session_store})
+stores = StoreRegistry(stores={"sessions": AsyncpgStore(config=db)})  # type: ignore[dict-item]
 session_config = ServerSideSessionConfig(store="sessions")
-
-# Global service locator
 service_locator = ServiceLocator()
 
 

@@ -6,9 +6,9 @@ to the AgentToolsService for business logic.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
-from app.config import db, service_locator, sqlspec
+from app.config import db, db_manager, service_locator
 from app.lib.context import clear_timing_context, set_timing_data
 from app.services.adk.tool_service import AgentToolsService
 
@@ -40,24 +40,27 @@ async def search_products_by_vector(
     # Apply defaults within function to avoid ADK schema issues
     limit = limit or 5
     similarity_threshold = similarity_threshold or 0.7
-    async with sqlspec.provide_session(db) as session:
+    async with db_manager.provide_session(db) as session:
         tools_service = service_locator.get(AgentToolsService, session)
         result = await tools_service.search_products_by_vector(query, limit, similarity_threshold)
 
         # Store timing data for orchestrator access
-        set_timing_data("vector_search", {
-            "total_ms": result["timing"]["total_ms"],
-            "embedding_ms": result["timing"]["embedding_ms"],
-            "search_ms": result["timing"]["search_ms"],
-            "embedding_cache_hit": result["embedding_cache_hit"],
-            "vector_search_cache_hit": result["vector_search_cache_hit"],
-            "sql_query": result["sql_query"],
-            "params": result["params"],
-            "results_count": result["results_count"]
-        })
+        set_timing_data(
+            "vector_search",
+            {
+                "total_ms": result["timing"]["total_ms"],
+                "embedding_ms": result["timing"]["embedding_ms"],
+                "search_ms": result["timing"]["search_ms"],
+                "embedding_cache_hit": result["embedding_cache_hit"],
+                "vector_search_cache_hit": result["vector_search_cache_hit"],
+                "sql_query": result["sql_query"],
+                "params": result["params"],
+                "results_count": result["results_count"],
+            },
+        )
 
         # Return just the products list for ADK compatibility
-        return result["products"]
+        return cast("list[dict[str, Any]]", result["products"])
 
 
 async def get_product_details(product_id: str) -> dict[str, Any]:
@@ -69,7 +72,7 @@ async def get_product_details(product_id: str) -> dict[str, Any]:
     Returns:
         Product details or error message
     """
-    async with sqlspec.provide_session(db) as session:
+    async with db_manager.provide_session(db) as session:
         tools_service = service_locator.get(AgentToolsService, session)
         return await tools_service.get_product_details(product_id)
 
@@ -83,37 +86,14 @@ async def classify_intent(query: str) -> dict[str, Any]:
     Returns:
         Intent classification results
     """
-    async with sqlspec.provide_session(db) as session:
+    async with db_manager.provide_session(db) as session:
         tools_service = service_locator.get(AgentToolsService, session)
         result = await tools_service.classify_intent(query)
 
         # Store timing data for orchestrator access
-        set_timing_data("intent_classification", {
-            "timing_ms": result["timing_ms"],
-            "sql_query": result["sql_query"]
-        })
+        set_timing_data("intent_classification", {"timing_ms": result["timing_ms"], "sql_query": result["sql_query"]})
 
         return result
-
-
-async def get_conversation_history(
-    session_id: str,
-    limit: int,
-) -> list[dict[str, Any]]:
-    """Get recent conversation history with fresh session.
-
-    Args:
-        session_id: Session identifier
-        limit: Maximum number of messages to return
-
-    Returns:
-        List of conversation messages
-    """
-    # Apply default within function to avoid ADK schema issues
-    limit = limit or 10
-    async with sqlspec.provide_session(db) as session:
-        tools_service = service_locator.get(AgentToolsService, session)
-        return await tools_service.get_conversation_history(session_id, limit)
 
 
 async def record_search_metric(
@@ -137,7 +117,7 @@ async def record_search_metric(
     Returns:
         Status of metric recording
     """
-    async with sqlspec.provide_session(db) as session:
+    async with db_manager.provide_session(db) as session:
         tools_service = service_locator.get(AgentToolsService, session)
         # Apply defaults within function to avoid ADK schema issues
         vector_search_time_ms = vector_search_time_ms or 0
@@ -159,7 +139,7 @@ async def get_store_locations() -> list[dict[str, Any]]:
     Returns:
         List of all coffee shop locations with details
     """
-    async with sqlspec.provide_session(db) as session:
+    async with db_manager.provide_session(db) as session:
         tools_service = service_locator.get(AgentToolsService, session)
         return await tools_service.get_all_store_locations()
 
@@ -174,7 +154,7 @@ async def find_stores_by_location(city: str | None, state: str | None) -> list[d
     Returns:
         List of stores matching the location criteria
     """
-    async with sqlspec.provide_session(db) as session:
+    async with db_manager.provide_session(db) as session:
         tools_service = service_locator.get(AgentToolsService, session)
         return await tools_service.find_stores_by_location(city, state)
 
@@ -188,7 +168,7 @@ async def get_store_hours(store_id: int) -> dict[str, Any]:
     Returns:
         Store hours information
     """
-    async with sqlspec.provide_session(db) as session:
+    async with db_manager.provide_session(db) as session:
         tools_service = service_locator.get(AgentToolsService, session)
         return await tools_service.get_store_hours(store_id)
 
@@ -198,7 +178,6 @@ ALL_TOOLS = [
     search_products_by_vector,
     get_product_details,
     classify_intent,
-    get_conversation_history,
     record_search_metric,
     get_store_locations,
     find_stores_by_location,

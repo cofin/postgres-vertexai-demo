@@ -8,7 +8,7 @@ from sqlspec.extensions.litestar import SQLSpecPlugin
 from app import config
 
 structlog = StructlogPlugin(config=config.log)
-sqlspec = SQLSpecPlugin(config.sqlspec)
+sqlspec = SQLSpecPlugin(config.db_manager)
 granian = GranianPlugin()
 problem_details = ProblemDetailsPlugin(config=config.problem_details)
 htmx = HTMXPlugin()
