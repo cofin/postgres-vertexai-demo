@@ -13,7 +13,7 @@ from app.schemas.intent import (
     IntentStats,
 )
 from app.schemas.metrics import SearchMetrics
-from app.schemas.product import Product, ProductCreate, ProductSearchResult, ProductUpdate
+from app.schemas.product import Product, ProductCreate, ProductSearch, ProductUpdate
 from app.schemas.store import Store, StoreCreate, StoreUpdate
 from app.schemas.vector_demo import VectorDemoRequest
 
@@ -33,7 +33,7 @@ __all__ = (
     "Message",
     "Product",
     "ProductCreate",
-    "ProductSearchResult",
+    "ProductSearch",
     "ProductUpdate",
     "ResponseCache",
     "SearchMetrics",

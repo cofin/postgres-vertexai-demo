@@ -80,13 +80,6 @@ class IntentService(SQLSpecService):
 
         # Determine best intent
         if not similar_intents:
-            logger.debug(
-                "No intent match found, using fallback",
-                query=query[:100],
-                min_threshold=min_threshold,
-                processing_time_ms=processing_time,
-            )
-
             return IntentResult(
                 intent="GENERAL_CONVERSATION",
                 confidence=0.0,
@@ -103,15 +96,6 @@ class IntentService(SQLSpecService):
             # Increment usage count for the matched exemplar
             await self.exemplar_service.increment_usage_by_phrase(best_match.intent, best_match.phrase)
 
-            logger.debug(
-                "Intent classified successfully",
-                query=query[:100],
-                intent=best_match.intent,
-                confidence=best_match.similarity,
-                exemplar=best_match.phrase[:50],
-                processing_time_ms=processing_time,
-            )
-
             return IntentResult(
                 intent=best_match.intent,
                 confidence=best_match.similarity,
@@ -119,14 +103,6 @@ class IntentService(SQLSpecService):
                 embedding_cache_hit=embedding_cache_hit,
                 fallback_used=False,
             )
-        logger.debug(
-            "Intent match below threshold, using fallback",
-            query=query[:100],
-            best_intent=best_match.intent,
-            similarity=best_match.similarity,
-            threshold=best_match.confidence_threshold,
-            processing_time_ms=processing_time,
-        )
 
         return IntentResult(
             intent="GENERAL_CONVERSATION",

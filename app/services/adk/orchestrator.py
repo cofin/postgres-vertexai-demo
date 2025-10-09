@@ -50,7 +50,6 @@ class ADKOrchestrator:
             app_name="coffee-assistant",
             session_service=self.session_service,
         )
-        logger.debug("ADK Orchestrator initialized with SQLSpec session service")
 
     def _convert_markdown_to_html(self, text: str) -> str:
         """Convert simple markdown formatting to HTML."""
@@ -91,7 +90,6 @@ class ADKOrchestrator:
         """Process user request through ADK agent system with detailed timing."""
         start_time = time.time()
         timings = {}
-        logger.debug("Processing request via ADK Runner...", query=query)
 
         try:
             # Time session management
@@ -111,7 +109,6 @@ class ADKOrchestrator:
                 from_cache = cached_response is not None
 
                 if cached_response:
-                    logger.debug("Using cached response", cache_key=cache_key)
                     event_data = cached_response
                     timings["agent_processing_ms"] = 0  # No processing time for cached responses
                 else:
@@ -161,9 +158,6 @@ class ADKOrchestrator:
 
                     if should_cache:
                         await cache_service.set(cache_key, event_data, ttl=5)  # 5-minute TTL
-                        logger.debug("Cached response", cache_key=cache_key)
-                    else:
-                        logger.debug("Skipped caching due to validation failure", cache_key=cache_key)
 
             # Get timing data from tool context
             tool_timings = get_and_clear_timing_context()
@@ -291,11 +285,6 @@ class ADKOrchestrator:
     def _process_intent_response(self, func_response: Any, timings: dict) -> dict[str, Any]:
         """Process intent classification response."""
         intent_result = func_response.response or {}
-        logger.debug(
-            "Intent classification result received",
-            intent=intent_result.get("intent"),
-            confidence=intent_result.get("confidence"),
-        )
         if "timing_ms" in intent_result:
             timings["intent_classification_ms"] = intent_result["timing_ms"]
 

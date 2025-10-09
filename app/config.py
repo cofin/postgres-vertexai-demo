@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from pathlib import Path
 from typing import cast
 
@@ -126,6 +127,26 @@ log = StructlogConfig(
                     "level": settings.log.ASGI_ACCESS_LEVEL,
                     "handlers": ["queue_listener"],
                 },
+                "google.adk": {
+                    "propagate": False,
+                    "level": settings.log.LEVEL,
+                    "handlers": ["queue_listener"],
+                },
+                "google.genai": {
+                    "propagate": False,
+                    "level": settings.log.LEVEL,
+                    "handlers": ["queue_listener"],
+                },
+                "google_genai": {
+                    "propagate": False,
+                    "level": settings.log.LEVEL,
+                    "handlers": ["queue_listener"],
+                },
+                "google_genai.types": {
+                    "propagate": False,
+                    "level": settings.log.LEVEL,
+                    "handlers": ["queue_listener"],
+                },
             },
         ),
     ),
@@ -152,4 +173,30 @@ def setup_logging() -> None:
         logger_factory=log.structlog_logging_config.logger_factory,
         processors=log.structlog_logging_config.processors,
         wrapper_class=structlog.make_filtering_bound_logger(settings.log.LEVEL),
+    )
+
+    # Capture Python warnings into logging so we can filter them
+    logging.captureWarnings(True)
+
+    # Add filter to suppress specific ADK/GenAI warnings
+    adk_warning_filter = log_conf.SuppressADKWarningsFilter()
+
+    # Apply to py.warnings logger (where Python warnings get captured)
+    py_warnings_logger = logging.getLogger("py.warnings")
+    py_warnings_logger.addFilter(adk_warning_filter)
+
+    # Apply to specific Google loggers
+    for logger_name in ["google.adk", "google.genai", "google_genai", "google_genai.types"]:
+        logger = logging.getLogger(logger_name)
+        logger.addFilter(adk_warning_filter)
+
+    # Also apply to root logger and queue_listener handlers to catch in listener thread
+    logging.root.addFilter(adk_warning_filter)
+
+    # Suppress at Python warnings level too (belt and suspenders)
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*non-text parts in the response.*function_call.*",
+        category=Warning,
+        module=r"google_(?:genai|generativeai)(?:\..*)?$",
     )

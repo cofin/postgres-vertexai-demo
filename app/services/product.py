@@ -6,7 +6,7 @@ import hashlib
 import json
 from typing import TYPE_CHECKING, Any
 
-from app.schemas import Product, ProductCreate, ProductSearchResult, ProductUpdate, VectorSearchCache
+from app.schemas import Product, ProductCreate, ProductSearch, ProductUpdate, VectorSearchCache
 from app.services.base import SQLSpecService
 
 if TYPE_CHECKING:
@@ -21,7 +21,7 @@ class ProductService(SQLSpecService):
         query_embedding: list[float],
         similarity_threshold: float = 0.7,
         limit: int = 5,
-    ) -> list[ProductSearchResult]:
+    ) -> list[ProductSearch]:
         """Search products using vector similarity.
 
         Args:
@@ -34,33 +34,28 @@ class ProductService(SQLSpecService):
         """
         return await self.driver.select(
             """
-            SELECT
-              id,
-              name,
-              description,
-              price,
-              category,
-              sku,
-              in_stock,
-              metadata,
-              created_at,
-              updated_at,
-              1 - (embedding <=> :query_embedding) as similarity_score
-            FROM
-              product
-            WHERE
-              embedding IS NOT NULL
+            SELECT  id,
+                    name,
+                    description,
+                    price,
+                    category,
+                    sku,
+                    in_stock,
+                    metadata,
+                    created_at,
+                    updated_at,
+                    1 - (embedding <=> :query_embedding) as similarity_score
+            FROM product
+            WHERE embedding IS NOT NULL
               AND in_stock = true
               AND 1 - (embedding <=> :query_embedding) >= :similarity_threshold
-            ORDER BY
-              embedding <=> :query_embedding
-            LIMIT
-              :limit_count
+            ORDER BY embedding <=> :query_embedding
+            LIMIT :limit_count
             """,
             query_embedding=query_embedding,
             similarity_threshold=similarity_threshold,
             limit_count=limit,
-            schema_type=ProductSearchResult,
+            schema_type=ProductSearch,
         )
 
     async def vector_similarity_search_with_cache(
@@ -68,7 +63,7 @@ class ProductService(SQLSpecService):
         query_embedding: list[float],
         similarity_threshold: float = 0.7,
         limit: int = 5,
-    ) -> tuple[list[ProductSearchResult], bool]:
+    ) -> tuple[list[ProductSearch], bool]:
         """Vector similarity search with result caching.
 
         Caches search results for 1 minute to reduce query latency by 90%.
@@ -83,9 +78,7 @@ class ProductService(SQLSpecService):
             Tuple of (search results, cache_hit boolean)
         """
         # Generate cache key from embedding + params
-        cache_key = self._generate_vector_cache_key(
-            query_embedding, similarity_threshold, limit
-        )
+        cache_key = self._generate_vector_cache_key(query_embedding, similarity_threshold, limit)
 
         # Check cache
         cached = await self._get_cached_vector_search(cache_key)
@@ -96,15 +89,11 @@ class ProductService(SQLSpecService):
             return results, True  # Cache hit
 
         # Cache miss - run actual search
-        results = await self.vector_similarity_search(
-            query_embedding, similarity_threshold, limit
-        )
+        results = await self.vector_similarity_search(query_embedding, similarity_threshold, limit)
 
         # Cache results (TTL: 1 minute)
         if results:
-            await self._cache_vector_search_results(
-                cache_key, results, similarity_threshold, limit
-            )
+            await self._cache_vector_search_results(cache_key, results, similarity_threshold, limit)
 
         return results, False  # Cache miss
 
@@ -127,9 +116,7 @@ class ProductService(SQLSpecService):
         hash_input = json.dumps(data, sort_keys=True).encode()
         return hashlib.sha256(hash_input).hexdigest()[:16]
 
-    async def _get_cached_vector_search(
-        self, cache_key: str
-    ) -> VectorSearchCache | None:
+    async def _get_cached_vector_search(self, cache_key: str) -> VectorSearchCache | None:
         """Check vector search cache."""
         return await self.driver.select_one_or_none(
             """
@@ -144,9 +131,7 @@ class ProductService(SQLSpecService):
             schema_type=VectorSearchCache,
         )
 
-    async def _fetch_products_by_ids(
-        self, product_ids: list[int], query_embedding: list[float]
-    ) -> list[ProductSearchResult]:
+    async def _fetch_products_by_ids(self, product_ids: list[int], query_embedding: list[float]) -> list[ProductSearch]:
         """Fetch full product details from cached IDs with similarity scores.
 
         Re-calculates similarity scores for cached results to ensure accuracy.
@@ -162,13 +147,13 @@ class ProductService(SQLSpecService):
             """,
             product_ids=product_ids,
             query_embedding=query_embedding,
-            schema_type=ProductSearchResult,
+            schema_type=ProductSearch,
         )
 
     async def _cache_vector_search_results(
         self,
         cache_key: str,
-        results: list[ProductSearchResult],
+        results: list[ProductSearch],
         threshold: float,
         limit: int,
     ) -> None:

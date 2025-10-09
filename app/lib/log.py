@@ -32,6 +32,21 @@ if TYPE_CHECKING:
 
 LOGGER = structlog.getLogger()
 
+
+class SuppressADKWarningsFilter(logging.Filter):
+    """Filter to suppress specific ADK/GenAI warnings that clutter demo logs."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Return False to suppress log record."""
+        msg = record.getMessage()
+        # Suppress the "non-text parts in the response" warning
+        if "non-text parts in the response" in msg and "function_call" in msg:
+            return False
+        if "returning concatenated text result from text parts" in msg:
+            return False
+        return True
+
+
 HTTP_RESPONSE_START: Literal["http.response.start"] = "http.response.start"
 HTTP_RESPONSE_BODY: Literal["http.response.body"] = "http.response.body"
 REQUEST_BODY_FIELD: Literal["body"] = "body"
@@ -50,6 +65,52 @@ def structlog_json_serializer(value: EventDict, **_: Any) -> bytes:
 
 def stdlib_json_serializer(value: EventDict, **_: Any) -> str:
     return serialization.to_json(value).decode("utf-8")
+
+
+def add_logger_name_safe(logger: WrappedLogger, _: str, event_dict: EventDict) -> EventDict:
+    """Safely add logger name, handling both stdlib and native structlog loggers.
+
+    Args:
+        logger: Wrapped logger object.
+        _: Name of the wrapped method.
+        event_dict: Current context with current event.
+
+    Returns:
+        Modified event_dict with logger field.
+    """
+    # Check if this is a stdlib LogRecord
+    record = event_dict.get("_record")
+    if record is not None:
+        event_dict["logger"] = record.name
+    # For structlog native loggers, check if logger has a name attribute
+    elif hasattr(logger, "name"):
+        event_dict["logger"] = logger.name
+    # Fallback: try to infer from the logger object itself
+    elif hasattr(logger, "_name"):
+        event_dict["logger"] = logger._name  # noqa: SLF001
+    return event_dict
+
+
+def add_logger_source(_: WrappedLogger, __: str, event_dict: EventDict) -> EventDict:
+    """Add logger source tag from full logger name for tracking log origin.
+
+    Keeps full logger name but renames field to 'source' for clarity.
+    Examples: 'app.services.adk.orchestrator', 'google.genai', '_granian'
+
+    Args:
+        _: Wrapped logger object.
+        __: Name of the wrapped method.
+        event_dict: Current context with current event.
+
+    Returns:
+        Modified event_dict with source field containing full logger name.
+    """
+    if logger_name := event_dict.get("logger"):
+        # Move logger to source field for display
+        event_dict["source"] = logger_name
+        # Remove the original logger field to avoid duplication
+        event_dict.pop("logger", None)
+    return event_dict
 
 
 def add_google_cloud_attributes(_: WrappedLogger, __: str, event_dict: EventDict) -> EventDict:
@@ -317,6 +378,8 @@ def structlog_processors(as_json: bool) -> list[Processor]:
             return [
                 structlog.contextvars.merge_contextvars,
                 structlog.processors.add_log_level,
+                add_logger_name_safe,
+                add_logger_source,
                 structlog.processors.format_exc_info,
                 add_google_cloud_attributes,
                 structlog.processors.TimeStamper(fmt="iso"),
@@ -325,6 +388,8 @@ def structlog_processors(as_json: bool) -> list[Processor]:
         return [
             structlog.contextvars.merge_contextvars,
             structlog.processors.add_log_level,
+            add_logger_name_safe,
+            add_logger_source,
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.dev.ConsoleRenderer(
                 colors=True,
@@ -349,6 +414,8 @@ def stdlib_logger_processors(as_json: bool) -> list[Processor]:
             return [
                 structlog.processors.TimeStamper(fmt="iso"),
                 structlog.stdlib.add_log_level,
+                add_logger_name_safe,
+                add_logger_source,
                 structlog.stdlib.ExtraAdder(),
                 EventFilter(["color_message"]),
                 structlog.processors.EventRenamer("message"),
@@ -359,6 +426,8 @@ def stdlib_logger_processors(as_json: bool) -> list[Processor]:
         return [
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.stdlib.add_log_level,
+            add_logger_name_safe,
+            add_logger_source,
             structlog.stdlib.ExtraAdder(),
             EventFilter(["color_message"]),
             EventFilter(["message"]),

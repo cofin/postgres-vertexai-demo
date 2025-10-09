@@ -80,12 +80,6 @@ class VertexAIService:
             batch_embeddings = [list(e.values) for e in response.embeddings if e.values is not None]
             embeddings.extend(batch_embeddings)
 
-        logger.debug(
-            "Generated batch embeddings",
-            batch_count=len(texts),
-            embedding_dimensions=len(embeddings[0]) if embeddings else 0,
-            model=model_name,
-        )
         return embeddings
 
     @overload
@@ -146,13 +140,6 @@ class VertexAIService:
             if self._cache_service and self.settings.cache.EMBEDDING_CACHE_ENABLED:
                 cached = await self._cache_service.get_cached_embedding(text, model_name)
                 if cached:
-                    logger.debug(
-                        "Retrieved cached embedding",
-                        text_length=len(text),
-                        embedding_dimensions=len(cached.embedding),
-                        model=model_name,
-                        hit_count=cached.hit_count,
-                    )
                     if return_cache_status:
                         return cached.embedding, True
                     return cached.embedding
@@ -164,7 +151,6 @@ class VertexAIService:
             if self._cache_service and self.settings.cache.EMBEDDING_CACHE_ENABLED:
                 try:
                     await self._cache_service.set_cached_embedding(text, embedding, model_name)
-                    logger.debug("Cached new embedding", text_length=len(text), model=model_name)
                 except Exception as e:  # noqa: BLE001
                     logger.warning("Failed to cache embedding", error=str(e))
 

@@ -16,13 +16,10 @@ from app.services.adk.tools import (
     search_products_by_vector,
 )
 
-# Single Unified Agent - Handles all requests directly without routing overhead
 CoffeeAssistantAgent = LlmAgent(
     name="CoffeeAssistant",
     description="The main coffee assistant for Cymbal Coffee. Handles all customer requests directly with product search, recommendations, and coffee knowledge.",
     instruction=UNIFIED_AGENT_INSTRUCTION,
     model=settings.vertex_ai.CHAT_MODEL,
-    # All tools available to the single agent
     tools=[classify_intent, search_products_by_vector, get_product_details],
-    # No sub_agents - single agent handles everything directly
 )

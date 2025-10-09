@@ -8,7 +8,7 @@ from app.schemas.base import CamelizedBaseStruct
 __all__ = (
     "Product",
     "ProductCreate",
-    "ProductSearchResult",
+    "ProductSearch",
     "ProductUpdate",
 )
 
@@ -52,7 +52,7 @@ class ProductUpdate(CamelizedBaseStruct, omit_defaults=True):
     metadata: dict[str, Any] | None = None
 
 
-class ProductSearchResult(CamelizedBaseStruct, omit_defaults=True):
+class ProductSearch(CamelizedBaseStruct, omit_defaults=True):
     """Product search result with similarity score."""
 
     id: int

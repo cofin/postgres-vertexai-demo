@@ -114,12 +114,7 @@ class ExemplarService(SQLSpecService):
         Returns:
             List of similar intent exemplars with similarity scores
         """
-        logger.debug(
-            "search_similar_intents called", target_intent=target_intent, min_threshold=min_threshold, limit=limit,
-        )
-
         if target_intent is not None and target_intent != "":
-            logger.debug("Using search-similar-intents-by-intent query")
             return await self.driver.select(
                 """
                 WITH query_embedding AS (
@@ -150,8 +145,6 @@ class ExemplarService(SQLSpecService):
                 schema_type=IntentSearchResult,
             )
 
-        logger.debug("Using search-similar-intents query")
-        # Try removing schema_type to see if that's the issue
         return await self.driver.select(
             """
             WITH
@@ -224,8 +217,6 @@ class ExemplarService(SQLSpecService):
         logger.info("Starting bulk exemplar loading", total_intents=len(exemplars))
 
         for intent, phrases in exemplars.items():
-            logger.debug("Loading exemplars for intent", intent=intent, phrase_count=len(phrases))
-
             # Generate embeddings for all phrases at once
             embeddings = await embedding_service.get_text_embedding(phrases)
 
@@ -241,9 +232,6 @@ class ExemplarService(SQLSpecService):
                         ),
                     )
                     count += 1
-
-                    if count % 10 == 0:
-                        logger.debug("Loaded exemplars", count=count)
 
                 except Exception as e:
                     logger.exception(
