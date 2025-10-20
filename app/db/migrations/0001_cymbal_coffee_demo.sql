@@ -1,8 +1,8 @@
--- Vector Demo Migration
+-- SQLSpec Migration
 -- Version: 0001
--- Description: Initial schema with pgvector support
--- Created: 2025-09-06T21:07:17.624967+00:00
--- Author: cody
+-- Description: Cymbal Coffee demo
+-- Created: 2025-10-17T22:07:14.172135+00:00
+-- Author: Cody Fincher <cody@litestar.dev>
 -- name: migrate-0001-up
 -- Enable pgvector extension for vector operations
 CREATE EXTENSION if NOT EXISTS vector;
@@ -187,7 +187,9 @@ CREATE INDEX search_metric_intent_idx ON search_metric (intent);
 CREATE INDEX search_metric_created_at_idx ON search_metric (created_at);
 
 
-CREATE INDEX search_metric_similarity_score_idx ON search_metric (avg_similarity_score) WHERE avg_similarity_score IS NOT NULL;
+CREATE INDEX search_metric_similarity_score_idx ON search_metric (avg_similarity_score)
+WHERE
+    avg_similarity_score IS NOT NULL;
 
 
 -- Vector search cache indexes
@@ -233,12 +235,15 @@ EXECUTE function update_updated_at_column ();
 
 
 -- name: migrate-0001-down
--- Drop triggers and functions
 DROP TRIGGER if EXISTS intent_exemplar_updated_at_trigger ON intent_exemplar cascade;
+
+
 DROP TRIGGER if EXISTS update_intent_exemplar_updated_at ON intent_exemplar cascade;
 
 
 DROP TRIGGER if EXISTS product_updated_at_trigger ON product cascade;
+
+
 DROP TRIGGER if EXISTS update_product_updated_at ON product cascade;
 
 
@@ -248,7 +253,6 @@ DROP TRIGGER if EXISTS search_metric_updated_at_trigger ON search_metric cascade
 DROP TRIGGER if EXISTS store_updated_at_trigger ON store cascade;
 
 
--- Drop indexes
 DROP INDEX if EXISTS intent_exemplar_usage_count_idx;
 
 
@@ -282,7 +286,6 @@ DROP INDEX if EXISTS product_in_stock_idx;
 DROP INDEX if EXISTS product_created_at_idx;
 
 
--- Drop store indexes
 DROP INDEX if EXISTS store_city_idx;
 
 
@@ -305,14 +308,20 @@ DROP INDEX if EXISTS embedding_cache_created_at_idx;
 
 
 DROP INDEX if EXISTS search_metric_session_id_idx;
+
+
 DROP INDEX if EXISTS search_metrics_session_id_idx;
 
 
 DROP INDEX if EXISTS search_metric_intent_idx;
+
+
 DROP INDEX if EXISTS search_metrics_intent_idx;
 
 
 DROP INDEX if EXISTS search_metric_created_at_idx;
+
+
 DROP INDEX if EXISTS search_metrics_created_at_idx;
 
 
@@ -325,10 +334,10 @@ DROP INDEX if EXISTS idx_vector_search_cache_expires;
 DROP INDEX if EXISTS idx_vector_search_cache_lookup;
 
 
--- Drop tables in reverse dependency order
 DROP TABLE IF EXISTS vector_search_cache cascade;
+
+
 DROP TABLE IF EXISTS search_metric cascade;
-DROP TABLE IF EXISTS search_metrics cascade;
 
 
 DROP TABLE IF EXISTS intent_exemplar cascade;
@@ -349,5 +358,4 @@ DROP TABLE IF EXISTS product cascade;
 DROP FUNCTION if EXISTS update_updated_at_column () cascade;
 
 
--- Drop extension
 DROP EXTENSION if EXISTS vector cascade;

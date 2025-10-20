@@ -19,9 +19,13 @@ from sqlspec.extensions.adk import SQLSpecSessionService
 
 from app.config import db, db_manager, service_locator
 from app.services.adk.agent import CoffeeAssistantAgent  # This now imports the router agent
+from app.services.adk.monkey_patches import apply_event_actions_patch
 from app.services.adk.tools import get_and_clear_timing_context, search_products_by_vector
 from app.services.cache import CacheService
 from app.services.metrics import MetricsService
+
+# Apply monkey patches for ADK backward compatibility
+apply_event_actions_patch()
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator

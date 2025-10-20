@@ -22,7 +22,7 @@
     ".unasyncd_cache": true,
     ".coverage": true,
     "node_modules": true,
-    ".terraform": true
+    ".terraform": true, 
   },
   "mypy-type-checker.importStrategy": "fromEnvironment",
   "pylint.importStrategy": "fromEnvironment",

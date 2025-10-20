@@ -76,8 +76,6 @@ class IntentService(SQLSpecService):
             limit=max_results,
         )
 
-        processing_time = int((time.perf_counter() - start_time) * 1000)
-
         # Determine best intent
         if not similar_intents:
             return IntentResult(
