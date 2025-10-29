@@ -4,13 +4,13 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, Any, overload
 
 import structlog
 from google import genai
 
 from app.lib.settings import get_settings
-from app.services.cache import CacheService
+from app.services._cache import CacheService
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -29,7 +29,6 @@ class VertexAIService:
             cache_service: Optional cache service for embedding caching
         """
         from google import genai
-        from google.cloud import aiplatform
 
         self.settings = get_settings()
         self._genai_client: genai.Client | None = None
@@ -37,22 +36,23 @@ class VertexAIService:
 
         # Initialize Vertex AI
         if self.settings.vertex_ai.PROJECT_ID:
-            # Lazy import Google Cloud libraries
-
-            aiplatform.init(
-                project=self.settings.vertex_ai.PROJECT_ID,
-                location=self.settings.vertex_ai.LOCATION,
-            )
-            # Initialize Google GenAI client
+            # genai.Client automatically uses GOOGLE_APPLICATION_CREDENTIALS or ADC
             self._genai_client = genai.Client()
             logger.info(
-                "Vertex AI initialized (private deployment)",
+                "Vertex AI initialized",
                 project=self.settings.vertex_ai.PROJECT_ID,
                 location=self.settings.vertex_ai.LOCATION,
+                embedding_model=self.settings.vertex_ai.EMBEDDING_MODEL,
+                chat_model=self.settings.vertex_ai.CHAT_MODEL,
             )
         else:
-            self._genai_client = None
-            logger.warning("Vertex AI not initialized: PROJECT_ID not configured")
+            api_key = self.settings.vertex_ai.API_KEY
+            if api_key:
+                self._genai_client = genai.Client(api_key=api_key)
+                logger.info("Google AI client initialized using API key")
+            else:
+                self._genai_client = None
+                logger.warning("Vertex AI not initialized: PROJECT_ID not configured and no API key provided")
 
     async def _get_batch_text_embeddings(self, texts: list[str], model_name: str) -> list[list[float]]:
         """Handle batch embedding generation with rate limiting."""
@@ -88,6 +88,15 @@ class VertexAIService:
         text: str,
         model: str | None = None,
     ) -> list[float]: ...
+
+    @overload
+    async def get_text_embedding(
+        self,
+        text: str,
+        model: str | None = None,
+        *,
+        return_cache_status: bool = True,
+    ) -> tuple[list[float], bool]: ...
 
     @overload
     async def get_text_embedding(
@@ -162,29 +171,6 @@ class VertexAIService:
         if return_cache_status:
             return embedding, cache_hit
         return embedding
-
-    async def get_text_embedding_with_cache_status(
-        self,
-        text: str,
-        model: str | None = None,
-    ) -> tuple[list[float], bool]:
-        """Generate text embedding with cache hit status.
-
-        .. deprecated::
-            Use get_text_embedding(text, model, return_cache_status=True) instead.
-
-        Args:
-            text: Text to embed
-            model: Optional model override
-
-        Returns:
-            Tuple of (embedding vector, cache_hit)
-
-        Raises:
-            RuntimeError: If Vertex AI not initialized
-            ValueError: If embedding generation fails
-        """
-        return await self.get_text_embedding(text, model, return_cache_status=True)  # type: ignore[return-value]
 
     async def generate_chat_response_stream(
         self,
@@ -261,16 +247,11 @@ class VertexAIService:
             ),
         ):
             # Extract text from chunk
-            if hasattr(chunk, "candidates") and chunk.candidates:
+            if chunk.candidates:
                 candidate = chunk.candidates[0]
-                if (
-                    hasattr(candidate, "content")
-                    and candidate.content
-                    and hasattr(candidate.content, "parts")
-                    and candidate.content.parts
-                ):
+                if candidate.content and candidate.content.parts:
                     for part in candidate.content.parts:
-                        if hasattr(part, "text") and part.text:
+                        if part.text:
                             yield part.text
 
     async def _get_embedding_async(self, text: str, model: str) -> list[float]:
@@ -305,3 +286,117 @@ class VertexAIService:
     def get_embedding_dimensions(self) -> int:
         """Get embedding dimensions for current model."""
         return self.settings.vertex_ai.EMBEDDING_DIMENSIONS
+
+
+class OracleVectorSearchService:
+    """Oracle vector search service using SQLSpec driver patterns.
+
+    This service provides vector similarity search functionality for Oracle Database 23ai
+    using the VECTOR_DISTANCE function with proper embedding caching.
+    """
+
+    def __init__(
+        self,
+        products_service: Any,
+        vertex_ai_service: VertexAIService,
+        embedding_cache: CacheService | None = None,
+    ) -> None:
+        """Initialize Oracle vector search service.
+
+        Args:
+            products_service: Product service for database operations
+            vertex_ai_service: Vertex AI service for embedding generation
+            embedding_cache: Optional cache service for embeddings
+        """
+        self.products_service = products_service
+        self.vertex_ai_service = vertex_ai_service
+        self.embedding_cache = embedding_cache
+
+    async def similarity_search(self, query: str, k: int = 4) -> tuple[list[dict[str, Any]], bool, dict[str, float]]:
+        """Perform Oracle vector similarity search.
+
+        Args:
+            query: Search query text
+            k: Number of results to return
+
+        Returns:
+            Tuple of (matched products, embedding_cache_hit, timing_data)
+        """
+        import time
+
+        start_time = time.time()
+
+        try:
+            # Create embedding for query (with caching if available)
+            embedding_start = time.time()
+
+            embedding_cache_hit = False
+            if self.embedding_cache:
+                logger.debug("product_search_using_cache", query=query[:50])
+                # Try to get from cache
+                cached = await self.embedding_cache.get_cached_embedding(
+                    query, self.vertex_ai_service.settings.vertex_ai.EMBEDDING_MODEL
+                )
+                if cached:
+                    query_embedding = cached.embedding
+                    embedding_cache_hit = True
+                else:
+                    query_embedding = await self.vertex_ai_service.get_text_embedding(query)
+                    # Cache it
+                    await self.embedding_cache.set_cached_embedding(
+                        query, query_embedding, self.vertex_ai_service.settings.vertex_ai.EMBEDDING_MODEL
+                    )
+            else:
+                logger.debug("product_search_no_cache", query=query[:50])
+                query_embedding = await self.vertex_ai_service.get_text_embedding(query)
+
+            embedding_time = (time.time() - embedding_start) * 1000
+
+            # Perform Oracle vector search
+            oracle_start = time.time()
+
+            # Execute search using SQLSpec driver - automatic vector conversion
+            products = await self.products_service.driver.select(
+                """
+                SELECT
+                    p.id AS "id",
+                    p.name AS "name",
+                    p.description AS "description",
+                    VECTOR_DISTANCE(p.embedding, :query_vector, COSINE) AS "distance"
+                FROM product p
+                WHERE p.embedding IS NOT NULL
+                ORDER BY VECTOR_DISTANCE(p.embedding, :query_vector, COSINE)
+                FETCH FIRST :limit ROWS ONLY
+                """,
+                query_vector=query_embedding,  # SQLSpec handles vector conversion automatically
+                limit=k,
+            )
+
+            oracle_time = (time.time() - oracle_start) * 1000
+
+            # Format results - driver returns dicts, add metadata field
+            formatted_products = [
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "description": row["description"],
+                    "distance": row["distance"],
+                    "metadata": {"id": row["id"]},
+                }
+                for row in products
+            ]
+
+            # Calculate total time and return timing data
+            total_time = (time.time() - start_time) * 1000
+            timing_data = {
+                "embedding_ms": embedding_time,
+                "oracle_ms": oracle_time,
+                "total_ms": total_time,
+            }
+
+        except (KeyError, AttributeError) as e:
+            # Return empty results on error, but log it
+            logger.exception("Vector search error", error=str(e))
+            return [], False, {"embedding_ms": 0.0, "oracle_ms": 0.0, "total_ms": 0.0}
+        else:
+            return formatted_products, embedding_cache_hit, timing_data

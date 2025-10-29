@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Oracle Database 23ai + Google Vertex AI Demo Application."""
+"""Metadata for the Project."""
 
-from __future__ import annotations
+import importlib.metadata
 
-__all__ = ("__version__",)
+__all__ = ("__project__", "__version__")
 
-__version__ = "0.2.0"
+__version__ = importlib.metadata.version("app")
+"""Version of the project."""
+__project__ = importlib.metadata.metadata("app")["Name"]
+"""Name of the project."""

@@ -9,8 +9,6 @@ from litestar.exceptions import HTTPException, ValidationException
 from litestar.plugins.htmx import HTMXTemplate
 from litestar.status_codes import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
 
-from app.lib.exceptions import ApplicationError
-
 if TYPE_CHECKING:
     from litestar import Request
     from litestar.response import Response
@@ -62,7 +60,7 @@ def handle_validation_exception(request: Request, exc: ValidationException) -> R
 
     # Return HTMX template with validation error event
     return HTMXTemplate(
-        template_name="partials/chat_response.html",
+        template_name="partials/chat_error.html",
         context={
             "user_message": "Invalid input",
             "ai_response": str(exc.detail) if hasattr(exc, "detail") else str(exc),
@@ -85,7 +83,7 @@ def handle_google_api_exception(request: Request, exc: google_exceptions.GoogleA
     user_message = "Your request"
 
     return HTMXTemplate(
-        template_name="partials/chat_response.html",
+        template_name="partials/chat_error.html",
         context={
             "user_message": user_message,
             "ai_response": "Sorry, I encountered an error processing your request. Please try again.",
@@ -109,7 +107,7 @@ def handle_htmx_api_exception(request: Request, exc: HTMXAPIException) -> Respon
     user_message = "Your request"
 
     return HTMXTemplate(
-        template_name="partials/chat_response.html",
+        template_name="partials/chat_error.html",
         context={
             "user_message": user_message,
             "ai_response": exc.detail,
@@ -133,7 +131,7 @@ def handle_generic_exception(request: Request, exc: Exception) -> Response:
     csp_nonce = getattr(request.app.state, "csp_nonce_generator", lambda: "")()
 
     return HTMXTemplate(
-        template_name="partials/chat_response.html",
+        template_name="partials/chat_error.html",
         context={
             "user_message": "Your request",
             "ai_response": "An unexpected error occurred. Please try again later.",
@@ -150,13 +148,15 @@ def handle_generic_exception(request: Request, exc: Exception) -> Response:
 
 def handle_value_error(request: Request, exc: ValueError) -> Response:
     """Handle ValueError exceptions (often from Vertex AI)."""
+    # Log the actual error for debugging
+    request.logger.error("ValueError occurred", exc_info=exc, error_message=str(exc))
 
     csp_nonce = getattr(request.app.state, "csp_nonce_generator", lambda: "")()
 
     user_message = "Your request"
 
     return HTMXTemplate(
-        template_name="partials/chat_response.html",
+        template_name="partials/chat_error.html",
         context={
             "user_message": user_message,
             "ai_response": "Sorry, I encountered an error processing your request. Please try again.",
@@ -194,7 +194,7 @@ def handle_vector_demo_exception(request: Request, exc: VectorDemoException) -> 
             "results": [],
             "search_time": "N/A",
             "embedding_time": "N/A",
-            "postgres_time": "N/A",
+            "oracle_time": "N/A",
             "error": error_message,
             "query": query,
             "csp_nonce": csp_nonce,
@@ -211,23 +211,6 @@ def handle_vector_demo_exception(request: Request, exc: VectorDemoException) -> 
     )
 
 
-def handle_app_service_exception(request: Request, exc: ApplicationError) -> Response:
-    """Handle application service exceptions."""
-    return HTMXTemplate(
-        template_name="partials/chat_response.html",
-        context={
-            "user_message": "An error occurred",
-            "ai_response": exc.detail,
-            "query_id": "",
-            "csp_nonce": getattr(request.app.state, "csp_nonce_generator", lambda: "")(),
-        },
-        status_code=exc.status_code,
-        trigger_event="api:error",
-        params={"type": "service_error", "retry": False},
-        after="receive",
-    )
-
-
 # Exception handler mapping for registration
 exception_handlers = {
     ValidationException: handle_validation_exception,
@@ -236,5 +219,4 @@ exception_handlers = {
     HTMXAPIException: handle_htmx_api_exception,
     VectorDemoException: handle_vector_demo_exception,
     ValueError: handle_value_error,
-    ApplicationError: handle_app_service_exception,
 }

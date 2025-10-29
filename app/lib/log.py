@@ -19,7 +19,7 @@ from litestar.utils.scope.state import ScopeState
 from structlog.contextvars import bind_contextvars
 
 from app.lib.settings import get_settings
-from app.utils import serialization
+from app.utils.serialization import to_json
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -42,9 +42,7 @@ class SuppressADKWarningsFilter(logging.Filter):
         # Suppress the "non-text parts in the response" warning
         if "non-text parts in the response" in msg and "function_call" in msg:
             return False
-        if "returning concatenated text result from text parts" in msg:
-            return False
-        return True
+        return "returning concatenated text result from text parts" not in msg
 
 
 HTTP_RESPONSE_START: Literal["http.response.start"] = "http.response.start"
@@ -60,11 +58,11 @@ def is_tty() -> bool:
 
 
 def structlog_json_serializer(value: EventDict, **_: Any) -> bytes:
-    return serialization.to_json(value)
+    return to_json(value, as_bytes=True)
 
 
 def stdlib_json_serializer(value: EventDict, **_: Any) -> str:
-    return serialization.to_json(value).decode("utf-8")
+    return to_json(value, as_bytes=False)
 
 
 def add_logger_name_safe(logger: WrappedLogger, _: str, event_dict: EventDict) -> EventDict:
