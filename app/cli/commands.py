@@ -1,62 +1,253 @@
-# Copyright 2024 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""CLI commands for the coffee shop demo application."""
+"""CLI commands for coffee shop demo application."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any
 
-import click
+import rich_click as click
 import structlog
 from rich import get_console
 from rich.prompt import Prompt
 
-from app.db.utils import load_fixtures
-from app.utils.sync_tools import run_
-
-if TYPE_CHECKING:
-    from rich.console import Console
-
-    from app.services.product import ProductService
-    from app.services.vertex_ai import VertexAIService
-
-
 logger = structlog.get_logger()
 
-# Constants
-MAX_ERROR_LENGTH = 200
-MAX_PHRASE_DISPLAY = 40
 
-
+# Coffee demo group for application-specific operations
 @click.group(name="coffee", invoke_without_command=False, help="Coffee shop demo and AI operations.")
 @click.pass_context
-def coffee_demo_group(_: dict[str, Any]) -> None:
+def coffee_demo_group(_: click.Context) -> None:
     """Coffee shop demo and AI operations."""
 
 
-def _display_intent_result(console: Console, result: Any) -> None:
-    """Display the primary intent classification result."""
-    console.print("[bold]Primary Result:[/bold]")
-    console.print(f"  Intent: [bold cyan]{result.intent}[/bold cyan]")
-    console.print(f"  Confidence: [bold]{result.confidence:.2%}[/bold]")
-    console.print(f"  Matched phrase: [dim]{result.exemplar_phrase}[/dim]")
-    console.print(f"  Embedding cached: {'✓' if result.embedding_cache_hit else '✗'}")
-    console.print(f"  Fallback used: {'✓' if result.fallback_used else '✗'}")
+async def _fetch_products_to_embed(product_service: Any, force: bool) -> tuple[list[dict[str, Any]], str]:
+    """Fetch products that need embeddings."""
+    from rich import get_console
+
+    console = get_console()
+    with console.status("[bold yellow]Finding products to process...", spinner="dots"):
+        if force:
+            products = await product_service.driver.select(
+                "SELECT id, name, description, embedding FROM product ORDER BY id",
+            )
+            message = f"[cyan]Processing ALL {len(products)} products (force mode)[/cyan]"
+        else:
+            products, total = await product_service.get_products_without_embeddings()
+            message = f"[cyan]Processing {len(products)} products without embeddings from a total of {total}[/cyan]"
+
+    return products, message
+
+
+async def _process_product_batch(
+    batch: list[dict[str, Any]],
+    product_service: Any,
+    vertex_ai_service: Any,
+    start_idx: int,
+    total_products: int,
+) -> tuple[int, int]:
+    """Process a batch of products for embedding generation.
+
+    Returns:
+        Tuple of (success_count, error_count)
+    """
+    from rich import get_console
+
+    console = get_console()
+    success_count = 0
+    error_count = 0
+
+    with console.status("[bold yellow]Generating embeddings...", spinner="dots") as status:
+        for i, product in enumerate(batch):
+            try:
+                product_name = product.get("name", f"Product {product['id']}")
+                global_idx = start_idx + i + 1
+                status.update(f"[bold yellow]Processing {global_idx}/{total_products}: {product_name}...")
+
+                # Generate embedding
+                description = product.get("description", "")
+                embedding = await vertex_ai_service.get_text_embedding(f"{product_name}: {description}")
+                await product_service.update_embedding(product["id"], embedding)
+                success_count += 1
+
+            except Exception as e:  # noqa: BLE001
+                error_count += 1
+                logger.warning("Failed to process product", product_id=product.get("id"), error=str(e))
+
+    return success_count, error_count
+
+
+def _print_embedding_results(total_success: int, total_errors: int) -> None:
+    """Print final embedding results."""
+    from rich import get_console
+
+    console = get_console()
+    console.print("[bold]Final Results:[/bold]")
+    console.print(f"[bold green]✓ Successfully processed: {total_success} products[/bold green]")
+    if total_errors > 0:
+        console.print(f"[bold red]✗ Failed to process: {total_errors} products[/bold red]")
     console.print()
 
 
+@coffee_demo_group.command(
+    name="bulk-embed",
+    help="Run bulk embedding job for all products using Vertex AI.",
+)
+@click.option("--batch-size", default=50, help="Number of products to process in each batch (default: 50)")
+@click.option("--force", "-f", is_flag=True, help="Re-embed all products, even if they already have embeddings")
+def bulk_embed(batch_size: int, force: bool) -> None:
+    """Run bulk embedding job for all products using Vertex AI."""
+    from sqlspec.utils.sync_tools import run_
+
+    console = get_console()
+    console.rule("[bold blue]Bulk Product Embedding", style="blue", align="left")
+    console.print()
+
+    async def _bulk_embed_products() -> None:
+        from app.config import db, db_manager
+        from app.services import ProductService, VertexAIService
+        from app.services._cache import CacheService
+
+        # Use SQLSpec session directly
+        async with db_manager.provide_session(db) as session:
+            product_service = ProductService(session)
+            cache_service = CacheService(session)
+            vertex_ai_service = VertexAIService(cache_service=cache_service)
+
+            # Get products to embed
+            products, message = await _fetch_products_to_embed(product_service, force)
+            console.print(message)
+
+            if not products:
+                if force:
+                    console.print("[yellow]No products found in database[/yellow]")
+                else:
+                    console.print("[green]✓ All products already have embeddings![/green]")
+                return
+
+            console.print(f"[dim]Batch size: {batch_size}[/dim]")
+            console.print()
+
+            # Process products in batches
+            total_success = 0
+            total_errors = 0
+            total_batches = (len(products) + batch_size - 1) // batch_size
+
+            for batch_num in range(total_batches):
+                start_idx = batch_num * batch_size
+                end_idx = min(start_idx + batch_size, len(products))
+                batch = products[start_idx:end_idx]
+
+                console.print(f"[bold]Processing batch {batch_num + 1}/{total_batches} ({len(batch)} products)[/bold]")
+
+                success, errors = await _process_product_batch(
+                    batch, product_service, vertex_ai_service, start_idx, len(products)
+                )
+                total_success += success
+                total_errors += errors
+
+                console.print(f"[green]✓ Batch {batch_num + 1} complete[/green]")
+                console.print()
+
+            # Show final results
+            _print_embedding_results(total_success, total_errors)
+
+    run_(_bulk_embed_products)()
+
+
+@coffee_demo_group.command(name="clear-cache", help="Clear cache tables in the database.")
+@click.option(
+    "--include-exemplars",
+    is_flag=True,
+    help="Also clear intent exemplar embeddings (slow to regenerate)",
+)
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    help="Skip confirmation prompt",
+)
+def clear_cache(include_exemplars: bool, force: bool) -> None:
+    """Clear application caches.
+
+    By default, clears response_cache and embedding_cache only.
+    Intent exemplar embeddings are preserved (expensive to regenerate).
+    """
+    from sqlspec.utils.sync_tools import run_
+
+    console = get_console()
+
+    # Determine what will be cleared
+    tables_to_clear = ["response_cache", "embedding_cache"]
+    if include_exemplars:
+        tables_to_clear.append("intent_exemplar")
+
+    # Confirm operation unless forced
+    if not force:
+        console.print("[bold]Tables to clear:[/bold]")
+        for table in tables_to_clear:
+            console.print(f"  • {table}")
+
+        if include_exemplars:
+            console.print(
+                "\n[bold red]⚠️  WARNING: Clearing intent exemplars will require regenerating embeddings![/bold red]"
+            )
+
+        confirm = Prompt.ask(
+            "\n[bold red]Are you sure you want to clear these caches?[/bold red]",
+            choices=["y", "n"],
+            default="n",
+        )
+        if confirm.lower() != "y":
+            console.print("[yellow]Operation cancelled.[/yellow]")
+            return
+
+    async def _clear_cache() -> None:
+        """Clear cache tables."""
+        from app.config import db, db_manager
+        from app.services._cache import CacheService
+
+        async with db_manager.provide_session(db) as session:
+            cache_service = CacheService(session)
+            console.rule("[bold blue]Clearing Caches", style="blue", align="left")
+            console.print()
+
+            # Clear caches using the service
+            deleted_count = await cache_service.invalidate_cache(cache_type=None, include_exemplars=include_exemplars)
+
+            console.print(f"[green]✓ Cleared {deleted_count} cache records[/green]")
+            console.print()
+
+    run_(_clear_cache)()
+
+
+@coffee_demo_group.command(name="model-info", help="Show information about currently configured AI models.")
+def model_info() -> None:
+    """Show information about currently configured AI models."""
+    from app.lib.settings import get_settings
+    from app.services import VertexAIService
+
+    console = get_console()
+    console.rule("[bold blue]AI Model Configuration", style="blue", align="left")
+    console.print()
+
+    # Show settings
+    settings = get_settings()
+    console.print(f"[bold]Chat Model:[/bold] {settings.app.GEMINI_MODEL}")
+    console.print(f"[bold]Embedding Model:[/bold] {settings.app.EMBEDDING_MODEL}")
+    console.print(f"[bold]Google Project:[/bold] {settings.app.GOOGLE_PROJECT_ID}")
+    console.print("[bold]Embedding Dimensions:[/bold] 768")
+    console.print()
+
+    # Test model initialization
+    console.print("[bold]🔍 Testing Model Initialization...[/bold]")
+    try:
+        VertexAIService()
+        console.print("[bold green]✓ Successfully initialized![/bold green]")
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[bold red]✗ Model initialization failed: {e}[/bold red]")
+    console.print()
+
+
+# Database fixture commands
 @click.command(name="load-fixtures", help="Load application fixture data into the database.")
 @click.option("--tables", "-t", help="Comma-separated list of specific tables to load (loads all if not specified)")
 @click.option("--list", "list_fixtures", is_flag=True, help="List available fixture files")
@@ -72,20 +263,25 @@ def load_fixtures_cmd(tables: str | None, list_fixtures: bool) -> None:
 
 def _display_fixture_list() -> None:
     """Display available fixture files."""
+    import gzip
     from pathlib import Path
 
     from rich.table import Table
 
     from app.lib.settings import get_settings
-    from app.utils.fixtures import FixtureProcessor
+    from app.utils.serialization import from_json
 
     console = get_console()
     console.rule("[bold blue]Available Fixture Files", style="blue", align="left")
     console.print()
 
     fixtures_dir = Path(get_settings().db.FIXTURE_PATH)
-    processor = FixtureProcessor(fixtures_dir)
-    fixture_files = processor.get_fixture_files()
+    if not fixtures_dir.exists():
+        console.print(f"[yellow]Fixtures directory not found: {fixtures_dir}[/yellow]")
+        return
+
+    # Get all .json and .json.gz files
+    fixture_files = sorted(fixtures_dir.glob("*.json")) + sorted(fixtures_dir.glob("*.json.gz"))
 
     if not fixture_files:
         console.print("[yellow]No fixture files found in fixtures directory[/yellow]")
@@ -99,15 +295,23 @@ def _display_fixture_list() -> None:
     table.add_column("Status", ratio=2)
 
     for fixture_file in fixture_files:
-        table_name = processor.get_table_name(fixture_file.name)
+        # Extract table name from filename (remove .json or .json.gz)
+        table_name = fixture_file.name.replace(".json.gz", "").replace(".json", "")
         try:
-            data = processor.load_fixture_data(fixture_file)
-            records = str(len(data))
+
+            # Load data to count records
+            if fixture_file.suffix == ".gz":
+                with gzip.open(fixture_file, "rb") as f:
+                    data = from_json(f.read())
+            else:
+                data = from_json(fixture_file.read_text(encoding="utf-8"))
+
+            records = str(len(data)) if isinstance(data, list) else "1"
             size_bytes = fixture_file.stat().st_size
             size_mb = size_bytes / 1024 / 1024
-            size = f"{size_mb:.1f} MB" if size_mb > 1 else f"{size_bytes} B"
+            size = f"{size_mb:.1f} MB" if size_mb > 1 else f"{size_bytes / 1024:.1f} KB"
             status = "[green]Ready[/green]"
-        except (OSError, PermissionError) as e:
+        except (OSError, PermissionError, ValueError) as e:
             records = "[dim]N/A[/dim]"
             size = "[dim]N/A[/dim]"
             status = f"[red]Error: {e}[/red]"
@@ -120,6 +324,8 @@ def _display_fixture_list() -> None:
 
 def _load_fixture_data(tables: str | None) -> None:
     """Load fixture data into database."""
+    from sqlspec.utils.sync_tools import run_
+
     console = get_console()
     console.rule("[bold blue]Loading Database Fixtures", style="blue", align="left")
     console.print()
@@ -134,24 +340,16 @@ def _load_fixture_data(tables: str | None) -> None:
     console.print()
 
     async def _load_fixtures() -> None:
-        from app.server.deps import create_service_provider
-        from app.services.base import SQLSpecService
+        from app.db.utils import load_fixtures
 
-        provider = create_service_provider(SQLSpecService)
-        service_gen = provider()
-
-        try:
-            _service = await anext(service_gen)
-            with console.status("[bold yellow]Loading fixtures...", spinner="dots"):
-                results = await load_fixtures(table_list)
+        with console.status("[bold yellow]Loading fixtures...", spinner="dots"):
+            results = await load_fixtures(table_list)
 
             if not results:
                 console.print("[yellow]No fixture files found to load[/yellow]")
                 return
 
             _display_fixture_results(results)
-        finally:
-            await service_gen.aclose()
 
     run_(_load_fixtures)()
 
@@ -225,6 +423,8 @@ def _process_fixture_result(table_name: str, result: dict | int | str) -> dict:
 
 def _get_fixture_status(upserted: int, failed: int, error: str | None) -> str:
     """Get status text for fixture result."""
+    max_error_length = 500
+
     if upserted > 0 and failed == 0:
         return f"[green]✓ {upserted} upserted[/green]"
     if upserted > 0 and failed > 0:
@@ -232,14 +432,10 @@ def _get_fixture_status(upserted: int, failed: int, error: str | None) -> str:
     if failed > 0:
         status = f"[red]✗ {failed} failed[/red]"
         if error:
-            # Show more detailed error information
-            # Extract PostgreSQL error code if present
-            if "[42P01]" in error or ("relation" in error.lower() and "does not exist" in error.lower()):
-                status += "\n[dim]PostgreSQL SQL syntax error[/dim]"
-                status += "\n[dim][42P01]: Table does not exist[/dim]"
-            elif len(error) > MAX_ERROR_LENGTH:
+            # Show detailed error information
+            if len(error) > max_error_length:
                 # Show first part of error with ellipsis
-                status += f"\n[dim]{error[:197]}...[/dim]"
+                status += f"\n[dim]{error[: max_error_length - 3]}...[/dim]"
             else:
                 status += f"\n[dim]{error}[/dim]"
         return status
@@ -257,919 +453,137 @@ def _print_fixture_summary(total_upserted: int, total_failed: int, total_records
     console.print()
 
 
-@click.command(name="export-fixtures", help="Export database tables to fixture files.")
-@click.option(
-    "--tables",
-    "-t",
-    help="Comma-separated list of specific tables to export (exports default set if not specified)",
-)
-@click.option(
-    "--output-dir",
-    "-o",
-    type=click.Path(exists=False, file_okay=False, dir_okay=True),
-    help="Output directory for fixture files (defaults to fixtures directory)",
-)
-@click.option("--no-compress", is_flag=True, help="Don't gzip compress the output files")
-def export_fixtures_cmd(tables: str | None, output_dir: str | None, no_compress: bool) -> None:
-    """Export database tables to fixture files."""
-    from pathlib import Path
+# Export fixtures command
+@click.command(name="export-fixtures", help="Export database tables to fixture JSON files.")
+@click.option("--tables", "-t", help="Comma-separated list of specific tables to export (exports all if not specified)")
+@click.option("--output-dir", "-o", help="Custom output directory (defaults to configured fixtures directory)")
+@click.option("--no-compress", is_flag=True, help="Export uncompressed JSON (default is gzipped)")
+@click.option("--list", "list_tables", is_flag=True, help="List available tables for export")
+def export_fixtures_cmd(tables: str | None, output_dir: str | None, no_compress: bool, list_tables: bool) -> None:
+    """Export database tables to fixture JSON files."""
 
+    if list_tables:
+        _display_available_tables()
+        return
+
+    _export_fixture_data(tables, output_dir, no_compress)
+
+
+def _display_available_tables() -> None:
+    """Display available tables for export."""
     from rich.table import Table
 
+    from app.db.utils import COFFEE_SHOP_TABLES
+    from app.lib.settings import get_settings
+
     console = get_console()
+    console.rule("[bold blue]Available Tables for Export", style="blue", align="left")
+    console.print()
 
-    try:
-        console.rule("[bold blue]Exporting Database Fixtures", style="blue", align="left")
-        console.print()
+    settings = get_settings()
+    fixtures_dir = settings.db.FIXTURE_PATH
 
-        # Parse tables if provided
-        table_list = None
-        if tables:
-            table_list = [t.strip() for t in tables.split(",")]
-            console.print(f"[dim]Exporting specific tables: {', '.join(table_list)}[/dim]")
-        else:
-            console.print("[dim]Exporting default table set[/dim]")
+    table = Table(show_header=True, header_style="bold blue", expand=True)
+    table.add_column("Table Name", style="cyan", ratio=2)
+    table.add_column("Export Order", justify="center", ratio=1)
 
-        if output_dir:
-            console.print(f"[dim]Output directory: {output_dir}[/dim]")
-        else:
-            console.print("[dim]Output directory: fixtures directory[/dim]")
+    for idx, table_name in enumerate(COFFEE_SHOP_TABLES, 1):
+        table.add_row(table_name, str(idx))
 
-        console.print(f"[dim]Compression: {'Disabled' if no_compress else 'Enabled'}[/dim]")
-        console.print()
+    console.print(table)
+    console.print()
+    console.print(f"[dim]Default output directory: {fixtures_dir}[/dim]")
+    console.print(f"[dim]Total tables: {len(COFFEE_SHOP_TABLES)}[/dim]")
+    console.print()
 
-        async def _export_fixtures() -> None:
-            from app.db.utils import export_fixtures
 
-            with console.status("[bold yellow]Exporting fixtures...", spinner="dots"):
-                output_path = Path(output_dir) if output_dir else None
-                results = await export_fixtures(tables=table_list, output_dir=output_path, compress=not no_compress)
+def _export_fixture_data(tables: str | None, output_dir: str | None, no_compress: bool) -> None:
+    """Export fixture data from database."""
+    from pathlib import Path
+
+    from sqlspec.utils.sync_tools import run_
+
+    console = get_console()
+    console.rule("[bold blue]Exporting Database Fixtures", style="blue", align="left")
+    console.print()
+
+    # Parse tables if provided
+    table_list = None
+    if tables:
+        table_list = [t.strip() for t in tables.split(",")]
+        console.print(f"[dim]Exporting specific tables: {', '.join(table_list)}[/dim]")
+    else:
+        console.print("[dim]Exporting all available tables[/dim]")
+
+    # Parse output directory
+    output_path = Path(output_dir) if output_dir else None
+    if output_path:
+        console.print(f"[dim]Output directory: {output_path}[/dim]")
+
+    # Compression setting
+    compress = not no_compress
+    console.print(f"[dim]Compression: {'enabled' if compress else 'disabled'}[/dim]")
+    console.print()
+
+    async def _export_fixtures() -> None:
+        from app.db.utils import export_fixtures
+
+        with console.status("[bold yellow]Exporting fixtures...", spinner="dots"):
+            results = await export_fixtures(table_list, output_path, compress)
 
             if not results:
                 console.print("[yellow]No tables found to export[/yellow]")
                 return
 
-            # Display results with dynamic width
-            table = Table(show_header=True, header_style="bold blue", expand=True)
-            table.add_column("Table", style="cyan", ratio=2)
-            table.add_column("Output File", ratio=4)
-            table.add_column("Status", ratio=2)
+            _display_export_results(results)
 
-            success_count = 0
-            for table_name, result in results.items():
-                if result.startswith("Error:"):
-                    status = "[red]✗ Failed[/red]"
-                    output_file = f"[dim]{result}[/dim]"
-                elif result == "No data found":
-                    status = "[yellow]⚠ Empty[/yellow]"
-                    output_file = "[dim]No data to export[/dim]"
-                else:
-                    status = "[green]✓ Success[/green]"
-                    output_file = f"[cyan]{result}[/cyan]"
-                    success_count += 1
-
-                table.add_row(table_name, output_file, status)
-
-            console.print(table)
-            console.print()
-            console.print(f"[bold green]Successfully exported: {success_count} tables[/bold green]")
-            console.print()
-
-        run_(_export_fixtures)()
-
-    except Exception as e:
-        console.print(f"\n[red]✗[/red] Error exporting fixtures: [red]{e}[/red]")
-        raise click.ClickException(str(e)) from e
+    run_(_export_fixtures)()
 
 
-# Embedding commands - moved to coffee group
-async def _get_products_to_embed(product_service: ProductService, console: Console, force: bool) -> list[dict[str, Any]]:
-    """Get products that need embeddings."""
-    with console.status("[bold yellow]Finding products to process...", spinner="dots"):
-        if force:
-            # Get all products
-            products = await product_service.driver.select(
-                "SELECT id, name, description, embedding FROM product ORDER BY id",
-            )
-            console.print(f"[cyan]Processing ALL {len(products)} products (force mode)[/cyan]")
-        else:
-            # Get only products without embeddings
-            products = await product_service.get_products_without_embeddings()
-            console.print(f"[cyan]Processing {len(products)} products without embeddings[/cyan]")
-    return products
+def _display_export_results(results: dict) -> None:
+    """Display fixture export results."""
+    from rich.table import Table
 
-
-async def _process_product_batch(
-    batch: list[dict[str, Any]], product_service: ProductService, vertex_ai_service: VertexAIService, console: Console, start_idx: int, total_products: int
-) -> tuple[int, int]:
-    """Process a batch of products and return success/error counts."""
-    success_count = 0
-    error_count = 0
-
-    with console.status("[bold yellow]Generating embeddings...", spinner="dots") as status:
-        for i, product in enumerate(batch):
-            try:
-                # Update status
-                product_name = product.get("name", f"Product {product['id']}")
-                global_idx = start_idx + i + 1
-                status.update(f"[bold yellow]Processing {global_idx}/{total_products}: {product_name}...")
-
-                # Generate embedding for product
-                description = product.get("description", "")
-                combined_text = f"{product_name}: {description}"
-                embedding = await vertex_ai_service.get_text_embedding(combined_text)
-
-                # Update product with embedding
-                await product_service.update_product_embedding(product["id"], embedding)
-
-                success_count += 1
-                logger.debug(
-                    "Generated embedding and updated product",
-                    product_id=product["id"],
-                    product_name=product_name,
-                    text_length=len(combined_text),
-                    embedding_dimensions=len(embedding),
-                    model="text-embedding-004",
-                )
-
-            except Exception as e:  # noqa: BLE001
-                error_count += 1
-                logger.warning(
-                    "Failed to process product embedding",
-                    product_id=product.get("id"),
-                    product_name=product.get("name", "Unknown"),
-                    error=str(e),
-                )
-
-    return success_count, error_count
-
-
-@coffee_demo_group.command(
-    name="bulk-embed",
-    help="Run bulk embedding job for all products using Vertex AI.",
-)
-@click.option("--batch-size", default=50, help="Number of products to process in each batch (default: 50)")
-@click.option("--force", "-f", is_flag=True, help="Re-embed all products, even if they already have embeddings")
-def bulk_embed(batch_size: int, force: bool) -> None:
-    """Run bulk embedding job for all products using Vertex AI."""
     console = get_console()
-    console.rule("[bold blue]Bulk Product Embedding", style="blue", align="left")
-    console.print()
-
-    async def _bulk_embed_products() -> None:
-        from app.server.deps import create_service_provider, provide_vertex_ai_service
-        from app.services.product import ProductService
-
-        # Create service providers
-        product_provider = create_service_provider(ProductService)
-        product_service_gen = product_provider()
-        vertex_ai_service_gen = provide_vertex_ai_service()
-
-        try:
-            product_service = await anext(product_service_gen)
-            vertex_ai_service = await anext(vertex_ai_service_gen)
-
-            products = await _get_products_to_embed(product_service, console, force)
-
-            if not products:
-                if force:
-                    console.print("[yellow]No products found in database[/yellow]")
-                else:
-                    console.print("[green]✓ All products already have embeddings![/green]")
-                return
-
-            console.print(f"[dim]Batch size: {batch_size}[/dim]")
-            console.print()
-
-            # Process products in batches
-            total_success = 0
-            total_errors = 0
-            total_batches = (len(products) + batch_size - 1) // batch_size
-
-            for batch_num in range(total_batches):
-                start_idx = batch_num * batch_size
-                end_idx = min(start_idx + batch_size, len(products))
-                batch = products[start_idx:end_idx]
-
-                console.print(f"[bold]Processing batch {batch_num + 1}/{total_batches} ({len(batch)} products)[/bold]")
-
-                success, errors = await _process_product_batch(
-                    batch, product_service, vertex_ai_service, console, start_idx, len(products)
-                )
-                total_success += success
-                total_errors += errors
-
-                console.print(f"[green]✓ Batch {batch_num + 1} complete[/green]")
-                console.print()
-
-            # Show final results
-            console.print("[bold]Final Results:[/bold]")
-            console.print(f"[bold green]✓ Successfully processed: {total_success} products[/bold green]")
-            if total_errors > 0:
-                console.print(f"[bold red]✗ Failed to process: {total_errors} products[/bold red]")
-            console.print()
-
-        finally:
-            await product_service_gen.aclose()
-            await vertex_ai_service_gen.aclose()
-
-    run_(_bulk_embed_products)()
-
-
-async def _process_single_products(products: list[dict[str, Any]], product_service: ProductService, vertex_ai_service: VertexAIService, console: Console) -> tuple[int, int]:
-    """Process products one by one and return success/error counts."""
-    success_count = 0
-    error_count = 0
-
-    with console.status("[bold yellow]Generating embeddings...", spinner="dots") as status:
-        for i, product in enumerate(products, 1):
-            try:
-                # Update status
-                status.update(f"[bold yellow]Processing product {i}/{len(products)}: {product.get('name')}...")
-
-                # Generate embedding for product
-                combined_text = f"{product.get('name')}: {product.get('description')}"
-                embedding = await vertex_ai_service.get_text_embedding(combined_text)
-
-                # Update product with embedding
-                await product_service.update_product_embedding(cast("int", product.get("id")), embedding)
-
-                success_count += 1
-                logger.debug(
-                    "Generated embedding and updated product",
-                    product_id=product.get("id"),
-                    product_name=product.get("name"),
-                    text_length=len(combined_text),
-                    embedding_dimensions=len(embedding),
-                    model="text-embedding-004",
-                )
-
-            except Exception as e:  # noqa: BLE001
-                error_count += 1
-                logger.warning(
-                    "Failed to process product embedding",
-                    product_id=product.get("id"),
-                    product_name=product.get("name"),
-                    error=str(e),
-                )
-
-    return success_count, error_count
-
-
-@coffee_demo_group.command(
-    name="embed-new",
-    help="Process new/updated products using online embedding API for real-time updates.",
-)
-@click.option("--limit", default=200, help="Maximum number of products to process in this batch (default: 200)")
-def embed_new(limit: int) -> None:
-    """Process new/updated products using online embedding API for real-time updates."""
-    console = get_console()
-    console.rule("[bold blue]Processing Product Embeddings", style="blue", align="left")
-    console.print()
-
-    async def _embed_new_products() -> None:
-        from app.server.deps import create_service_provider, provide_vertex_ai_service
-        from app.services.product import ProductService
-
-        # Create service providers
-        product_provider = create_service_provider(ProductService)
-        product_service_gen = product_provider()
-        vertex_ai_service_gen = provide_vertex_ai_service()
-
-        try:
-            product_service = await anext(product_service_gen)
-            vertex_ai_service = await anext(vertex_ai_service_gen)
-
-            # Get products without embeddings
-            with console.status("[bold yellow]Finding products without embeddings...", spinner="dots"):
-                products = await product_service.get_products_without_embeddings(limit)
-
-            if not products:
-                console.print("[green]✓ All products already have embeddings![/green]")
-                return
-
-            console.print(f"[cyan]Found {len(products)} products without embeddings[/cyan]")
-            console.print()
-
-            success_count, error_count = await _process_single_products(
-                products, product_service, vertex_ai_service, console
-            )
-
-            # Show results
-            console.print(f"[bold green]✓ Successfully processed {success_count} products[/bold green]")
-            if error_count > 0:
-                console.print(f"[bold red]✗ Failed to process {error_count} products[/bold red]")
-            console.print()
-
-        finally:
-            await product_service_gen.aclose()
-            await vertex_ai_service_gen.aclose()
-
-    run_(_embed_new_products)()
-
-
-@coffee_demo_group.command(name="model-info", help="Show information about currently configured AI models.")
-def model_info() -> None:
-    """Show information about currently configured AI models."""
-
-    def _show_model_info() -> None:
-        from app.lib.settings import get_settings
-        from app.services.vertex_ai import VertexAIService
-
-        console = get_console()
-        console.print("[bold cyan]🤖 AI Model Configuration[/bold cyan]")
-
-        # Show settings
-        settings = get_settings()
-        console.print(f"[bold]Chat Model:[/bold] {settings.vertex_ai.CHAT_MODEL}")
-        console.print(f"[bold]Embedding Model:[/bold] {settings.vertex_ai.EMBEDDING_MODEL}")
-        console.print(f"[bold]Google Project:[/bold] {settings.vertex_ai.PROJECT_ID}")
-        console.print(f"[bold]Location:[/bold] {settings.vertex_ai.LOCATION}")
-        console.print(f"[bold]Embedding Dimensions:[/bold] {settings.vertex_ai.EMBEDDING_DIMENSIONS}")
-
-        # Test model initialization
-        console.print("\n[bold cyan]🔍 Testing Model Initialization...[/bold cyan]")
-        try:
-            VertexAIService()
-            console.print("[bold green]✓ Successfully initialized![/bold green]")
-            console.print(f"[bold]Chat Model:[/bold] {settings.vertex_ai.CHAT_MODEL}")
-            console.print(f"[bold]Embedding Model:[/bold] {settings.vertex_ai.EMBEDDING_MODEL}")
-
-        except Exception as e:  # noqa: BLE001
-            console.print(f"[bold red]✗ Model initialization failed: {e}[/bold red]")
-
-    _show_model_info()
-
-
-@click.command(name="clear-cache", help="Clear cache tables in the database.")
-@click.option(
-    "--keep-response-cache",
-    is_flag=True,
-    help="Keep response cache",
-)
-@click.option(
-    "--keep-embedding-cache",
-    is_flag=True,
-    help="Keep embedding cache",
-)
-@click.option(
-    "--keep-search-metric",
-    is_flag=True,
-    help="Keep search metric",
-)
-@click.option(
-    "--keep-intent-exemplars",
-    is_flag=True,
-    help="Keep intent exemplars",
-)
-@click.option(
-    "--force",
-    "-f",
-    is_flag=True,
-    help="Skip confirmation prompt",
-)
-def clear_cache(
-    keep_response_cache: bool,
-    keep_embedding_cache: bool,
-    keep_search_metric: bool,
-    keep_intent_exemplars: bool,
-    force: bool,
-) -> None:
-    """Clear cache tables in the database.
-
-    By default, clears response_cache, embedding_cache, search_metric, and intent_exemplar.
-    """
-    console = get_console()
-
-    # Determine which tables to clear
-    tables_to_clear = []
-    if not keep_response_cache:
-        tables_to_clear.append("response_cache")
-    if not keep_embedding_cache:
-        tables_to_clear.append("embedding_cache")
-    if not keep_search_metric:
-        tables_to_clear.append("search_metric")
-    if not keep_intent_exemplars:
-        tables_to_clear.append("intent_exemplar")
-
-    if not tables_to_clear:
-        console.print("[yellow]No tables selected for clearing. Use --help to see options.[/yellow]")
-        return
-
-    # Show what will be cleared and confirm
-    if not force and not _confirm_clear(console, tables_to_clear):
-        return
-
-    async def _clear_cache() -> None:
-        """Clear cache tables."""
-        from app.server.deps import create_service_provider
-        from app.services.cache import CacheService
-
-        provider = create_service_provider(CacheService)
-        service_gen = provider()
-
-        try:
-            cache_service = await anext(service_gen)
-
-            for table_name in tables_to_clear:
-                console.print(f"[bold cyan]Clearing {table_name}...[/bold cyan]")
-
-                # Validate table name to prevent SQL injection
-                if table_name not in ["response_cache", "search_metric", "embedding_cache", "intent_exemplar"]:
-                    console.print(f"[red]✗ Invalid table name: {table_name}[/red]")
-                    continue
-
-                try:
-                    # Count records first
-                    count = await cache_service.driver.select_value(f"SELECT COUNT(*) as count FROM {table_name}")
-
-                    # Delete all records
-                    await cache_service.driver.execute(f"DELETE FROM {table_name}")
-
-                    console.print(f"[green]✓ Cleared {count} records from {table_name}[/green]")
-                except Exception as e:  # noqa: BLE001
-                    console.print(f"[red]✗ Failed to clear {table_name}: {e}[/red]")
-
-            console.print("\n[bold green]Cache clearing complete![/bold green]")
-
-        finally:
-            await service_gen.aclose()
-
-    run_(_clear_cache)()
-
-
-def _confirm_clear(console: Console, tables: list[str]) -> bool:
-    """Confirm cache clearing with user."""
-    console.print("[bold]Tables to clear:[/bold]")
-    for table in tables:
-        console.print(f"  • {table}")
-    confirm = Prompt.ask(
-        "\n[bold red]Are you sure you want to clear these tables?[/bold red]",
-        choices=["y", "n"],
-        default="n",
-    )
-    if confirm.lower() != "y":
-        console.print("[yellow]Operation cancelled.[/yellow]")
-        return False
-    return True
-
-
-@click.command(name="truncate-tables", help="Clear all tables in the database.")
-@click.option(
-    "--skip-cache",
-    is_flag=True,
-    help="Skip cache tables (response_cache, search_metric, embedding_cache)",
-)
-@click.option(
-    "--skip-session",
-    is_flag=True,
-    help="Skip session tables (chat_session, chat_conversation)",
-)
-@click.option(
-    "--skip-data",
-    is_flag=True,
-    help="Skip data tables (products)",
-)
-@click.option(
-    "--force",
-    "-f",
-    is_flag=True,
-    help="Skip confirmation prompt",
-)
-def truncate_tables(
-    skip_cache: bool,
-    skip_session: bool,
-    skip_data: bool,
-    force: bool,
-) -> None:
-    """Clear all tables in the database."""
-    console = get_console()
-
-    # Get tables to truncate
-    tables = _get_tables_to_truncate(skip_cache, skip_session, skip_data)
-    if not tables:
-        console.print("[yellow]No tables selected for truncation. Use --help to see options.[/yellow]")
-        return
-
-    # Show tables and confirm
-    _display_tables(console, tables)
-    if not force and not _confirm_truncate(console):
-        return
-
-    async def _truncate_tables() -> None:
-        """Truncate tables."""
-        from app.config import db
-
-        console.print("[bold cyan]Truncating tables...[/bold cyan]")
-
-        async with db.provide_session() as session:
-            for table_name in tables:
-                # Validate table name
-                valid_tables = [
-                    "response_cache",
-                    "search_metric",
-                    "embedding_cache",
-                    "chat_conversation",
-                    "chat_session",
-                    "products",
-                ]
-                if table_name not in valid_tables:
-                    console.print(f"[red]✗ Invalid table name: {table_name}[/red]")
-                    continue
-
-                try:
-                    console.print(f"[cyan]Clearing {table_name}...[/cyan]")
-                    # Use DELETE instead of TRUNCATE for safety
-                    await session.execute(f"DELETE FROM {table_name}")
-                    console.print(f"[green]✓ Cleared {table_name}[/green]")
-                except Exception as e:  # noqa: BLE001
-                    console.print(f"[red]✗ Failed to clear {table_name}: {e}[/red]")
-            await session.commit()
-            console.print("\n[bold green]Table clearing complete![/bold green]")
-
-    run_(_truncate_tables)()
-
-
-def _get_tables_to_truncate(skip_cache: bool, skip_session: bool, skip_data: bool) -> list[str]:
-    """Get list of tables to truncate based on flags."""
-    cache_tables = ["response_cache", "search_metric", "embedding_cache"]
-    session_tables = ["chat_conversation", "chat_session"]  # Order matters for FKs
-    data_tables = ["products"]  # Order matters for FKs
-
-    tables = []
-    if not skip_cache:
-        tables.extend(cache_tables)
-    if not skip_session:
-        tables.extend(session_tables)
-    if not skip_data:
-        tables.extend(data_tables)
-    return tables
-
-
-def _display_tables(console: Console, tables: list[str]) -> None:
-    """Display tables that will be truncated."""
-    console.print("[bold]Tables to truncate:[/bold]")
-    for table in tables:
-        console.print(f"  • {table}")
-
-
-def _confirm_truncate(console: Console) -> bool:
-    """Confirm truncation with user."""
-    console.print("\n[bold red]⚠️  WARNING: This will remove ALL data from the selected tables![/bold red]")
-    confirm = Prompt.ask(
-        "[bold red]Are you absolutely sure?[/bold red]",
-        choices=["y", "n"],
-        default="n",
-    )
-    if confirm.lower() != "y":
-        console.print("[yellow]Operation cancelled.[/yellow]")
-        return False
-    return True
-
-
-@click.command(name="dump-data", help="Export database tables to JSON files.")
-@click.option(
-    "--table",
-    "-t",
-    default="*",
-    help="Table name to export, or '*' for all tables",
-)
-@click.option(
-    "--path",
-    "-p",
-    default="app/db/fixtures",
-    help="Directory to export to",
-)
-@click.option(
-    "--no-compress",
-    is_flag=True,
-    help="Export uncompressed JSON (default is gzipped)",
-)
-def dump_data(table: str, path: str, no_compress: bool) -> None:
-    """Export database tables to JSON files."""
-    from pathlib import Path
-
-    from app.db.utils import export_fixtures
-
-    async def _dump_data() -> None:
-        console = get_console()
-        table_list = None if table == "*" else [table]
-        export_path = Path(path)
-
-        console.print(f"[bold cyan]📤 Exporting{'all tables' if table == '*' else f' table {table}'}...[/bold cyan]")
-        console.print(f"Export path: {export_path}")
-        console.print(f"Compression: {'disabled' if no_compress else 'enabled'}")
-
-        try:
-            results = await export_fixtures(table_list, export_path, compress=not no_compress)
-            console.print("[bold green]✓ Export completed![/bold green]")
-            for table_name, result in results.items():
-                console.print(f"  ✓ {table_name}: {result}")
-        except Exception as e:  # noqa: BLE001
-            console.print(f"[bold red]✗ Export failed: {e}[/bold red]")
-
-    run_(_dump_data)()
-
-
-@click.command(name="populate-intents", help="Populate intent exemplars with embeddings.")
-@click.option("--force", "-f", is_flag=True, help="Force repopulation of existing exemplars")
-@click.option("--intent", "-i", help="Populate only specific intent (optional)")
-def populate_intents(force: bool, intent: str | None) -> None:
-    """Populate intent exemplars with embeddings."""
-
-    async def _populate_intents() -> None:
-        from app.lib.intents import INTENT_EXEMPLARS
-        from app.server.deps import create_service_provider
-        from app.services.exemplar import ExemplarService
-
-        console = get_console()
-        console.rule("[bold blue]Populating Intent Exemplars", style="blue", align="left")
-        console.print()
-
-        # Filter intents if specified
-        exemplars_to_load = INTENT_EXEMPLARS
-        if intent:
-            if intent in INTENT_EXEMPLARS:
-                exemplars_to_load = {intent: INTENT_EXEMPLARS[intent]}
-                console.print(f"[dim]Loading exemplars for intent: {intent}[/dim]")
+    table = Table(show_header=True, header_style="bold blue")
+    table.add_column("Table", style="cyan", width=30)
+    table.add_column("Output File", style="dim", width=50)
+    table.add_column("Status", width=50)
+
+    total_success = 0
+    total_failed = 0
+
+    for table_name, result in results.items():
+        if isinstance(result, str):
+            # Check if it's an error message or a file path
+            if result.startswith("/") or result.endswith((".json", ".json.gz")):
+                # It's a file path - success
+                status = "[green]✓ Exported[/green]"
+                file_display = result
+                total_success += 1
             else:
-                console.print(f"[red]Error: Intent '{intent}' not found in configuration[/red]")
-                return
+                # It's an error message
+                status = f"[red]✗ Failed: {result}[/red]"
+                file_display = "[dim]N/A[/dim]"
+                total_failed += 1
         else:
-            console.print("[dim]Loading exemplars for all intents[/dim]")
-        console.print()
+            # Unknown format
+            status = f"[yellow]⚠ Unknown result: {result}[/yellow]"
+            file_display = "[dim]N/A[/dim]"
+            total_failed += 1
 
-        from app.server.deps import provide_vertex_ai_service
+        table.add_row(table_name, file_display, status)
 
-        provider = create_service_provider(ExemplarService)
-        service_gen = provider()
-        vertex_ai_gen = provide_vertex_ai_service()
-
-        try:
-            exemplar_service = await anext(service_gen)
-            vertex_ai_service = await anext(vertex_ai_gen)
-
-            with console.status("[bold yellow]Loading intent exemplars...", spinner="dots"):
-                count = await exemplar_service.load_exemplars_bulk(
-                    exemplars_to_load,
-                    vertex_ai_service,
-                    default_threshold=0.6,
-                )
-
-            console.print(f"[bold green]✓ Successfully populated {count} intent exemplars![/bold green]")
-
-            # Show stats
-            stats = await exemplar_service.get_intent_stats()
-            console.print(f"Total exemplars in database: {stats.total_exemplars}")
-            console.print(f"Number of intents: {stats.intents_count}")
-            console.print(f"Average usage per exemplar: {stats.average_usage:.1f}")
-
-        finally:
-            await service_gen.aclose()
-            await vertex_ai_gen.aclose()
-
-    run_(_populate_intents)()
+    console.print(table)
+    console.print()
+    _print_export_summary(total_success, total_failed)
 
 
-@coffee_demo_group.command(name="test-intent", help="Test intent classification for a query.")
-@click.argument("query", required=True)
-def test_intent(query: str) -> None:
-    """Test intent classification for a query."""
-
-    async def _test_intent() -> None:
-        from app.server.deps import create_service_provider
-        from app.services.exemplar import ExemplarService
-        from app.services.intent import IntentService
-
-        console = get_console()
-        console.rule("[bold blue]Testing Intent Classification", style="blue", align="left")
-        console.print()
-        console.print(f"Query: [cyan]{query}[/cyan]")
-        console.print()
-
-        from app.server.deps import provide_vertex_ai_service
-
-        provider = create_service_provider(ExemplarService)
-        service_gen = provider()
-        vertex_ai_gen = provide_vertex_ai_service()
-
-        try:
-            exemplar_service = await anext(service_gen)
-            vertex_ai_service = await anext(vertex_ai_gen)
-            intent_service = IntentService(
-                exemplar_service.driver,
-                exemplar_service,
-                vertex_ai_service,
-            )
-
-            with console.status("[bold yellow]Classifying intent...", spinner="dots"):
-                result = await intent_service.classify_intent(query)
-
-            # Display results using helper functions
-            _display_intent_result(console, result)
-
-        finally:
-            await service_gen.aclose()
-            await vertex_ai_gen.aclose()
-
-    run_(_test_intent)()
-
-
-@coffee_demo_group.command(name="intent-stats", help="Show intent classification statistics.")
-def intent_stats() -> None:
-    """Show intent classification statistics."""
-
-    async def _intent_stats() -> None:
-        from rich.table import Table
-
-        from app.server.deps import create_service_provider
-        from app.services.exemplar import ExemplarService
-
-        console = get_console()
-        console.rule("[bold blue]Intent Classification Statistics", style="blue", align="left")
-        console.print()
-
-        provider = create_service_provider(ExemplarService)
-        service_gen = provider()
-
-        try:
-            exemplar_service = await anext(service_gen)
-
-            stats = await exemplar_service.get_intent_stats()
-
-            # Overall stats
-            console.print("[bold]Overall Statistics:[/bold]")
-            console.print(f"  Total exemplars: [cyan]{stats.total_exemplars}[/cyan]")
-            console.print(f"  Number of intents: [cyan]{stats.intents_count}[/cyan]")
-            console.print(f"  Average usage: [cyan]{stats.average_usage:.1f}[/cyan]")
-            console.print()
-
-            # Top intents table
-            if stats.top_intents:
-                table = Table(show_header=True, header_style="bold blue")
-                table.add_column("Intent", style="cyan", width=25)
-                table.add_column("Exemplars", justify="right", width=12)
-                table.add_column("Total Usage", justify="right", width=12)
-                table.add_column("Avg Threshold", justify="right", width=15)
-
-                for intent_data in stats.top_intents:
-                    table.add_row(
-                        intent_data["intent"],
-                        str(intent_data["exemplar_count"]),
-                        str(intent_data["total_usage"]),
-                        f"{intent_data['avg_threshold']:.2%}",
-                    )
-
-                console.print("[bold]Intent Breakdown:[/bold]")
-                console.print(table)
-                console.print()
-
-        finally:
-            await service_gen.aclose()
-
-    run_(_intent_stats)()
-
-
-@click.command(name="clear-intents", help="Clear intent exemplar cache.")
-@click.option("--intent", "-i", help="Clear only specific intent (optional)")
-@click.option("--unused-only", is_flag=True, help="Clear only unused exemplars")
-def clear_intents(intent: str | None, unused_only: bool) -> None:
-    """Clear intent exemplar cache."""
-
-    async def _clear_intents() -> None:
-        from app.server.deps import create_service_provider
-        from app.services.exemplar import ExemplarService
-
-        console = get_console()
-
-        if unused_only:
-            console.rule("[bold yellow]Clearing Unused Intent Exemplars", style="yellow", align="left")
-        elif intent:
-            console.rule(f"[bold yellow]Clearing Intent: {intent}", style="yellow", align="left")
-        else:
-            console.rule("[bold red]Clearing All Intent Exemplars", style="red", align="left")
-
-        console.print()
-
-        # Confirm if clearing all
-        if not intent and not unused_only:
-            console.print("[bold red]⚠️  WARNING: This will remove ALL intent exemplars![/bold red]")
-            from rich.prompt import Prompt
-
-            confirm = Prompt.ask(
-                "[bold red]Are you absolutely sure?[/bold red]",
-                choices=["y", "n"],
-                default="n",
-            )
-            if confirm.lower() != "y":
-                console.print("[yellow]Operation cancelled.[/yellow]")
-                return
-
-        provider = create_service_provider(ExemplarService)
-        service_gen = provider()
-
-        try:
-            exemplar_service = await anext(service_gen)
-
-            with console.status("[bold yellow]Clearing intent exemplars...", spinner="dots"):
-                if unused_only:
-                    deleted_count = await exemplar_service.clean_unused_exemplars()
-                    console.print(f"[green]✓ Cleared {deleted_count} unused exemplars[/green]")
-                elif intent:
-                    # Get exemplars for the intent first
-                    exemplars = await exemplar_service.get_exemplars_by_intent(intent)
-                    for exemplar in exemplars:
-                        await exemplar_service.delete_exemplar(exemplar.id)
-                    console.print(f"[green]✓ Cleared {len(exemplars)} exemplars for intent '{intent}'[/green]")
-                else:
-                    # Clear all intent exemplars
-                    await exemplar_service.driver.execute("DELETE FROM intent_exemplar")
-                    console.print("[green]✓ Cleared all intent exemplars[/green]")
-
-        finally:
-            await service_gen.aclose()
-
-    run_(_clear_intents)()
-
-
-@click.command(
-    name="rebuild-vector-indexes",
-    help="Drop and recreate vector indexes for embeddings.",
-)
-@click.option(
-    "--force",
-    "-f",
-    is_flag=True,
-    help="Skip confirmation prompt",
-)
-def rebuild_vector_indexes(force: bool) -> None:
-    """Drop and recreate vector indexes for embeddings.
-
-    This rebuilds the IVFFlat indexes for product embeddings and intent exemplar embeddings.
-    Useful after loading new fixtures or when vector search performance degrades.
-    """
+def _print_export_summary(total_success: int, total_failed: int) -> None:
+    """Print fixture export summary."""
     console = get_console()
-
-    # Confirm operation unless forced
-    if not force:
-        console.print("[bold red]⚠️  WARNING: This will temporarily drop vector indexes![/bold red]")
-        console.print("Vector searches may be slow during index rebuild.")
-        from rich.prompt import Prompt
-
-        confirm = Prompt.ask(
-            "\n[bold red]Continue with rebuild?[/bold red]",
-            choices=["y", "n"],
-            default="n",
-        )
-        if confirm.lower() != "y":
-            console.print("[yellow]Operation cancelled.[/yellow]")
-            return
-
-    async def _rebuild_vector_indexes() -> None:
-        """Rebuild vector indexes."""
-        from app.config import db
-
-        console.rule("[bold blue]Rebuilding Vector Indexes", style="blue", align="left")
-        console.print()
-
-        vector_indexes = [
-            {
-                "name": "product_embedding_ivfflat_idx",
-                "table": "product",
-                "column": "embedding",
-                "create_sql": "CREATE INDEX product_embedding_ivfflat_idx ON product USING ivfflat (embedding vector_cosine_ops)",
-            },
-            {
-                "name": "intent_exemplar_embedding_ivfflat_idx",
-                "table": "intent_exemplar",
-                "column": "embedding",
-                "create_sql": "CREATE INDEX intent_exemplar_embedding_ivfflat_idx ON intent_exemplar USING ivfflat (embedding vector_cosine_ops)",
-            },
-        ]
-
-        async with db.provide_session() as session:
-            for index_info in vector_indexes:
-                index_name = index_info["name"]
-                _table_name = index_info["table"]
-                create_sql = index_info["create_sql"]
-
-                try:
-                    # Drop existing index if it exists
-                    console.print(f"[yellow]Dropping index {index_name}...[/yellow]")
-                    await session.execute(f"DROP INDEX IF EXISTS {index_name}")
-
-                    # Recreate the index
-                    console.print(f"[cyan]Creating index {index_name}...[/cyan]")
-                    await session.execute(create_sql)
-
-                    console.print(f"[green]✓ Successfully rebuilt {index_name}[/green]")
-
-                except Exception as e:  # noqa: BLE001
-                    console.print(f"[red]✗ Failed to rebuild {index_name}: {e}[/red]")
-
-            await session.commit()
-
-        console.print()
-        console.print("[bold green]Vector index rebuild complete![/bold green]")
-
-    run_(_rebuild_vector_indexes)()
+    console.print("[bold]Summary:[/bold]")
+    console.print(f"  • [green]Successfully exported: {total_success} tables[/green]")
+    if total_failed > 0:
+        console.print(f"  • [red]Failed: {total_failed} tables[/red]")
+    console.print()

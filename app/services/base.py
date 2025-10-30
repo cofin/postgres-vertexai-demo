@@ -1,7 +1,22 @@
+# Copyright 2024 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Base service module following SQLSpec patterns."""
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from sqlspec.core.filters import (
@@ -24,10 +39,10 @@ from sqlspec.core.filters import (
     apply_filter,
 )
 from sqlspec.driver import AsyncDriverAdapterBase
-from sqlspec.typing import ModelDTOT, StatementParameters
+from sqlspec.typing import SchemaT, StatementParameters
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import AsyncIterator, Sequence
 
     from sqlspec import QueryBuilder, Statement, StatementConfig
 
@@ -68,10 +83,10 @@ class SQLSpecService:
         statement: Statement | QueryBuilder,
         /,
         *parameters: StatementParameters | StatementFilter,
-        schema_type: type[ModelDTOT],
+        schema_type: type[SchemaT],
         statement_config: StatementConfig | None = None,
         **kwargs: Any,
-    ) -> OffsetPagination[ModelDTOT]:
+    ) -> OffsetPagination[SchemaT]:
         """Paginate the data."""
         results, total = await self.driver.select_with_total(
             statement,
@@ -83,18 +98,18 @@ class SQLSpecService:
         limit_offset = self.find_filter(LimitOffsetFilter, parameters)
         offset = limit_offset.offset if limit_offset else 0
         limit = limit_offset.limit if limit_offset else 10
-        return OffsetPagination[ModelDTOT](items=results, limit=limit, offset=offset, total=total)
+        return OffsetPagination[SchemaT](items=results, limit=limit, offset=offset, total=total)
 
     async def get_or_404(
         self,
         statement: Statement | QueryBuilder,
         /,
         *parameters: StatementParameters,
-        schema_type: type[ModelDTOT],
+        schema_type: type[SchemaT],
         error_message: str | None = None,
         statement_config: StatementConfig | None = None,
         **kwargs: Any,
-    ) -> ModelDTOT:
+    ) -> SchemaT:
         """Get a single record or raise 404 error if not found.
 
         Args:
@@ -180,4 +195,14 @@ class SQLSpecService:
         """Rollback the current database transaction."""
         await self.driver.rollback()
 
-
+    @asynccontextmanager
+    async def begin_transaction(self) -> AsyncIterator[None]:
+        """Context manager for database transactions."""
+        await self.begin()
+        try:
+            yield
+        except Exception:
+            await self.rollback()
+            raise
+        else:
+            await self.commit()

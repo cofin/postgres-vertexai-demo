@@ -8,6 +8,7 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Software Development",
@@ -16,9 +17,9 @@ classifiers = [
 dependencies = [
     "litestar[jinja,jwt,cryptography,structlog]",
     "litestar-granian[uvloop]",
-    "litestar-mcp",
-    "sqlspec[asyncpg,performance,mypyc]",
     "google-adk",
+    "litestar-mcp",
+    "sqlspec[adk,asyncpg,performance,mypyc]",
     "pgvector",
     "python-dotenv",
     "google-cloud-aiplatform",
@@ -26,6 +27,7 @@ dependencies = [
     "msgspec",
     "rich-click",
     "numpy>=2.3.3",
+    "dishka",
 ]
 description = "Cymbal Coffee AI Agent Application using PostgreSQL and Vertex AI."
 keywords = ["litestar", "vertexai", "postgresql", "google", "agent", "coffee"]
@@ -33,7 +35,7 @@ license = { text = "MIT" }
 maintainers = [{ name = "Cody Fincher", email = "cody.fincher@gmail.com" }]
 name = "app"
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11,<3.14"
 version = "0.3.0"
 
 [project.scripts]

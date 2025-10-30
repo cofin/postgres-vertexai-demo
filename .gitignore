@@ -155,7 +155,12 @@ install-pdm.py
 .memory.db
 
 demo.py
+.claude/
 CLAUDE.md
 CLAUDE.*.md
 .tmp
 todo
+GEMINI.md
+AGENTS.md
+specs/
+!tools/lib

@@ -1,121 +1,134 @@
-"""Application configuration management."""
-
-from __future__ import annotations
+# Copyright 2024 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import logging
-from pathlib import Path
+import warnings
 from typing import cast
 
 import structlog
-from litestar.config.compression import CompressionConfig
 from litestar.config.cors import CORSConfig
 from litestar.config.csrf import CSRFConfig
-from litestar.exceptions import (
-    NotAuthorizedException,
-    PermissionDeniedException,
-)
+from litestar.contrib.jinja import JinjaTemplateEngine
+from litestar.exceptions import NotFoundException
 from litestar.logging.config import (
     LoggingConfig,
     StructLoggingConfig,
     default_logger_factory,
+    default_structlog_processors,
+    default_structlog_standard_lib_processors,
 )
 from litestar.middleware.logging import LoggingMiddlewareConfig
+from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.plugins.problem_details import ProblemDetailsConfig
 from litestar.plugins.structlog import StructlogConfig
-from litestar_mcp import MCPConfig
-from sqlspec.adapters.asyncpg import AsyncpgConfig
-from sqlspec.extensions.litestar import DatabaseConfig, SQLSpec
+from litestar.stores.registry import StoreRegistry
+from litestar.template import TemplateConfig
+from sqlspec.adapters.asyncpg.litestar import AsyncpgStore
+from sqlspec.base import SQLSpec
 
 from app.lib import log as log_conf
-from app.lib.settings import get_settings
-from app.services.locator import ServiceLocator
+from app.lib.settings import BASE_DIR, get_settings
 
-settings = get_settings()
+_settings = get_settings()
+settings = _settings  # Alias for compatibility
 
-mcp = MCPConfig(base_path="/mcp")
-compression = CompressionConfig(backend="gzip")
 csrf = CSRFConfig(
-    secret=settings.app.SECRET_KEY,
-    cookie_secure=settings.app.CSRF_COOKIE_SECURE,
-    cookie_name=settings.app.CSRF_COOKIE_NAME,
-    header_name=settings.app.CSRF_HEADER_NAME,
+    secret=_settings.app.SECRET_KEY,
+    cookie_secure=_settings.app.CSRF_COOKIE_SECURE,
+    cookie_name=_settings.app.CSRF_COOKIE_NAME,
+    header_name=_settings.app.CSRF_HEADER_NAME,
 )
-cors = CORSConfig(allow_origins=cast("list[str]", settings.app.ALLOWED_CORS_ORIGINS))
+cors = CORSConfig(allow_origins=cast("list[str]", _settings.app.ALLOWED_CORS_ORIGINS))
 problem_details = ProblemDetailsConfig(enable_for_all_http_exceptions=True)
-db = AsyncpgConfig(
-    pool_config={
-        "dsn": settings.db.URL,
-        "min_size": settings.db.POOL_MIN_SIZE,
-        "max_size": settings.db.POOL_MAX_SIZE,
-        "timeout": settings.db.POOL_TIMEOUT,
-        "command_timeout": settings.db.POOL_RECYCLE,
-    },
-    migration_config={
-        "version_table_name": "migrations",
-        "script_location": settings.db.MIGRATION_PATH,
-        "project_root": Path(__file__).parent.parent,
-    },
-)
 
-# SQLSpec database manager
-sqlspec = SQLSpec(config=DatabaseConfig(commit_mode="autocommit", config=db))
+templates = TemplateConfig(directory=BASE_DIR / "server" / "templates", engine=JinjaTemplateEngine)
 
-# Load SQL files
-sqlspec.load_sql_files(Path(__file__).parent / "db" / "sql")
+db_manager = SQLSpec()
+db = _settings.db.create_config()
+db_manager.add_config(db)
 
-# Global service locator
-service_locator = ServiceLocator()
+stores = StoreRegistry(stores={"sessions": AsyncpgStore(config=db)})  # type: ignore[dict-item]
+session_config = ServerSideSessionConfig(store="sessions")
 
 
 log = StructlogConfig(
     enable_middleware_logging=False,
     structlog_logging_config=StructLoggingConfig(
+        disable_stack_trace={NotFoundException, 404},
         log_exceptions="always",
-        processors=log_conf.structlog_processors(as_json=not log_conf.is_tty()),  # type: ignore[has-type,unused-ignore]
-        logger_factory=default_logger_factory(as_json=not log_conf.is_tty()),  # type: ignore[has-type,unused-ignore]
-        disable_stack_trace={404, 401, 403, NotAuthorizedException, PermissionDeniedException},
+        processors=default_structlog_processors(as_json=False),
+        logger_factory=default_logger_factory(as_json=False),
         standard_lib_logging_config=LoggingConfig(
-            log_exceptions="always",
-            disable_stack_trace={404, 401, 403, NotAuthorizedException, PermissionDeniedException},
-            root={"level": logging.getLevelName(settings.log.LEVEL), "handlers": ["queue_listener"]},
+            root={"level": _settings.log.LEVEL, "handlers": ["queue_listener"]},
             formatters={
                 "standard": {
                     "()": structlog.stdlib.ProcessorFormatter,
-                    "processors": log_conf.stdlib_logger_processors(as_json=not log_conf.is_tty()),  # type: ignore[has-type,unused-ignore]
+                    "processors": default_structlog_standard_lib_processors(as_json=False),
                 },
             },
             loggers={
                 "sqlspec": {
                     "propagate": False,
-                    "level": settings.log.SQLSPEC_LEVEL,
+                    "level": "INFO",
                     "handlers": ["queue_listener"],
                 },
                 "sqlglot": {
                     "propagate": False,
-                    "level": settings.log.SQLGLOT_LEVEL,
+                    "level": "ERROR",
                     "handlers": ["queue_listener"],
                 },
                 "_granian": {
                     "propagate": False,
-                    "level": settings.log.ASGI_ERROR_LEVEL,
+                    "level": _settings.log.GRANIAN_ERROR_LEVEL,
                     "handlers": ["queue_listener"],
                 },
                 "granian.server": {
                     "propagate": False,
-                    "level": settings.log.ASGI_ERROR_LEVEL,
+                    "level": _settings.log.GRANIAN_ERROR_LEVEL,
                     "handlers": ["queue_listener"],
                 },
                 "granian.access": {
                     "propagate": False,
-                    "level": settings.log.ASGI_ACCESS_LEVEL,
+                    "level": _settings.log.GRANIAN_ACCESS_LEVEL,
+                    "handlers": ["queue_listener"],
+                },
+                "google.adk": {
+                    "propagate": False,
+                    "level": _settings.log.LEVEL,
+                    "handlers": ["queue_listener"],
+                },
+                "google.genai": {
+                    "propagate": False,
+                    "level": _settings.log.LEVEL,
+                    "handlers": ["queue_listener"],
+                },
+                "google_genai": {
+                    "propagate": False,
+                    "level": _settings.log.LEVEL,
+                    "handlers": ["queue_listener"],
+                },
+                "google_genai.types": {
+                    "propagate": False,
+                    "level": _settings.log.LEVEL,
                     "handlers": ["queue_listener"],
                 },
             },
         ),
     ),
     middleware_logging_config=LoggingMiddlewareConfig(
-        request_log_fields=settings.log.REQUEST_FIELDS,
-        response_log_fields=settings.log.RESPONSE_FIELDS,
+        request_log_fields=["method", "path", "path_params", "query"],
+        response_log_fields=["status_code"],
     ),
 )
 
@@ -136,4 +149,30 @@ def setup_logging() -> None:
         logger_factory=log.structlog_logging_config.logger_factory,
         processors=log.structlog_logging_config.processors,
         wrapper_class=structlog.make_filtering_bound_logger(settings.log.LEVEL),
+    )
+
+    # Capture Python warnings into logging so we can filter them
+    logging.captureWarnings(True)
+
+    # Add filter to suppress specific ADK/GenAI warnings
+    adk_warning_filter = log_conf.SuppressADKWarningsFilter()
+
+    # Apply to py.warnings logger (where Python warnings get captured)
+    py_warnings_logger = logging.getLogger("py.warnings")
+    py_warnings_logger.addFilter(adk_warning_filter)
+
+    # Apply to specific Google loggers
+    for logger_name in ["google.adk", "google.genai", "google_genai", "google_genai.types"]:
+        logger = logging.getLogger(logger_name)
+        logger.addFilter(adk_warning_filter)
+
+    # Also apply to root logger and queue_listener handlers to catch in listener thread
+    logging.root.addFilter(adk_warning_filter)
+
+    # Suppress at Python warnings level too (belt and suspenders)
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*non-text parts in the response.*function_call.*",
+        category=Warning,
+        module=r"google_(?:genai|generativeai)(?:\..*)?$",
     )

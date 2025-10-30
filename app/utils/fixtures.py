@@ -77,6 +77,7 @@ class FixtureProcessor:
                 cleaned = value.replace("\n", " ")
                 # Normalize multiple spaces to single space
                 import re
+
                 cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
                 try:
@@ -94,7 +95,9 @@ class FixtureProcessor:
                 except (ValueError, TypeError):
                     # If parsing fails, skip this field and continue
                     continue
-            elif key in ("created_at", "updated_at", "last_activity", "expires_at", "last_accessed") and isinstance(value, str):
+            elif key in ("created_at", "updated_at", "last_activity", "expires_at", "last_accessed") and isinstance(
+                value, str
+            ):
                 # Convert ISO timestamp strings to datetime objects
                 prepared[key] = datetime.fromisoformat(value)
             else:
@@ -185,61 +188,72 @@ class FixtureLoader:
         return results
 
     async def _load_table_fixtures(self, table_name: str, fixture_file: Path) -> dict[str, Any]:
-        """Load fixtures for a specific table using upsert.
+        """Load fixtures for a table using an idempotent upsert strategy.
+
+        For PostgreSQL, this uses `INSERT ... ON CONFLICT ... DO UPDATE`.
 
         Args:
             table_name: Name of the table
             fixture_file: Path to fixture file
 
         Returns:
-            Loading result statistics
+            Loading result statistics with keys: upserted, failed, total
+
+        Raises:
+            Exception: Any database error during fixture loading.
         """
         fixture_data = self.processor.load_fixture_data(fixture_file)
 
         if not fixture_data:
             return {"upserted": 0, "failed": 0, "total": 0}
 
-        upserted = 0
-        failed = 0
         total = len(fixture_data)
-        first_error = None
+        # `prepare_record` removes None values, so records can have different keys.
+        processed_records = [dict(self.processor.prepare_record(record)) for record in fixture_data]
 
-        for record in fixture_data:
-            try:
-                processed_record = dict(self.processor.prepare_record(record))
+        if not processed_records:
+            return {"upserted": 0, "failed": 0, "total": 0}
 
-                # Use upsert (INSERT ... ON CONFLICT DO UPDATE) with SQLSpec
-                # This will insert new records or update existing ones based on id
-                insert_query = (
-                    sql.insert(table_name)
-                    .values(**processed_record)
-                    .on_conflict("id")
-                    .do_update(**processed_record)
-                )
-                await self.driver.execute(insert_query)
-                upserted += 1
+        # Collect all columns from all records to handle schemas where some records have nulls
+        # (and thus missing keys after prepare_record)
+        all_columns_set: set[str] = set()
+        for record in processed_records:
+            all_columns_set.update(record.keys())
 
-            except Exception as e:  # noqa: BLE001
-                failed += 1
-                if first_error is None:
-                    # Include more debug info in error message
-                    first_error = str(e)
+        all_columns = sorted(all_columns_set)
 
-        return {"upserted": upserted, "failed": failed, "total": total, "error": first_error}
+        if "id" not in all_columns:
+            msg = "Fixture records must have an 'id' column for upserting."
+            raise ValueError(msg)
 
-    async def _record_exists(self, table_name: str, record_id: str | int) -> bool:
-        """Check if a record already exists in the table.
+        update_columns = [col for col in all_columns if col != "id"]
 
-        Args:
-            table_name: Name of the table
-            record_id: ID of the record to check
+        insert_cols_str = ", ".join(f'"{c}"' for c in all_columns)
+        # asyncpg uses $1, $2, etc for placeholders
+        insert_vals_str = ", ".join(f"${i + 1}" for i in range(len(all_columns)))
+        # for the update set, we need to reference the values from the proposed insertion
+        update_set_str = ", ".join(f'"{col}" = EXCLUDED."{col}"' for col in update_columns)
 
-        Returns:
-            True if record exists
+        # The sqlspec.sql query builder does not appear to support the PostgreSQL-specific
+        # `ON CONFLICT DO UPDATE` clause needed for an idempotent bulk upsert.
+        # Therefore, we construct the raw SQL string here and use it with `executemany`
+        # for efficient bulk loading.
+        # The conflict target is 'id'.
+        # table_name is not from user input, so it should be safe.
+        upsert_sql = f"""
+            INSERT INTO {table_name} ({insert_cols_str})
+            VALUES ({insert_vals_str})
+            ON CONFLICT (id) DO UPDATE SET {update_set_str}
         """
-        check_query = sql.select("1").from_(table_name).where(sql.column("id") == record_id).limit(1)
-        result = await self.driver.select(check_query)
-        return len(result) > 0
+
+        # Convert list of dicts to list of tuples for executemany, ensuring all tuples have the same length
+        data_to_insert = [tuple(record.get(col) for col in all_columns) for record in processed_records]
+
+        async with self.driver.connection.transaction():
+            await self.driver.execute_many(upsert_sql, data_to_insert)
+
+        # executemany doesn't return row count, so we assume all were successful if no exception was raised.
+        return {"upserted": total, "failed": 0, "total": total}
 
     def _generate_missing_fixtures_results(self) -> dict[str, dict[str, Any] | str]:
         """Generate error results for missing fixture files.
@@ -266,7 +280,10 @@ class FixtureExporter:
         self.table_order = table_order or []
 
     async def export_all_fixtures(
-        self, tables: list[str] | None = None, output_dir: Path | None = None, compress: bool = True,
+        self,
+        tables: list[str] | None = None,
+        output_dir: Path | None = None,
+        compress: bool = True,
     ) -> dict[str, str]:
         """Export database tables to fixture files.
 
@@ -339,7 +356,7 @@ class FixtureExporter:
 
         output_file = output_dir / filename
 
-        json_bytes = to_json(json_data)
+        json_bytes = to_json(json_data, as_bytes=True)
 
         if compress:
             with gzip.open(output_file, "wb") as f:

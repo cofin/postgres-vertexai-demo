@@ -1,11 +1,11 @@
-"""Coffee shop specific fixture management utilities."""
+"""Database utilities using generic fixture infrastructure."""
 
 from __future__ import annotations
 
-import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from app.config import db, db_manager
 from app.lib.settings import get_settings
 from app.utils.fixtures import FixtureExporter, FixtureLoader
 
@@ -13,81 +13,77 @@ if TYPE_CHECKING:
     from sqlspec.driver import AsyncDriverAdapterBase
 
 
-# Table loading order - tables with no dependencies first, then ordered by dependencies
+# Coffee shop table loading order (respects foreign key dependencies)
 COFFEE_SHOP_TABLES = [
-    # Core tables without dependencies
     "store",
     "product",
-    # Session tables (chat_session must come before chat_conversation due to FK)
-    "chat_session",
-    "chat_conversation",
-    # Caching tables
-    "embedding_cache",
-    "response_cache",
-    # Metrics and analytics tables
     "intent_exemplar",
-    "search_metric",
 ]
 
 
-async def load_fixtures(tables: list[str] | None = None) -> dict[str, dict[str, str] | str]:
-    """Convenience function to load coffee shop fixtures.
+async def load_fixtures(tables: list[str] | None = None) -> dict[str, dict | str]:
+    """Load fixture data into database using generic loader.
 
     Args:
         tables: Optional list of specific tables to load
 
     Returns:
-        Loading results
+        Dictionary mapping table names to loading results
     """
-    from app.server.deps import create_service_provider
-    from app.services.base import SQLSpecService
+    async with db_manager.provide_session(db) as driver:
+        settings = get_settings()
+        fixtures_dir = Path(settings.db.FIXTURE_PATH)
 
-    # Create a temporary service provider to get a driver
-    provider = create_service_provider(SQLSpecService)
+        loader = FixtureLoader(
+            fixtures_dir=fixtures_dir,
+            driver=driver,
+            table_order=COFFEE_SHOP_TABLES,
+        )
 
-    # Use the provider properly to avoid async generator issues
-    service_gen = provider()
-    try:
-        service = await anext(service_gen)
-        fixtures_dir = Path(get_settings().db.FIXTURE_PATH)
-        loader = FixtureLoader(fixtures_dir=fixtures_dir, driver=service.driver, table_order=COFFEE_SHOP_TABLES)
-        results = await loader.load_all_fixtures(tables)
+        results = await loader.load_all_fixtures(specific_tables=tables)
 
-        # Reset sequences for tables with serial primary keys to avoid duplicate key issues
-        # This ensures sequences are synced with the max ID after loading fixtures with explicit IDs
-        await _reset_sequences(service.driver)
+        # Reset sequences for database tables to avoid duplicate key issues
+        await _reset_sequences(driver)
 
         return results
-    finally:
-        await service_gen.aclose()
 
 
 async def _reset_sequences(driver: AsyncDriverAdapterBase) -> None:
     """Reset PostgreSQL sequences to match the current maximum IDs in tables.
 
+    Queries the data dictionary to find all sequences owned by table columns,
+    then resets each sequence to match the current max value in its table.
     This prevents duplicate key violations when inserting new records after
     loading fixtures with explicit IDs.
     """
-    # Tables with serial primary keys that need sequence reset
-    tables_with_sequences = [
-        "product",
-        "store",
-        "chat_session",
-        "chat_conversation",
-        "response_cache",
-        "embedding_cache",
-        "intent_exemplar",
-        "search_metric",
-    ]
+    import contextlib
 
-    for table in tables_with_sequences:
-        # Reset sequence to max(id) + 1 for each table
-        # Use parameterized query to avoid SQL injection
+    # Query PostgreSQL data dictionary to find all sequences and their owner tables/columns
+    sequences = await driver.select(
+        """
+        SELECT
+            s.relname AS sequence_name,
+            t.relname AS table_name,
+            a.attname AS column_name
+        FROM pg_class s
+        JOIN pg_depend d ON d.objid = s.oid
+        JOIN pg_class t ON d.refobjid = t.oid
+        JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid
+        WHERE s.relkind = 'S'
+        AND t.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+        """
+    )
+
+    # Reset each sequence to the max value of its column
+    for seq in sequences:
+        table_name = seq["table_name"]
+        column_name = seq["column_name"]
+        sequence_name = seq["sequence_name"]
+
         with contextlib.suppress(Exception):
-            # Note: table and sequence names cannot be parameterized, but they are from a controlled list
-            # SQL injection is not possible here - table names are from controlled list
+            # Use COALESCE to handle empty tables (returns 1 if table is empty)
             await driver.execute(
-                f"SELECT setval('{table}_id_seq', (SELECT COALESCE(MAX(id), 1) FROM {table}));",
+                f"SELECT setval('{sequence_name}', (SELECT COALESCE(MAX({column_name}), 1) FROM {table_name}));"
             )
 
 
@@ -96,7 +92,7 @@ async def export_fixtures(
     output_dir: Path | None = None,
     compress: bool = True,
 ) -> dict[str, str]:
-    """Convenience function to export coffee shop fixtures.
+    """Export database tables to fixture files.
 
     Args:
         tables: Optional list of specific tables to export
@@ -104,20 +100,25 @@ async def export_fixtures(
         compress: Whether to gzip compress output
 
     Returns:
-        Export results
+        Dictionary mapping table names to output paths or error messages
     """
-    from app.server.deps import create_service_provider
-    from app.services.base import SQLSpecService
 
-    # Create a temporary service provider to get a driver
-    provider = create_service_provider(SQLSpecService)
+    # Use SQLSpec session directly
+    async with db_manager.provide_session(db) as driver:
+        settings = get_settings()
+        fixtures_dir = Path(settings.db.FIXTURE_PATH)
 
-    # Use the provider properly to avoid async generator issues
-    service_gen = provider()
-    try:
-        service = await anext(service_gen)
-        fixtures_dir = Path(get_settings().db.FIXTURE_PATH)
-        exporter = FixtureExporter(fixtures_dir=fixtures_dir, driver=service.driver, table_order=COFFEE_SHOP_TABLES)
-        return await exporter.export_all_fixtures(tables, output_dir, compress)
-    finally:
-        await service_gen.aclose()
+        if output_dir is None:
+            output_dir = fixtures_dir
+
+        exporter = FixtureExporter(
+            fixtures_dir=fixtures_dir,
+            driver=driver,
+            table_order=COFFEE_SHOP_TABLES,
+        )
+
+        return await exporter.export_all_fixtures(
+            tables=tables,
+            output_dir=output_dir,
+            compress=compress,
+        )
