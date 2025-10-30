@@ -233,14 +233,14 @@ class IntentService(SQLSpecService):
         return await self.driver.select(
             """
             SELECT
-                intent AS "intent",
-                phrase AS "phrase",
-                1 - VECTOR_DISTANCE(embedding, :query_embedding, COSINE) AS "similarity",
-                confidence_threshold AS "confidence_threshold"
+                intent,
+                phrase,
+                1 - (embedding <=> :query_embedding) AS "similarity",
+                confidence_threshold
             FROM intent_exemplar
-            WHERE 1 - VECTOR_DISTANCE(embedding, :query_embedding, COSINE) > :min_threshold
+            WHERE 1 - (embedding <=> :query_embedding) > :min_threshold
             ORDER BY "similarity" DESC
-            FETCH FIRST :limit ROWS ONLY
+            LIMIT :limit
             """,
             query_embedding=query_embedding,
             min_threshold=min_threshold,

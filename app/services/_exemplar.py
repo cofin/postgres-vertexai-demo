@@ -38,14 +38,14 @@ class ExemplarService(SQLSpecService):
 
         result: dict[str, list[tuple[str, list[float]]]] = {}
         for row in results:
-            # Oracle returns column names in uppercase by default
+            # Database returns column names
             intent: str = cast("str", row.get("intent"))
             phrase = cast("str", row.get("phrase"))
             embedding_vector = row.get("embedding")
             if embedding_vector is None:
                 embedding_vector = row.get("EMBEDDING")
             if embedding_vector is not None:
-                # SQLSpec handles Oracle VECTOR to Python list conversion automatically
+                # SQLSpec handles database vector to Python list conversion automatically
                 embedding = list(embedding_vector) if not isinstance(embedding_vector, list) else embedding_vector
                 if intent not in result:
                     result[intent] = []
@@ -91,18 +91,12 @@ class ExemplarService(SQLSpecService):
 
         SQLSpec automatically handles vector conversions - no need for array.array().
         """
-        # Use MERGE for upsert
         await self.driver.execute(
             """
-            MERGE INTO intent_exemplar ie
-            USING (SELECT :intent AS intent, :phrase AS phrase FROM dual) src
-            ON (ie.intent = src.intent AND ie.phrase = src.phrase)
-            WHEN MATCHED THEN
-                UPDATE SET
-                    embedding = :embedding
-            WHEN NOT MATCHED THEN
-                INSERT (intent, phrase, embedding)
-                VALUES (:intent, :phrase, :embedding)
+            INSERT INTO intent_exemplar (intent, phrase, embedding)
+            VALUES (:intent, :phrase, :embedding)
+            ON CONFLICT (intent, phrase) DO UPDATE SET
+                embedding = EXCLUDED.embedding
             """,
             intent=intent,
             phrase=phrase,
@@ -129,7 +123,7 @@ class ExemplarService(SQLSpecService):
                     phrase=phrase,
                 )
 
-                # Oracle returns column names in uppercase by default
+                # Database returns column names
                 embedding_value = result.get("embedding") if result else None
                 if embedding_value is None and result:
                     embedding_value = result.get("EMBEDDING")
@@ -164,28 +158,12 @@ class ExemplarService(SQLSpecService):
         count = 0
 
         for phrase in phrases:
-            # Check if already cached
-            result = await self.driver.select_one_or_none(
-                """
-                SELECT embedding AS "embedding" FROM intent_exemplar
-                WHERE intent = :intent AND phrase = :phrase
-                """,
-                intent=intent,
-                phrase=phrase,
-            )
+            embedding = await vertex_ai_service.get_text_embedding(phrase)
+            await self.cache_exemplar(intent, phrase, embedding)
+            count += 1
 
-            embedding_value = result.get("embedding") if result else None
-            if embedding_value is None and result:
-                embedding_value = result.get("EMBEDDING")
-
-            if embedding_value is None:
-                # Generate embedding
-                embedding = await vertex_ai_service.get_text_embedding(phrase)
-                await self.cache_exemplar(intent, phrase, embedding)
-                count += 1
-
-                if count % 10 == 0:
-                    logger.info("Added %d phrases for intent '%s'...", count, intent)
+            if count % 10 == 0:
+                logger.info("Added %d phrases for intent '%s'...", count, intent)
 
         logger.info("Added %d new phrases for intent '%s'", count, intent)
         return count

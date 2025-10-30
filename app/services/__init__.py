@@ -6,7 +6,7 @@ from app.services._intent import INTENT_EXEMPLARS, IntentService
 from app.services._metrics import MetricsService
 from app.services._product import ProductService
 from app.services._store import StoreService
-from app.services._vertex_ai import OracleVectorSearchService, VertexAIService
+from app.services._vertex_ai import VectorSearchService, VertexAIService
 
 __all__ = [
     "INTENT_EXEMPLARS",
@@ -14,8 +14,8 @@ __all__ = [
     "ExemplarService",
     "IntentService",
     "MetricsService",
-    "OracleVectorSearchService",
     "ProductService",
     "StoreService",
+    "VectorSearchService",
     "VertexAIService",
 ]

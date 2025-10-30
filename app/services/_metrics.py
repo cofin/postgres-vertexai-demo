@@ -36,14 +36,14 @@ class MetricsService(SQLSpecService):
 
     async def record_search(self, metrics_data: SearchMetricsCreate) -> dict[str, Any]:
         """Record search performance metrics."""
-        await self.driver.execute(
+        result = await self.driver.select_one_or_none(
             """
             INSERT INTO search_metric (
                 query_id,
                 user_id,
                 search_time_ms,
                 embedding_time_ms,
-                oracle_time_ms,
+                db_query_time_ms,
                 ai_time_ms,
                 intent_time_ms,
                 similarity_score,
@@ -54,18 +54,31 @@ class MetricsService(SQLSpecService):
                 :user_id,
                 :search_time_ms,
                 :embedding_time_ms,
-                :oracle_time_ms,
+                :db_query_time_ms,
                 :ai_time_ms,
                 :intent_time_ms,
                 :similarity_score,
                 :result_count
             )
+            RETURNING
+                id,
+                query_id,
+                user_id,
+                search_time_ms,
+                embedding_time_ms,
+                db_query_time_ms,
+                ai_time_ms,
+                intent_time_ms,
+                similarity_score,
+                result_count,
+                created_at,
+                updated_at
             """,
             query_id=metrics_data.query_id,
             user_id=metrics_data.user_id,
             search_time_ms=metrics_data.search_time_ms,
             embedding_time_ms=metrics_data.embedding_time_ms,
-            oracle_time_ms=metrics_data.oracle_time_ms,
+            db_query_time_ms=metrics_data.db_query_time_ms,
             ai_time_ms=metrics_data.ai_time_ms,
             intent_time_ms=metrics_data.intent_time_ms,
             similarity_score=metrics_data.similarity_score,
@@ -74,47 +87,11 @@ class MetricsService(SQLSpecService):
 
         await self.driver.commit()
 
-        result = await self.driver.select_one_or_none(
-            """
-            SELECT
-                id AS "id",
-                query_id AS "query_id",
-                user_id AS "user_id",
-                search_time_ms AS "search_time_ms",
-                embedding_time_ms AS "embedding_time_ms",
-                oracle_time_ms AS "oracle_time_ms",
-                ai_time_ms AS "ai_time_ms",
-                intent_time_ms AS "intent_time_ms",
-                similarity_score AS "similarity_score",
-                result_count AS "result_count",
-                created_at AS "created_at",
-                updated_at AS "updated_at"
-            FROM search_metric
-            WHERE query_id = :query_id
-            ORDER BY created_at DESC
-            FETCH FIRST 1 ROWS ONLY
-            """,
-            query_id=metrics_data.query_id,
-        )
-
         if not result:
             msg = "Failed to create search metrics"
             raise RuntimeError(msg)
 
-        return {
-            "id": result["id"],
-            "query_id": result["query_id"],
-            "user_id": result["user_id"],
-            "search_time_ms": result["search_time_ms"],
-            "embedding_time_ms": result["embedding_time_ms"],
-            "oracle_time_ms": result["oracle_time_ms"],
-            "ai_time_ms": result["ai_time_ms"],
-            "intent_time_ms": result["intent_time_ms"],
-            "similarity_score": result["similarity_score"],
-            "result_count": result["result_count"],
-            "created_at": result["created_at"],
-            "updated_at": result["updated_at"],
-        }
+        return dict(result)
 
     async def get_performance_stats(self, hours: int = 24) -> dict:
         """Get performance statistics."""
@@ -126,7 +103,7 @@ class MetricsService(SQLSpecService):
                 COUNT(id) AS "total_searches",
                 AVG(search_time_ms) AS "avg_search_time",
                 AVG(embedding_time_ms) AS "avg_embedding_time",
-                AVG(oracle_time_ms) AS "avg_oracle_time",
+                AVG(db_query_time_ms) AS "avg_db_query_time",
                 AVG(similarity_score) AS "avg_similarity",
                 MAX(search_time_ms) AS "max_search_time",
                 MIN(search_time_ms) AS "min_search_time"
@@ -141,7 +118,7 @@ class MetricsService(SQLSpecService):
                 "total_searches": result["total_searches"] or 0,
                 "avg_search_time_ms": round(result["avg_search_time"] or 0, 2),
                 "avg_embedding_time_ms": round(result["avg_embedding_time"] or 0, 2),
-                "avg_oracle_time_ms": round(result["avg_oracle_time"] or 0, 2),
+                "avg_db_query_time_ms": round(result["avg_db_query_time"] or 0, 2),
                 "avg_similarity_score": round(result["avg_similarity"] or 0, 3),
                 "max_search_time_ms": result["max_search_time"] or 0,
                 "min_search_time_ms": result["min_search_time"] or 0,
@@ -152,7 +129,7 @@ class MetricsService(SQLSpecService):
             "total_searches": 0,
             "avg_search_time_ms": 0.0,
             "avg_embedding_time_ms": 0.0,
-            "avg_oracle_time_ms": 0.0,
+            "avg_db_query_time_ms": 0.0,
             "avg_similarity_score": 0.0,
             "max_search_time_ms": 0,
             "min_search_time_ms": 0,
@@ -167,7 +144,7 @@ class MetricsService(SQLSpecService):
             SELECT
                 TO_CHAR(created_at, 'HH24:MI') AS "time_bucket",
                 AVG(search_time_ms) AS "avg_total",
-                AVG(oracle_time_ms) AS "avg_oracle",
+                AVG(db_query_time_ms) AS "avg_db_query",
                 AVG(embedding_time_ms) AS "avg_embedding",
                 COUNT(*) AS "request_count"
             FROM search_metric
@@ -180,31 +157,31 @@ class MetricsService(SQLSpecService):
 
         labels = []
         total_latency = []
-        oracle_latency = []
+        db_latency = []
         vertex_latency = []
 
         for row in results:
             labels.append(row["time_bucket"])
             total_latency.append(round(row["avg_total"] or 0, 2))
-            oracle_latency.append(round(row["avg_oracle"] or 0, 2))
+            db_latency.append(round(row["avg_db_query"] or 0, 2))
             vertex_latency.append(round(row["avg_embedding"] or 0, 2))
 
         return {
             "labels": labels,
             "total_latency": total_latency,
-            "oracle_latency": oracle_latency,
+            "db_latency": db_latency,
             "vertex_latency": vertex_latency,
         }
 
     async def get_scatter_data(self, hours: int = 1) -> list[dict]:
         """Get similarity score vs response time for scatter plot."""
-        # Oracle doesn't support bind variables with INTERVAL, so we calculate the timestamp
+        # Calculate the timestamp for the query
         since_time = datetime.now(UTC) - timedelta(hours=hours)
         results = await self.driver.select(
             """
             SELECT
                 similarity_score AS "similarity_score",
-                oracle_time_ms AS "oracle_time_ms",
+                db_query_time_ms AS "db_query_time_ms",
                 search_time_ms AS "search_time_ms"
             FROM search_metric
             WHERE created_at > :since_time
@@ -218,7 +195,7 @@ class MetricsService(SQLSpecService):
         return [
             {
                 "x": round(row["similarity_score"] or 0, 3),
-                "y": round(row["oracle_time_ms"] or 0, 2),
+                "y": round(row["db_query_time_ms"] or 0, 2),
                 "total": round(row["search_time_ms"] or 0, 2),
             }
             for row in results
@@ -233,10 +210,10 @@ class MetricsService(SQLSpecService):
         # Get the averages
         avg_total = stats["avg_search_time_ms"]
         avg_embedding = stats["avg_embedding_time_ms"]
-        avg_oracle = stats["avg_oracle_time_ms"]
+        avg_db_query = stats["avg_db_query_time_ms"]
 
         # Estimate AI generation time as 70% of remaining time (based on typical LLM response times)
-        remaining_time = max(0, avg_total - avg_embedding - avg_oracle)
+        remaining_time = max(0, avg_total - avg_embedding - avg_db_query)
         ai_generation_estimate = remaining_time * 0.7
         app_logic_estimate = remaining_time * 0.3
 
@@ -244,7 +221,7 @@ class MetricsService(SQLSpecService):
             "labels": ["Embedding Generation", "Vector Search", "AI Processing", "Other"],
             "data": [
                 round(avg_embedding, 1),
-                round(avg_oracle, 1),
+                round(avg_db_query, 1),
                 round(ai_generation_estimate, 1),
                 round(app_logic_estimate, 1),
             ],
@@ -260,7 +237,7 @@ class MetricsService(SQLSpecService):
                 user_id AS "user_id",
                 search_time_ms AS "search_time_ms",
                 embedding_time_ms AS "embedding_time_ms",
-                oracle_time_ms AS "oracle_time_ms",
+                db_query_time_ms AS "db_query_time_ms",
                 ai_time_ms AS "ai_time_ms",
                 intent_time_ms AS "intent_time_ms",
                 similarity_score AS "similarity_score",
@@ -283,7 +260,7 @@ class MetricsService(SQLSpecService):
             "user_id": result["user_id"],
             "search_time_ms": result["search_time_ms"],
             "embedding_time_ms": result["embedding_time_ms"],
-            "oracle_time_ms": result["oracle_time_ms"],
+            "db_query_time_ms": result["db_query_time_ms"],
             "ai_time_ms": result["ai_time_ms"],
             "intent_time_ms": result["intent_time_ms"],
             "similarity_score": result["similarity_score"],

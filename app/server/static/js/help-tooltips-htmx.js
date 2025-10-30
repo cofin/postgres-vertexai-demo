@@ -181,7 +181,7 @@ message = message[:500].strip()</code></pre>
       title: "🎯 Intent Detection",
       body: `
                 <div class="help-tooltip-section">
-                    <div class="help-tooltip-section-title">Oracle Vector Search Query</div>
+                    <div class="help-tooltip-section-title">Database Vector Search Query</div>
                     <pre><code>SELECT intent_type,
        VECTOR_DISTANCE(embedding,
          :query_embedding, COSINE) AS similarity
@@ -210,7 +210,7 @@ FETCH FIRST 1 ROW ONLY</code></pre>
                     <div class="help-tooltip-section-title">What This Means</div>
                     <p id="intent-explanation" style="margin: 8px 0; color: rgba(255,255,255,0.8); font-size: 13px;">
                         Your query was classified as a product search, which triggers vector similarity
-                        search against our coffee product database using Oracle 23AI.
+                        search against our coffee product database using PostgreSQL/AlloyDB pgvector.
                     </p>
                 </div>
             `,
@@ -219,7 +219,7 @@ FETCH FIRST 1 ROW ONLY</code></pre>
       title: "🔍 Product Vector Search",
       body: `
                 <div class="help-tooltip-section">
-                    <div class="help-tooltip-section-title">Oracle SQL Query</div>
+                    <div class="help-tooltip-section-title">Database SQL Query</div>
                     <pre><code>SELECT p.product_name,
        p.product_description,
        VECTOR_DISTANCE(p.product_embedding,
@@ -238,7 +238,7 @@ FETCH FIRST 4 ROWS ONLY</code></pre>
                         <span class="help-tooltip-metric-value" id="vector-embedding-time">N/A</span>
                     </div>
                     <div class="help-tooltip-metric">
-                        <span class="help-tooltip-metric-label">Oracle Search Time</span>
+                        <span class="help-tooltip-metric-label">Database Query Time</span>
                         <span class="help-tooltip-metric-value" id="vector-search-time">N/A</span>
                     </div>
                     <div class="help-tooltip-metric">
@@ -295,7 +295,7 @@ FETCH FIRST 4 ROWS ONLY</code></pre>
                 <div class="help-tooltip-section">
                     <div class="help-tooltip-section-title">What This Means</div>
                     <p style="margin: 8px 0; color: rgba(255,255,255,0.8); font-size: 13px;">
-                        This response was retrieved from Oracle's response cache, avoiding the need to
+                        This response was retrieved from the database response cache, avoiding the need to
                         generate a new response from Vertex AI. This saves time and reduces costs.
                     </p>
                 </div>
@@ -322,7 +322,7 @@ FETCH FIRST 4 ROWS ONLY</code></pre>
                 <div class="help-tooltip-section">
                     <div class="help-tooltip-section-title">What This Means</div>
                     <p style="margin: 8px 0; color: rgba(255,255,255,0.8); font-size: 13px;">
-                        The vector embedding for this query was found in Oracle's native VECTOR cache,
+                        The vector embedding for this query was found in the database embedding cache,
                         avoiding the need to generate new embeddings via Vertex AI.
                     </p>
                 </div>
@@ -523,10 +523,10 @@ async function updatePerformanceTooltipContent(tooltip, triggerElement) {
         }
         // If embedding_time is 0 and no vector search, don't show embedding row at all
 
-        // Vector Search (product search in Oracle)
+        // Vector Search (product search in database)
         if (times.vector_search != null && times.vector_search > 0) {
           realMetrics.push({
-            label: "Oracle Vector Search",
+            label: "Database Vector Search",
             value: times.vector_search,
             color: "#10b981", // green
           });
@@ -633,7 +633,7 @@ function updateIntentTooltipContent(tooltip, triggerElement) {
     if (intent === "PRODUCT_RAG" || intent === "PRODUCT_SEARCH") {
       typeDescEl.textContent = "Product Search";
       explanationEl.textContent =
-        "Your query was classified as a product search, which triggers vector similarity search against our coffee product database using Oracle 23AI.";
+        "Your query was classified as a product search, which triggers vector similarity search against our coffee product database using PostgreSQL/AlloyDB pgvector.";
     } else {
       typeDescEl.textContent = "General Conversation";
       explanationEl.textContent =

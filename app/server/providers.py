@@ -15,7 +15,7 @@ from collections.abc import AsyncIterable
 from contextvars import ContextVar
 
 from dishka import AsyncContainer, Provider, Scope, provide
-from sqlspec.adapters.oracledb import OracleAsyncConfig
+from sqlspec.adapters.asyncpg import AsyncpgConfig
 from sqlspec.base import SQLSpec
 from sqlspec.driver import AsyncDriverAdapterBase
 
@@ -27,8 +27,8 @@ from app.services import (
     CacheService,
     ExemplarService,
     MetricsService,
-    OracleVectorSearchService,
     ProductService,
+    VectorSearchService,
     VertexAIService,
 )
 from app.services._adk import ADKRunner, AgentToolsService
@@ -94,7 +94,7 @@ class SQLSpecProvider(Provider):
         return db_manager
 
     @provide(scope=Scope.APP)
-    def get_database_config(self) -> OracleAsyncConfig:
+    def get_database_config(self) -> AsyncpgConfig:
         """Provide database configuration singleton.
 
         Returns the database configuration from app.config.
@@ -107,7 +107,7 @@ class SQLSpecProvider(Provider):
     async def get_db_session(
         self,
         manager: SQLSpec,
-        config: OracleAsyncConfig,
+        config: AsyncpgConfig,
     ) -> AsyncIterable[AsyncDriverAdapterBase]:
         """Provide SQLSpec async database session.
 
@@ -146,7 +146,7 @@ class CoreServiceProvider(Provider):
 
     Services with special scopes:
     - VertexAIService - APP scope singleton (no DB needed)
-    - OracleVectorSearchService - REQUEST scope with explicit provider
+    - VectorSearchService - REQUEST scope with explicit provider
     """
 
     scope = Scope.REQUEST  # Default scope for all provides
@@ -182,9 +182,9 @@ class CoreServiceProvider(Provider):
     def get_vertex_ai_service(self, cache_service: CacheService) -> VertexAIService:
         """Provide VertexAI service with cache support.
 
-        Changed from APP to REQUEST scope to enable Oracle-based embedding cache.
+        Changed from APP to REQUEST scope to enable database-based embedding cache.
         Each request gets a VertexAI instance with access to CacheService for
-        embedding caching in the Oracle database.
+        embedding caching in the database.
         """
         return VertexAIService(cache_service=cache_service)
 
@@ -239,8 +239,8 @@ class CoreServiceProvider(Provider):
         product_service: ProductService,
         vertex_ai_service: VertexAIService,
         cache_service: CacheService,
-    ) -> OracleVectorSearchService:
-        """Provide OracleVectorSearchService with mixed-scope dependencies.
+    ) -> VectorSearchService:
+        """Provide VectorSearchService with mixed-scope dependencies.
 
         This service depends on:
         - product_service: REQUEST scope
@@ -249,7 +249,7 @@ class CoreServiceProvider(Provider):
 
         Dishka handles the mixed scopes correctly.
         """
-        return OracleVectorSearchService(
+        return VectorSearchService(
             products_service=product_service,
             vertex_ai_service=vertex_ai_service,
             embedding_cache=cache_service,

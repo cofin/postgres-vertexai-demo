@@ -194,7 +194,7 @@ FETCH FIRST :limit ROWS ONLY"""
                 user_id=session_id,
                 search_time_ms=float(total_response_time_ms),
                 embedding_time_ms=float(embedding_time_ms),
-                oracle_time_ms=float(vector_search_time_ms),
+                db_query_time_ms=float(vector_search_time_ms),
                 similarity_score=avg_similarity,
                 result_count=len(vector_results),
             )

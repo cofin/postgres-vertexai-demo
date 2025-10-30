@@ -288,11 +288,11 @@ class VertexAIService:
         return self.settings.vertex_ai.EMBEDDING_DIMENSIONS
 
 
-class OracleVectorSearchService:
-    """Oracle vector search service using SQLSpec driver patterns.
+class VectorSearchService:
+    """PostgreSQL/AlloyDB vector search service using SQLSpec driver patterns.
 
-    This service provides vector similarity search functionality for Oracle Database 23ai
-    using the VECTOR_DISTANCE function with proper embedding caching.
+    This service provides vector similarity search functionality for PostgreSQL/AlloyDB with pgvector
+    using cosine distance for proper embedding caching and similarity search.
     """
 
     def __init__(
@@ -301,7 +301,7 @@ class OracleVectorSearchService:
         vertex_ai_service: VertexAIService,
         embedding_cache: CacheService | None = None,
     ) -> None:
-        """Initialize Oracle vector search service.
+        """Initialize PostgreSQL/AlloyDB vector search service.
 
         Args:
             products_service: Product service for database operations
@@ -313,7 +313,7 @@ class OracleVectorSearchService:
         self.embedding_cache = embedding_cache
 
     async def similarity_search(self, query: str, k: int = 4) -> tuple[list[dict[str, Any]], bool, dict[str, float]]:
-        """Perform Oracle vector similarity search.
+        """Perform PostgreSQL/AlloyDB vector similarity search.
 
         Args:
             query: Search query text
@@ -352,8 +352,8 @@ class OracleVectorSearchService:
 
             embedding_time = (time.time() - embedding_start) * 1000
 
-            # Perform Oracle vector search
-            oracle_start = time.time()
+            # Perform database vector search
+            db_query_start = time.time()
 
             # Execute search using SQLSpec driver - automatic vector conversion
             products = await self.products_service.driver.select(
@@ -372,7 +372,7 @@ class OracleVectorSearchService:
                 limit=k,
             )
 
-            oracle_time = (time.time() - oracle_start) * 1000
+            db_query_time = (time.time() - db_query_start) * 1000
 
             # Format results - driver returns dicts, add metadata field
             formatted_products = [
@@ -390,13 +390,13 @@ class OracleVectorSearchService:
             total_time = (time.time() - start_time) * 1000
             timing_data = {
                 "embedding_ms": embedding_time,
-                "oracle_ms": oracle_time,
+                "db_ms": db_query_time,
                 "total_ms": total_time,
             }
 
         except (KeyError, AttributeError) as e:
             # Return empty results on error, but log it
             logger.exception("Vector search error", error=str(e))
-            return [], False, {"embedding_ms": 0.0, "oracle_ms": 0.0, "total_ms": 0.0}
+            return [], False, {"embedding_ms": 0.0, "db_ms": 0.0, "total_ms": 0.0}
         else:
             return formatted_products, embedding_cache_hit, timing_data

@@ -34,7 +34,7 @@ from litestar.plugins.problem_details import ProblemDetailsConfig
 from litestar.plugins.structlog import StructlogConfig
 from litestar.stores.registry import StoreRegistry
 from litestar.template import TemplateConfig
-from sqlspec.adapters.oracledb.litestar import OracleAsyncStore
+from sqlspec.adapters.asyncpg.litestar import AsyncpgStore
 from sqlspec.base import SQLSpec
 
 from app.lib import log as log_conf
@@ -57,9 +57,8 @@ templates = TemplateConfig(directory=BASE_DIR / "server" / "templates", engine=J
 db_manager = SQLSpec()
 db = _settings.db.create_config()
 db_manager.add_config(db)
-db_manager.load_sql_files(BASE_DIR / "db" / "sql")
 
-stores = StoreRegistry(stores={"sessions": OracleAsyncStore(config=db)})  # type: ignore[dict-item]
+stores = StoreRegistry(stores={"sessions": AsyncpgStore(config=db)})  # type: ignore[dict-item]
 session_config = ServerSideSessionConfig(store="sessions")
 
 

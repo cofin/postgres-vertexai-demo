@@ -30,12 +30,12 @@ from litestar.plugins.htmx import (
     HXStopPolling,
 )
 from litestar.response import File, Stream
-from sqlspec.adapters.oracledb import OracleAsyncDriver
+from sqlspec.adapters.asyncpg import AsyncpgDriver
 
-from app import schemas
+from app import schemas as s
 from app.lib.di import Inject, inject, query_id_var
 from app.server.exception_handlers import HTMXValidationException
-from app.services import CacheService, MetricsService, OracleVectorSearchService, VertexAIService
+from app.services import CacheService, MetricsService, VectorSearchService, VertexAIService
 from app.services._adk import ADKRunner
 from app.utils.serialization import to_json
 
@@ -45,7 +45,7 @@ logger = structlog.get_logger()
 class CoffeeChatController(Controller):
     """Coffee Chat Controller with ADK-based agent system."""
 
-    signature_namespace = {"OracleAsyncDriver": OracleAsyncDriver}
+    signature_namespace = {"AsyncpgDriver": AsyncpgDriver}
 
     @staticmethod
     def generate_csp_nonce() -> str:
@@ -95,9 +95,7 @@ class CoffeeChatController(Controller):
     @inject
     async def handle_coffee_chat(
         self,
-        data: Annotated[
-            schemas.CoffeeChatMessage, Body(title="Discover Coffee", media_type=RequestEncodingType.URL_ENCODED)
-        ],
+        data: Annotated[s.CoffeeChatMessage, Body(title="Discover Coffee", media_type=RequestEncodingType.URL_ENCODED)],
         cache_service: Inject[CacheService],
         request: HTMXRequest,
     ) -> HTMXTemplate:
@@ -256,7 +254,7 @@ class CoffeeChatController(Controller):
 
     @get(path="/chat/stream/{query_id:str}", name="chat.stream")
     @inject
-    async def stream_response(  # noqa: C901, PLR0915
+    async def stream_response(
         self,
         query_id: str,
         adk_runner: Inject[ADKRunner],
@@ -334,17 +332,17 @@ class CoffeeChatController(Controller):
                     # 5. Record metrics
                     products_found = search_details.get("products", []) if search_details else []
                     await metrics_service.record_search(
-                        schemas.SearchMetricsCreate(
+                        s.SearchMetricsCreate(
                             query_id=query_id,
                             user_id=session_id,
                             search_time_ms=total_time_ms,
                             embedding_time_ms=search_details.get("embedding_ms", 0) if search_details else 0,
-                            oracle_time_ms=search_details.get("search_ms", 0) if search_details else 0,
+                            db_query_time_ms=search_details.get("search_ms", 0) if search_details else 0,
                             ai_time_ms=total_time_ms,
                             intent_time_ms=intent_details.get("timing_ms", 0) if intent_details else 0,
                             similarity_score=0.0,
                             result_count=len(products_found),
-                        ),
+                        )
                     )
 
                     # 6. Cache final response
@@ -420,11 +418,11 @@ class CoffeeChatController(Controller):
             return {
                 "total_searches": int(metrics.get("total_searches", 0)),
                 "avg_search_time_ms": float(metrics.get("avg_search_time_ms", 0)),
-                "avg_oracle_time_ms": float(metrics.get("avg_oracle_time_ms", 0)),
+                "avg_db_query_time_ms": float(metrics.get("avg_db_query_time_ms", 0)),
                 "avg_similarity_score": float(metrics.get("avg_similarity_score", 0)),
             }
         except (ValueError, TypeError):
-            return {"total_searches": 0, "avg_search_time_ms": 0, "avg_oracle_time_ms": 0, "avg_similarity_score": 0}
+            return {"total_searches": 0, "avg_search_time_ms": 0, "avg_db_query_time_ms": 0, "avg_similarity_score": 0}
 
     @get(path="/api/metrics/summary", name="metrics.summary")
     @inject
@@ -467,9 +465,9 @@ class CoffeeChatController(Controller):
                 "trend": "down" if perf_stats["avg_search_time_ms"] < 50 else "up",  # noqa: PLR2004
                 "trend_value": None,
             },
-            "avg_oracle_time": {
-                "label": "Oracle Vector Time",
-                "value": f"{perf_stats['avg_oracle_time_ms']:.0f}ms",
+            "avg_db_query_time": {
+                "label": "Database Query Time",
+                "value": f"{perf_stats['avg_db_query_time_ms']:.0f}ms",
                 "trend": "neutral",
                 "trend_value": None,
             },
@@ -505,17 +503,17 @@ class CoffeeChatController(Controller):
     async def get_chart_data(
         self,
         metrics_service: Inject[MetricsService],
-    ) -> schemas.ChartDataResponse:
+    ) -> s.ChartDataResponse:
         """Get chart data for dashboard visualizations."""
         time_series = await metrics_service.get_time_series_data(minutes=60)
         scatter_data = await metrics_service.get_scatter_data(hours=1)
         breakdown = await metrics_service.get_performance_breakdown()
 
-        return schemas.ChartDataResponse(
-            time_series=schemas.TimeSeriesData(
+        return s.ChartDataResponse(
+            time_series=s.TimeSeriesData(
                 labels=time_series["labels"],
                 total_latency=time_series["total_latency"],
-                oracle_latency=time_series["oracle_latency"],
+                db_latency=time_series["db_latency"],
                 vertex_latency=time_series["vertex_latency"],
             ),
             scatter_data=scatter_data,
@@ -526,9 +524,9 @@ class CoffeeChatController(Controller):
     @inject
     async def vector_search_demo(
         self,
-        data: Annotated[schemas.VectorDemoRequest, Body(media_type=RequestEncodingType.URL_ENCODED)],
+        data: Annotated[s.VectorDemoRequest, Body(media_type=RequestEncodingType.URL_ENCODED)],
         vertex_ai_service: Inject[VertexAIService],
-        vector_search_service: Inject[OracleVectorSearchService],
+        vector_search_service: Inject[VectorSearchService],
         metrics_service: Inject[MetricsService],
         request: HTMXRequest,
     ) -> HTMXTemplate:
@@ -548,12 +546,12 @@ class CoffeeChatController(Controller):
         # 2. Time the metrics recording
         metrics_record_start = time.time()
         await metrics_service.record_search(
-            schemas.SearchMetricsCreate(
+            s.SearchMetricsCreate(
                 query_id=str(uuid.uuid4()),
                 user_id="demo_user",
-                search_time_ms=(time.time() - full_request_start) * 1000,  # Current total
+                search_time_ms=(time.time() - full_request_start) * 1000,
                 embedding_time_ms=vector_timings["embedding_ms"],
-                oracle_time_ms=vector_timings["oracle_ms"],
+                db_query_time_ms=vector_timings["db_ms"],
                 similarity_score=1 - results[0]["distance"] if results else 0,
                 result_count=len(results),
             )
@@ -614,7 +612,7 @@ class CoffeeChatController(Controller):
                 "results": demo_results,
                 "search_time": f"{pre_template_total:.0f}ms",
                 "embedding_time": f"{vector_timings['embedding_ms']:.1f}ms",
-                "oracle_time": f"{vector_timings['oracle_ms']:.1f}ms",
+                "db_query_time": f"{vector_timings['db_ms']:.1f}ms",
                 "cache_hit": embedding_cache_hit,
                 # Add detailed timing breakdown for debugging
                 "debug_timings": {k: f"{v:.1f}ms" for k, v in detailed_timings.items()},
@@ -659,12 +657,12 @@ class CoffeeChatController(Controller):
                 "execution_time": query_metrics.get("intent_detection_time", 2.3),
                 "vector_search_query": query_metrics.get("vector_search_query", ""),
                 "matched_products": query_metrics.get("matched_products", []),
-                "vector_search_time": query_metrics.get("oracle_time_ms", 8.7),
+                "vector_search_time": query_metrics.get("db_query_time_ms", 8.7),
                 "cache_queries": query_metrics.get("cache_queries", []),
                 "execution_times": {
                     "intent_classification": query_metrics.get("intent_time_ms"),
                     "embedding_generation": query_metrics.get("embedding_time_ms"),
-                    "vector_search": query_metrics.get("oracle_time_ms"),
+                    "vector_search": query_metrics.get("db_query_time_ms"),
                     "ai_generation": query_metrics.get("ai_time_ms"),
                     "total": query_metrics.get("search_time_ms"),
                 },

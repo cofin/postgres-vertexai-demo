@@ -47,8 +47,8 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         from litestar.params import Body
         from litestar.plugins.htmx import HTMXRequest
         from litestar.static_files import create_static_files_router
-        from sqlspec import AsyncDriverAdapterBase
-        from sqlspec.adapters.oracledb import OracleAsyncDriver
+        from sqlspec import AsyncDriverAdapterBase, SQLSpec
+        from sqlspec.adapters.asyncpg import AsyncpgDriver
 
         from app import config, schemas, services
         from app.lib import log
@@ -60,12 +60,11 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
             CacheService,
             ExemplarService,
             MetricsService,
-            OracleVectorSearchService,
             ProductService,
+            VectorSearchService,
             VertexAIService,
         )
         from app.services._adk.runner import ADKRunner
-        from app.utils.serialization import general_dec_hook, numpy_array_enc_hook, numpy_array_predicate
 
         settings = get_settings()
         # logging
@@ -90,11 +89,6 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         # Set HTMXRequest as the default request class
         app_config.request_class = HTMXRequest
         app_config.template_config = config.templates
-        # type encoders for numpy arrays (vector embeddings)
-        import numpy as np
-
-        app_config.type_encoders = {np.ndarray: numpy_array_enc_hook}
-        app_config.type_decoders = [(numpy_array_predicate, general_dec_hook)]
         # openapi
         app_config.openapi_config = OpenAPIConfig(
             title=settings.app.NAME,
@@ -123,8 +117,8 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         # signatures
         app_config.signature_namespace.update(
             {
-                # SQLSpec Oracle driver
-                "OracleAsyncDriver": OracleAsyncDriver,
+                # SQLSpec PostgreSQL driver
+                "AsyncpgDriver": AsyncpgDriver,
                 "RequestEncodingType": RequestEncodingType,
                 "Body": Body,
                 "State": State,
@@ -138,10 +132,11 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
                 "MetricsService": MetricsService,
                 "ExemplarService": ExemplarService,
                 "VertexAIService": VertexAIService,
-                "OracleVectorSearchService": OracleVectorSearchService,
+                "VectorSearchService": VectorSearchService,
                 "ADKRunner": ADKRunner,
                 "Request": Request,
                 "HTMXRequest": HTMXRequest,
+                "SQLSpec": SQLSpec,
                 "AsyncDriverAdapterBase": AsyncDriverAdapterBase,
             },
         )

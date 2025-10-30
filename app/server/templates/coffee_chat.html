@@ -481,7 +481,7 @@
         <div class="cymbal-header">
             <div class="logo-section">
                 <img src="{{ url_for('static', file_path='cymbal-orig.jpg') }}" alt="Coffee Connoisseur">
-                <p>Powered by Oracle 23AI + Google Vertex AI</p>
+                <p>Powered by PostgreSQL/AlloyDB + Google Vertex AI</p>
             </div>
             <div class="title-section">
                 <h1>Connoisseur</h1>
@@ -695,8 +695,8 @@
                             <div class="metric-label">Avg Response Time</div>
                         </div>
                         <div class="metric-item">
-                            <div class="metric-value">${Math.round(data.avg_oracle_time_ms || 0)}ms</div>
-                            <div class="metric-label">Oracle Vector Time</div>
+                            <div class="metric-value">${Math.round(data.avg_db_query_time_ms || 0)}ms</div>
+                            <div class="metric-label">Database Query Time</div>
                         </div>
                         <div class="metric-item">
                             <div class="metric-value">${(data.avg_similarity_score || 0).toFixed(2)}</div>

@@ -74,7 +74,7 @@ async def initialize_intent_exemplar_cache(app: Litestar) -> None:
     """Initialize the intent exemplar cache on startup to avoid delays on first request."""
     logger.info("Starting intent exemplar cache initialization...")
 
-    # Get Oracle connection from the async pool
+    # Get database connection from the async pool
     async with config.db_manager.provide_session(config.db) as driver:
         # Create service instances
         vertex_ai_service = VertexAIService()
@@ -131,12 +131,12 @@ async def initialize_intent_exemplar_cache(app: Litestar) -> None:
 
 
 async def warm_up_connection_pool(app: Litestar) -> None:
-    """Warm up the Oracle connection pool to avoid cold start delays."""
-    logger.info("Warming up Oracle connection pool...")
+    """Warm up the database connection pool to avoid cold start delays."""
+    logger.info("Warming up database connection pool...")
 
     # Run a simple query to establish pool connections
     async with config.db_manager.provide_session(config.db) as driver:
-        await driver.execute("SELECT 1 FROM DUAL")
+        await driver.execute("SELECT 1")
 
     logger.info("Connection pool warmed up")
 

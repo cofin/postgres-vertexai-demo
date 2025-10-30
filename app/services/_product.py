@@ -14,17 +14,17 @@ class ProductService(SQLSpecService):
         results: list[Product] = await self.driver.select(
             """
             SELECT
-                id AS "id",
-                name AS "name",
-                price AS "price",
-                DBMS_LOB.SUBSTR(description, 4000, 1) AS "description",
-                category AS "category",
-                sku AS "sku",
-                NVL(in_stock, TRUE) AS "in_stock",
-                metadata AS "metadata",
-                embedding AS "embedding",
-                created_at AS "created_at",
-                updated_at AS "updated_at"
+                id,
+                name,
+                price,
+                description,
+                category,
+                sku,
+                COALESCE(in_stock, TRUE) AS in_stock,
+                metadata,
+                embedding,
+                created_at,
+                updated_at
             FROM product
             ORDER BY name
             """,
@@ -37,17 +37,17 @@ class ProductService(SQLSpecService):
         result: Product | None = await self.driver.select_one_or_none(
             """
             SELECT
-                id AS "id",
-                name AS "name",
-                price AS "price",
-                DBMS_LOB.SUBSTR(description, 4000, 1) AS "description",
-                category AS "category",
-                sku AS "sku",
-                NVL(in_stock, TRUE) AS "in_stock",
-                metadata AS "metadata",
-                embedding AS "embedding",
-                created_at AS "created_at",
-                updated_at AS "updated_at"
+                id,
+                name,
+                price,
+                description,
+                category,
+                sku,
+                COALESCE(in_stock, TRUE) AS in_stock,
+                metadata,
+                embedding,
+                created_at,
+                updated_at
             FROM product
             WHERE id = :id
             """,
@@ -61,17 +61,17 @@ class ProductService(SQLSpecService):
         result: Product | None = await self.driver.select_one_or_none(
             """
             SELECT
-                id AS "id",
-                name AS "name",
-                price AS "price",
-                DBMS_LOB.SUBSTR(description, 4000, 1) AS "description",
-                category AS "category",
-                sku AS "sku",
-                NVL(in_stock, TRUE) AS "in_stock",
-                metadata AS "metadata",
-                embedding AS "embedding",
-                created_at AS "created_at",
-                updated_at AS "updated_at"
+                id,
+                name,
+                price,
+                description,
+                category,
+                sku,
+                COALESCE(in_stock, TRUE) AS in_stock,
+                metadata,
+                embedding,
+                created_at,
+                updated_at
             FROM product
             WHERE name = :name
             """,
@@ -82,36 +82,25 @@ class ProductService(SQLSpecService):
 
     async def get_products_without_embeddings(self, limit: int = 100, offset: int = 0) -> tuple[list[Product], int]:
         """Get products that have null embeddings with pagination."""
-        # Get total count
-        count_result = await self.driver.select_one_or_none(
-            """
-            SELECT COUNT(1) AS "total_count"
-            FROM product
-            WHERE embedding IS NULL
-            """
-        )
-        # Oracle returns column names in uppercase
-        total_count = count_result.get("total_count") if count_result else 0
-
         # Get paginated results
         products, total_count = await self.driver.select_with_total(
             """
             SELECT
-                id AS "id",
-                name AS "name",
-                price AS "price",
-                DBMS_LOB.SUBSTR(description, 4000, 1) AS "description",
-                category AS "category",
-                sku AS "sku",
-                NVL(in_stock, TRUE) AS "in_stock",
-                metadata AS "metadata",
-                embedding AS "embedding",
-                created_at AS "created_at",
-                updated_at AS "updated_at"
+                id,
+                name,
+                price,
+                description,
+                category,
+                sku,
+                COALESCE(in_stock, TRUE) AS in_stock,
+                metadata,
+                embedding,
+                created_at,
+                updated_at
             FROM product
             WHERE embedding IS NULL
             ORDER BY id
-            OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY
+            LIMIT :limit OFFSET :offset
             """,
             limit=limit,
             offset=offset,
@@ -123,43 +112,38 @@ class ProductService(SQLSpecService):
     async def search_by_vector(
         self, query_embedding: list[float], limit: int = 10, similarity_threshold: float = 0.5
     ) -> list[dict[str, Any]]:
-        """Search products by vector similarity using Oracle 23AI.
+        """Search products by vector similarity using PostgreSQL/AlloyDB pgvector.
 
         SQLSpec automatically handles vector conversions - no need for array.array().
 
         Note: Returns dict instead of Product because includes similarity_score field.
         """
-        # Oracle 23AI vector similarity search
+        # PostgreSQL pgvector similarity search
         results: list[dict[str, Any]] = await self.driver.select(
             """
             SELECT
-                id AS "id",
-                name AS "name",
-                price AS "price",
-                DBMS_LOB.SUBSTR(description, 4000, 1) AS "description",
-                category AS "category",
-                sku AS "sku",
-                NVL(in_stock, TRUE) AS "in_stock",
-                metadata AS "metadata",
-                embedding AS "embedding",
-                created_at AS "created_at",
-                updated_at AS "updated_at",
-                VECTOR_DISTANCE(embedding, :query_embedding, COSINE) AS "similarity_score"
+                id,
+                name,
+                price,
+                description,
+                category,
+                sku,
+                COALESCE(in_stock, TRUE) AS in_stock,
+                metadata,
+                embedding,
+                created_at,
+                updated_at,
+                1 - (embedding <=> :query_embedding) AS similarity_score
             FROM product
             WHERE embedding IS NOT NULL
-            AND VECTOR_DISTANCE(embedding, :query_embedding, COSINE) <= :threshold
-            ORDER BY "similarity_score"
-            FETCH FIRST :limit ROWS ONLY
+            AND 1 - (embedding <=> :query_embedding) >= :similarity_threshold
+            ORDER BY similarity_score DESC
+            LIMIT :limit
             """,
             query_embedding=query_embedding,
-            threshold=1 - similarity_threshold,  # Convert similarity to distance
+            similarity_threshold=similarity_threshold,
             limit=limit,
         )
-
-        # Convert distance back to similarity score (handle Oracle uppercase column names)
-        for result in results:
-            score_key = "similarity_score" if "similarity_score" in result else "SIMILARITY_SCORE"
-            result[score_key] = 1 - result[score_key]
 
         return results
 
@@ -172,13 +156,13 @@ class ProductService(SQLSpecService):
             """
             UPDATE product
             SET embedding = :embedding,
-                updated_at = SYSTIMESTAMP
+                updated_at = NOW()
             WHERE id = :id
             """,
             id=product_id,
             embedding=embedding,
         )
-
+        await self.driver.commit()
         return bool(result.rows_affected > 0)
 
     async def create_product(
@@ -193,15 +177,14 @@ class ProductService(SQLSpecService):
         embedding: list[float] | None = None,
     ) -> Product | None:
         """Create a new product."""
-        # Insert and get the generated ID
-        result: dict[str, Any] | None = await self.driver.select_one_or_none(
+        product = await self.driver.select_one_or_none(
             """
             INSERT INTO product (
                 name, price, description, category, sku, in_stock, metadata, embedding
             ) VALUES (
                 :name, :price, :description, :category, :sku, :in_stock, :metadata, :embedding
             )
-            RETURNING id
+            RETURNING id, name, price, description, category, sku, in_stock, metadata, embedding, created_at, updated_at
             """,
             name=name,
             price=price,
@@ -211,18 +194,11 @@ class ProductService(SQLSpecService):
             in_stock=in_stock,
             metadata=metadata,
             embedding=embedding,
+            schema_type=Product,
         )
-
-        if result:
-            # Oracle returns column names in uppercase
-            id_value = result.get("id") or result.get("ID")
-            if id_value is None:
-                return None
-            product_id: int = int(id_value)
-            # Return the created product
-            return await self.get_by_id(product_id)
-
-        return None
+        if product:
+            await self.driver.commit()
+        return product
 
     async def update_product(self, product_id: int, updates: dict[str, Any]) -> Product | None:
         """Update a product."""
@@ -248,13 +224,14 @@ class ProductService(SQLSpecService):
         if not set_clauses:
             return await self.get_by_id(product_id)
 
-        sql = f"UPDATE product SET {', '.join(set_clauses)} WHERE id = :id"  # noqa: S608
+        returning_clause = "RETURNING id, name, price, description, category, sku, in_stock, metadata, embedding, created_at, updated_at"
+        sql = f"UPDATE product SET {', '.join(set_clauses)}, updated_at = NOW() WHERE id = :id {returning_clause}"
 
-        result = await self.driver.execute(sql, **params)
+        product = await self.driver.select_one_or_none(sql, schema_type=Product, **params)
 
-        if result.rows_affected > 0:
-            return await self.get_by_id(product_id)
-        return None
+        if product:
+            await self.driver.commit()
+        return product
 
     async def delete_product(self, product_id: int) -> bool:
         """Delete a product."""
@@ -262,4 +239,5 @@ class ProductService(SQLSpecService):
             "DELETE FROM product WHERE id = :id",
             id=product_id,
         )
+        await self.driver.commit()
         return bool(result.rows_affected > 0)

@@ -71,6 +71,3 @@ def create_app() -> Litestar:
     setup_dishka(container, app)
 
     return app
-
-
-app = create_app()

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 from litestar.utils.module_loader import module_to_os_path
-from sqlspec.adapters.oracledb import OracleAsyncConfig
+from sqlspec.adapters.asyncpg import AsyncpgConfig
 
 if TYPE_CHECKING:
     from litestar.data_extractors import RequestExtractorField, ResponseExtractorField
@@ -37,44 +37,33 @@ TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
 
 @dataclass
 class DatabaseSettings:
-    """Oracle Database connection settings."""
+    """PostgreSQL Database connection settings."""
 
-    # Autonomous Database fields (new)
+    # Database URL (optional, for connection string)
     URL: str | None = field(default_factory=lambda: os.getenv("DATABASE_URL"))
-    """Oracle Database URL (for Autonomous DB). Format: oracle+oracledb://user:password@service_name"""
-    WALLET_PASSWORD: str | None = field(default_factory=lambda: os.getenv("WALLET_PASSWORD"))
-    """Oracle Database Wallet Password (for Autonomous DB)."""
-    WALLET_LOCATION: str | None = field(default_factory=lambda: os.getenv("WALLET_LOCATION") or os.getenv("TNS_ADMIN"))
-    """Oracle Database Wallet Location (for Autonomous DB). Falls back to TNS_ADMIN if set."""
+    """PostgreSQL Database URL. Format: postgresql://user:password@host:port/database"""
 
-    # Standard/Local Database fields (existing)
+    # Standard Database fields
     USER: str = field(
         default_factory=lambda: os.getenv("DATABASE_USER", "app"),
     )
-    """Oracle Database User."""
+    """PostgreSQL Database User."""
     PASSWORD: str = field(
         default_factory=lambda: os.getenv("DATABASE_PASSWORD", "super-secret"),
     )
-    """Oracle Database Password."""
+    """PostgreSQL Database Password."""
     HOST: str = field(
         default_factory=lambda: os.getenv("DATABASE_HOST", "localhost"),
     )
-    """Oracle Database Host."""
-    PORT: str = field(
-        default_factory=lambda: os.getenv("DATABASE_PORT", "1521"),
+    """PostgreSQL Database Host."""
+    PORT: int = field(
+        default_factory=lambda: int(os.getenv("DATABASE_PORT", "5432")),
     )
-    """Oracle Database Port."""
-    SERVICE_NAME: str = field(
-        default_factory=lambda: os.getenv("DATABASE_SERVICE_NAME", "FREEPDB1"),
+    """PostgreSQL Database Port."""
+    DATABASE: str = field(
+        default_factory=lambda: os.getenv("DATABASE_NAME", "app"),
     )
-    """Oracle Database Service Name."""
-    DSN: str = field(
-        default_factory=lambda: os.getenv(
-            "DATABASE_DSN",
-            f"{os.getenv('DATABASE_HOST', 'localhost')}:{os.getenv('DATABASE_PORT', '1521')}/{os.getenv('DATABASE_SERVICE_NAME', 'FREEPDB1')}",
-        ),
-    )
-    """Oracle Database DSN."""
+    """PostgreSQL Database Name."""
     POOL_MIN_SIZE: int = field(default_factory=lambda: int(os.getenv("DATABASE_POOL_MIN_SIZE", "5")))
     """Minimum pool size."""
     POOL_MAX_SIZE: int = field(default_factory=lambda: int(os.getenv("DATABASE_POOL_MAX_SIZE", "20")))
@@ -90,61 +79,46 @@ class DatabaseSettings:
     FIXTURE_PATH: str = f"{BASE_DIR}/db/fixtures"
     """The path to JSON fixture files to load into tables."""
 
-    @property
-    def is_autonomous(self) -> bool:
-        """Detect if we're using Autonomous Database based on presence of URL and wallet password."""
-        return self.URL is not None and self.WALLET_PASSWORD is not None
-
     def get_connection_params(self) -> dict[str, Any]:
-        """Extract connection parameters based on connection mode (autonomous vs local)."""
-        if self.is_autonomous:
+        """Extract connection parameters for PostgreSQL."""
+        if self.URL:
             from urllib.parse import urlparse
 
             parsed = urlparse(self.URL)
             return {
                 "user": parsed.username or self.USER,
                 "password": parsed.password or self.PASSWORD,
-                "dsn": parsed.hostname or "",
-                "wallet_password": self.WALLET_PASSWORD or "",
+                "host": parsed.hostname or self.HOST,
+                "port": parsed.port or self.PORT,
+                "database": parsed.path.lstrip("/") if parsed.path else self.DATABASE,
             }
         return {
             "user": self.USER,
             "password": self.PASSWORD,
-            "dsn": self.DSN,
+            "host": self.HOST,
+            "port": self.PORT,
+            "database": self.DATABASE,
         }
 
-    def create_config(self) -> OracleAsyncConfig:
-        """Create Oracle database configuration based on connection mode (autonomous vs local)."""
+    def create_config(self) -> AsyncpgConfig:
+        """Create PostgreSQL database configuration using asyncpg."""
         conn_params = self.get_connection_params()
 
-        if self.is_autonomous:
-            # Autonomous Database with wallet
-            if not self.WALLET_LOCATION:
-                msg = "WALLET_LOCATION or TNS_ADMIN environment variable must be set for Autonomous Database"
-                raise ValueError(msg)
+        pool_config = {
+            "user": conn_params["user"],
+            "password": conn_params["password"],
+            "host": conn_params["host"],
+            "port": conn_params["port"],
+            "database": conn_params["database"],
+            "min_size": self.POOL_MIN_SIZE,
+            "max_size": self.POOL_MAX_SIZE,
+            "timeout": self.POOL_TIMEOUT,
+            "command_timeout": 60,  # Command timeout in seconds
+            "max_queries": 50000,  # Max queries per connection before recycling
+            "max_inactive_connection_lifetime": float(self.POOL_RECYCLE),
+        }
 
-            # Set TNS_ADMIN for wallet location
-            os.environ["TNS_ADMIN"] = self.WALLET_LOCATION
-
-            pool_config = {
-                "user": conn_params["user"],
-                "password": conn_params["password"],
-                "dsn": conn_params["dsn"],
-                "wallet_password": conn_params["wallet_password"],
-                "min": self.POOL_MIN_SIZE,
-                "max": self.POOL_MAX_SIZE,
-            }
-        else:
-            # Local/Standard Database
-            pool_config = {
-                "user": conn_params["user"],
-                "password": conn_params["password"],
-                "dsn": conn_params["dsn"],
-                "min": self.POOL_MIN_SIZE,
-                "max": self.POOL_MAX_SIZE,
-            }
-
-        return OracleAsyncConfig(
+        return AsyncpgConfig(
             pool_config=pool_config,
             migration_config={
                 "version_table_name": "migrations",

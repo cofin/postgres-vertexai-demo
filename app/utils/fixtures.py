@@ -17,9 +17,6 @@ from sqlspec import sql
 
 from app.utils.serialization import from_json, to_json
 
-# Oracle VARCHAR2 maximum length (use CLOB for larger values)
-VARCHAR2_MAX_LENGTH = 4000
-
 
 class FixtureProcessor:
     """Handles fixture data processing with proper serialization."""
@@ -191,10 +188,9 @@ class FixtureLoader:
         return results
 
     async def _load_table_fixtures(self, table_name: str, fixture_file: Path) -> dict[str, Any]:
-        """Load fixtures using Oracle JSON_TABLE with MERGE for single-call bulk upsert.
+        """Load fixtures for a table using an idempotent upsert strategy.
 
-        Uses JSON_TABLE to pass all records in a single JSON payload, then MERGE
-        from the JSON_TABLE result. This combines INSERT and UPDATE in one operation.
+        For PostgreSQL, this uses `INSERT ... ON CONFLICT ... DO UPDATE`.
 
         Args:
             table_name: Name of the table
@@ -204,7 +200,7 @@ class FixtureLoader:
             Loading result statistics with keys: upserted, failed, total
 
         Raises:
-            Exception: Any database error during fixture loading (no fallback)
+            Exception: Any database error during fixture loading.
         """
         fixture_data = self.processor.load_fixture_data(fixture_file)
 
@@ -212,79 +208,52 @@ class FixtureLoader:
             return {"upserted": 0, "failed": 0, "total": 0}
 
         total = len(fixture_data)
-
-        # Process all records
+        # `prepare_record` removes None values, so records can have different keys.
         processed_records = [dict(self.processor.prepare_record(record)) for record in fixture_data]
 
         if not processed_records:
             return {"upserted": 0, "failed": 0, "total": 0}
 
-        # Get column information from first record
-        # Note: We include 'id' in all operations to preserve fixture IDs for idempotent loading
-        first_record = processed_records[0]
-        all_columns = [col for col in first_record if first_record[col] is not None]
-        update_columns = [col for col in all_columns if col != "id"]  # UPDATE doesn't change id
-        insert_columns = all_columns  # INSERT includes id to preserve fixture IDs
+        # Collect all columns from all records to handle schemas where some records have nulls
+        # (and thus missing keys after prepare_record)
+        all_columns_set: set[str] = set()
+        for record in processed_records:
+            all_columns_set.update(record.keys())
 
-        # Build JSON_TABLE column definitions with type inference
-        json_columns = []
-        for col in all_columns:
-            val = first_record[col]
-            if isinstance(val, bool):
-                oracle_type = "NUMBER(1)"  # JSON_TABLE doesn't support BOOLEAN
-            elif isinstance(val, (int, float)):
-                oracle_type = "NUMBER"
-            elif isinstance(val, (dict, list)):
-                oracle_type = "JSON"
-            elif isinstance(val, datetime):
-                oracle_type = "TIMESTAMP"
-            elif hasattr(val, "__len__") and len(str(val)) > VARCHAR2_MAX_LENGTH:
-                oracle_type = "CLOB"
-            else:
-                oracle_type = f"VARCHAR2({VARCHAR2_MAX_LENGTH})"
+        all_columns = sorted(all_columns_set)
 
-            json_columns.append(f"{col} {oracle_type} PATH '$.{col}'")
+        if "id" not in all_columns:
+            msg = "Fixture records must have an 'id' column for upserting."
+            raise ValueError(msg)
 
-        # Build MERGE statement with JSON_TABLE
-        # table_name is from internal COFFEE_SHOP_TABLES list, not user input
-        merge_sql = f"""
-            MERGE INTO {table_name} t
-            USING (
-                SELECT {", ".join([f"jt.{col}" for col in all_columns])}
-                FROM JSON_TABLE(
-                    :payload, '$[*]'
-                    COLUMNS (
-                        {", ".join(json_columns)}
-                    )
-                ) jt
-            ) src
-            ON (t.id = src.id)
-            WHEN MATCHED THEN UPDATE SET
-                {", ".join([f"t.{col} = src.{col}" for col in update_columns])}
-            WHEN NOT MATCHED THEN INSERT ({", ".join(insert_columns)})
-                VALUES ({", ".join([f"src.{col}" for col in insert_columns])})
-        """  # noqa: S608
+        update_columns = [col for col in all_columns if col != "id"]
 
-        # Convert records to JSON payload using project's serialization
-        payload = to_json(processed_records).decode("utf-8")
+        insert_cols_str = ", ".join(f'"{c}"' for c in all_columns)
+        # asyncpg uses $1, $2, etc for placeholders
+        insert_vals_str = ", ".join(f"${i + 1}" for i in range(len(all_columns)))
+        # for the update set, we need to reference the values from the proposed insertion
+        update_set_str = ", ".join(f'"{col}" = EXCLUDED."{col}"' for col in update_columns)
 
-        # Execute MERGE with JSON payload bound as CLOB to handle large payloads (>1MB)
-        import oracledb
+        # The sqlspec.sql query builder does not appear to support the PostgreSQL-specific
+        # `ON CONFLICT DO UPDATE` clause needed for an idempotent bulk upsert.
+        # Therefore, we construct the raw SQL string here and use it with `executemany`
+        # for efficient bulk loading.
+        # The conflict target is 'id'.
+        # table_name is not from user input, so it should be safe.
+        upsert_sql = f"""
+            INSERT INTO {table_name} ({insert_cols_str})
+            VALUES ({insert_vals_str})
+            ON CONFLICT (id) DO UPDATE SET {update_set_str}
+        """
 
-        async with self.driver.with_cursor(self.driver.connection) as cursor:
-            # Create a temporary CLOB and write the JSON payload to it
-            # This is necessary because the payload can exceed VARCHAR2 limits (>32KB)
-            temp_clob = await self.driver.connection.createlob(oracledb.DB_TYPE_CLOB)
-            await temp_clob.write(payload)
+        # Convert list of dicts to list of tuples for executemany, ensuring all tuples have the same length
+        data_to_insert = [tuple(record.get(col) for col in all_columns) for record in processed_records]
 
-            # Execute MERGE with the CLOB object
-            await cursor.execute(merge_sql.strip(), {"payload": temp_clob})
-            upserted = cursor.rowcount if cursor.rowcount > 0 else total
+        async with self.driver.connection.transaction():
+            await self.driver.execute_many(upsert_sql, data_to_insert)
 
-        # Commit the transaction to persist the changes
-        await self.driver.commit()
-
-        return {"upserted": upserted, "failed": 0, "total": total}
+        # executemany doesn't return row count, so we assume all were successful if no exception was raised.
+        return {"upserted": total, "failed": 0, "total": total}
 
     def _generate_missing_fixtures_results(self) -> dict[str, dict[str, Any] | str]:
         """Generate error results for missing fixture files.
@@ -387,7 +356,7 @@ class FixtureExporter:
 
         output_file = output_dir / filename
 
-        json_bytes = to_json(json_data)
+        json_bytes = to_json(json_data, as_bytes=True)
 
         if compress:
             with gzip.open(output_file, "wb") as f:

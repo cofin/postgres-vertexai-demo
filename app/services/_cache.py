@@ -23,13 +23,12 @@ class CacheService(SQLSpecService):
         """
         return await self.driver.select_one_or_none(
             """
-            SELECT id AS "id", cache_key AS "cache_key", response_data AS "response_data",
-                   expires_at AS "expires_at", created_at AS "created_at"
+            SELECT id, cache_key, response_data, expires_at, created_at
             FROM response_cache
             WHERE cache_key = :cache_key
-              AND (expires_at IS NULL OR expires_at > SYSTIMESTAMP)
+              AND (expires_at IS NULL OR expires_at > NOW())
             ORDER BY created_at DESC
-            FETCH FIRST 1 ROW ONLY
+            LIMIT 1
             """,
             cache_key=cache_key,
             schema_type=ResponseCache,
@@ -41,7 +40,7 @@ class CacheService(SQLSpecService):
         response_data: dict[str, Any],
         ttl_minutes: int = 5,
     ) -> ResponseCache:
-        """Cache a response with TTL using Oracle MERGE.
+        """Cache a response with TTL using PostgreSQL UPSERT.
 
         Args:
             cache_key: Unique cache key
@@ -51,42 +50,25 @@ class CacheService(SQLSpecService):
         Returns:
             Created cache entry
         """
-        await self.driver.execute(
+        cached_response = await self.driver.select_one(
             """
-            MERGE INTO response_cache rc
-            USING (
-                SELECT :cache_key AS cache_key,
-                       :response_data AS response_data,
-                       SYSTIMESTAMP + NUMTODSINTERVAL(:ttl_minutes, 'MINUTE') AS expires_at
-                FROM dual
-            ) src
-            ON (rc.cache_key = src.cache_key)
-            WHEN MATCHED THEN
-                UPDATE SET
-                    rc.response_data = src.response_data,
-                    rc.expires_at = src.expires_at,
-                    rc.created_at = SYSTIMESTAMP
-            WHEN NOT MATCHED THEN
-                INSERT (cache_key, response_data, expires_at, created_at)
-                VALUES (src.cache_key, src.response_data, src.expires_at, SYSTIMESTAMP)
+            INSERT INTO response_cache (cache_key, response_data, expires_at, created_at)
+            VALUES (:cache_key, :response_data, NOW() + make_interval(mins => :ttl_minutes), NOW())
+            ON CONFLICT (cache_key) DO UPDATE SET
+                response_data = EXCLUDED.response_data,
+                expires_at = EXCLUDED.expires_at,
+                created_at = NOW()
+            RETURNING id, cache_key, response_data, expires_at, created_at
             """,
             cache_key=cache_key,
             response_data=response_data,
             ttl_minutes=ttl_minutes,
+            schema_type=ResponseCache,
         )
 
         await self.driver.commit()
 
-        return await self.driver.select_one(
-            """
-            SELECT id AS "id", cache_key AS "cache_key", response_data AS "response_data",
-                   expires_at AS "expires_at", created_at AS "created_at"
-            FROM response_cache
-            WHERE cache_key = :cache_key
-            """,
-            cache_key=cache_key,
-            schema_type=ResponseCache,
-        )
+        return cached_response
 
     async def get_response_cache_by_id(self, cache_id: int) -> ResponseCache:
         """Get response cache entry by ID.
@@ -102,8 +84,7 @@ class CacheService(SQLSpecService):
         """
         return await self.get_or_404(
             """
-            SELECT id AS "id", cache_key AS "cache_key", response_data AS "response_data",
-                   expires_at AS "expires_at", created_at AS "created_at"
+            SELECT id, cache_key, response_data, expires_at, created_at
             FROM response_cache
             WHERE id = :cache_id
             """,
@@ -126,9 +107,7 @@ class CacheService(SQLSpecService):
 
         result = await self.driver.select_one_or_none(
             """
-            SELECT id AS "id", text_hash AS "text_hash", embedding AS "embedding",
-                   model AS "model", hit_count AS "hit_count", last_accessed AS "last_accessed",
-                   created_at AS "created_at"
+            SELECT id, text_hash, embedding, model, hit_count, last_accessed, created_at
             FROM embedding_cache
             WHERE text_hash = :text_hash
               AND model = :model_name
@@ -143,7 +122,7 @@ class CacheService(SQLSpecService):
                 """
                 UPDATE embedding_cache
                 SET hit_count = hit_count + 1,
-                    last_accessed = SYSTIMESTAMP
+                    last_accessed = NOW()
                 WHERE id = :result_id
                 """,
                 result_id=result.id,
@@ -158,7 +137,7 @@ class CacheService(SQLSpecService):
         embedding: list[float],
         model_name: str,
     ) -> EmbeddingCache:
-        """Cache an embedding using Oracle MERGE.
+        """Cache an embedding using PostgreSQL UPSERT.
 
         Args:
             text: Text that was embedded
@@ -170,45 +149,24 @@ class CacheService(SQLSpecService):
         """
         text_hash = hashlib.sha256(text.encode()).hexdigest()
 
-        await self.driver.execute(
+        cached_embedding = await self.driver.select_one(
             """
-            MERGE INTO embedding_cache ec
-            USING (
-                SELECT :text_hash AS text_hash,
-                       :embedding AS embedding,
-                       :model_name AS model,
-                       1 AS hit_count,
-                       SYSTIMESTAMP AS last_accessed
-                FROM dual
-            ) src
-            ON (ec.text_hash = src.text_hash AND ec.model = src.model)
-            WHEN MATCHED THEN
-                UPDATE SET
-                    ec.embedding = src.embedding,
-                    ec.last_accessed = SYSTIMESTAMP
-            WHEN NOT MATCHED THEN
-                INSERT (text_hash, embedding, model, hit_count, last_accessed, created_at)
-                VALUES (src.text_hash, src.embedding, src.model, src.hit_count, src.last_accessed, SYSTIMESTAMP)
+            INSERT INTO embedding_cache (text_hash, embedding, model, hit_count, last_accessed, created_at)
+            VALUES (:text_hash, :embedding, :model_name, 1, NOW(), NOW())
+            ON CONFLICT (text_hash, model) DO UPDATE SET
+                embedding = EXCLUDED.embedding,
+                last_accessed = NOW()
+            RETURNING id, text_hash, embedding, model, hit_count, last_accessed, created_at
             """,
-            text_hash=hashlib.sha256(text.encode()).hexdigest(),
+            text_hash=text_hash,
             embedding=embedding,
             model_name=model_name,
+            schema_type=EmbeddingCache,
         )
 
         await self.driver.commit()
 
-        return await self.driver.select_one(
-            """
-            SELECT id AS "id", text_hash AS "text_hash", embedding AS "embedding", model AS "model",
-                   hit_count AS "hit_count", last_accessed AS "last_accessed",
-                   created_at AS "created_at"
-            FROM embedding_cache
-            WHERE text_hash = :text_hash AND model = :model_name
-            """,
-            text_hash=text_hash,
-            model_name=model_name,
-            schema_type=EmbeddingCache
-        )
+        return cached_embedding
 
     async def invalidate_cache(self, cache_type: str | None = None, include_exemplars: bool = False) -> int:
         """Invalidate cache entries.
@@ -244,7 +202,7 @@ class CacheService(SQLSpecService):
             Number of records deleted
         """
         result = await self.driver.execute(
-            "DELETE FROM response_cache WHERE expires_at IS NOT NULL AND expires_at < SYSTIMESTAMP",
+            "DELETE FROM response_cache WHERE expires_at IS NOT NULL AND expires_at < NOW()",
         )
         return result.rows_affected
 
@@ -256,7 +214,7 @@ class CacheService(SQLSpecService):
         """
         response_count = await self.driver.select_value("SELECT COUNT(*) FROM response_cache")
         embedding_count = await self.driver.select_value("SELECT COUNT(*) FROM embedding_cache")
-        embedding_hits = await self.driver.select_value("SELECT NVL(SUM(hit_count), 0) FROM embedding_cache")
+        embedding_hits = await self.driver.select_value("SELECT COALESCE(SUM(hit_count), 0) FROM embedding_cache")
 
         # Calculate cache hit rate (percentage of requests that hit the cache)
         # This is an approximation based on embedding cache hits vs total embedding entries

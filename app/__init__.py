@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Oracle Database 23ai + Google Vertex AI Demo Application."""
+"""PostgreSQL/AlloyDB + Google Vertex AI Demo Application."""
 
 from __future__ import annotations
 

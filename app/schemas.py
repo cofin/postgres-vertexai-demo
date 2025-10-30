@@ -107,7 +107,7 @@ class CoffeeChatMessage(msgspec.Struct):
     persona: str = "enthusiast"
 
 
-# Oracle-specific DTOs
+# Session and conversation DTOs
 
 
 class UserSessionCreate(msgspec.Struct, omit_defaults=True):
@@ -156,7 +156,7 @@ class SearchMetricsCreate(msgspec.Struct, omit_defaults=True, kw_only=True):
     user_id: str | None = None
     search_time_ms: float
     embedding_time_ms: float
-    oracle_time_ms: float
+    db_query_time_ms: float
     ai_time_ms: float = 0.0
     intent_time_ms: float = 0.0
     similarity_score: float | None = None
@@ -208,7 +208,7 @@ class MetricsSummaryResponse(msgspec.Struct, omit_defaults=True):
 
     total_searches: MetricCard
     avg_response_time: MetricCard
-    avg_oracle_time: MetricCard
+    avg_db_query_time: MetricCard
     cache_hit_rate: MetricCard
 
 
@@ -217,7 +217,7 @@ class TimeSeriesData(msgspec.Struct, omit_defaults=True):
 
     labels: list[str]
     total_latency: list[float]
-    oracle_latency: list[float]
+    db_latency: list[float]
     vertex_latency: list[float]
 
 
