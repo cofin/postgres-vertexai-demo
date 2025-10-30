@@ -337,7 +337,7 @@ class CoffeeChatController(Controller):
                             user_id=session_id,
                             search_time_ms=total_time_ms,
                             embedding_time_ms=search_details.get("embedding_ms", 0) if search_details else 0,
-                            db_query_time_ms=search_details.get("search_ms", 0) if search_details else 0,
+                            db_query_time_ms=search_details.get("db_ms", 0) if search_details else 0,
                             ai_time_ms=total_time_ms,
                             intent_time_ms=intent_details.get("timing_ms", 0) if intent_details else 0,
                             similarity_score=0.0,

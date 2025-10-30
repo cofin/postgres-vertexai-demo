@@ -362,11 +362,11 @@ class VectorSearchService:
                     p.id AS "id",
                     p.name AS "name",
                     p.description AS "description",
-                    VECTOR_DISTANCE(p.embedding, :query_vector, COSINE) AS "distance"
+                    (p.embedding <=> :query_vector) AS "distance"
                 FROM product p
                 WHERE p.embedding IS NOT NULL
-                ORDER BY VECTOR_DISTANCE(p.embedding, :query_vector, COSINE)
-                FETCH FIRST :limit ROWS ONLY
+                ORDER BY p.embedding <=> :query_vector
+                LIMIT :limit
                 """,
                 query_vector=query_embedding,  # SQLSpec handles vector conversion automatically
                 limit=k,

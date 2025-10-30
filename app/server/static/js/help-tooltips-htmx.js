@@ -183,13 +183,11 @@ message = message[:500].strip()</code></pre>
                 <div class="help-tooltip-section">
                     <div class="help-tooltip-section-title">Database Vector Search Query</div>
                     <pre><code>SELECT intent_type,
-       VECTOR_DISTANCE(embedding,
-         :query_embedding, COSINE) AS similarity
+       1 - (embedding <=> :query_embedding) AS similarity
 FROM intent_exemplars
-WHERE VECTOR_DISTANCE(embedding,
-        :query_embedding, COSINE) < 0.3
-ORDER BY similarity
-FETCH FIRST 1 ROW ONLY</code></pre>
+WHERE (embedding <=> :query_embedding) < 0.3
+ORDER BY similarity DESC
+LIMIT 1</code></pre>
                 </div>
                 <div class="help-tooltip-section">
                     <div class="help-tooltip-section-title">Detection Results</div>
@@ -222,14 +220,12 @@ FETCH FIRST 1 ROW ONLY</code></pre>
                     <div class="help-tooltip-section-title">Database SQL Query</div>
                     <pre><code>SELECT p.product_name,
        p.product_description,
-       VECTOR_DISTANCE(p.product_embedding,
-         :query_embedding, COSINE) AS similarity
+       1 - (p.product_embedding <=> :query_embedding) AS similarity
 FROM products p
 JOIN inventory i ON p.product_id = i.product_id
-WHERE VECTOR_DISTANCE(p.product_embedding,
-        :query_embedding, COSINE) < 0.5
-ORDER BY similarity
-FETCH FIRST 4 ROWS ONLY</code></pre>
+WHERE (p.product_embedding <=> :query_embedding) < 0.5
+ORDER BY similarity DESC
+LIMIT 4</code></pre>
                 </div>
                 <div class="help-tooltip-section">
                     <div class="help-tooltip-section-title">Results</div>
@@ -651,11 +647,11 @@ function updateVectorSearchTooltipContent(tooltip, triggerElement) {
     embeddingTimeEl.textContent = parseFloat(embeddingMs).toFixed(1) + "ms";
   }
 
-  // Update search time
-  const searchMs = triggerElement.dataset.searchMs;
-  const searchTimeEl = tooltip.querySelector("#vector-search-time");
-  if (searchTimeEl && searchMs != null) {
-    searchTimeEl.textContent = parseFloat(searchMs).toFixed(1) + "ms";
+  // Update database query time
+  const dbMs = triggerElement.dataset.dbMs;
+  const dbQueryTimeEl = tooltip.querySelector("#vector-search-time");
+  if (dbQueryTimeEl && dbMs != null) {
+    dbQueryTimeEl.textContent = parseFloat(dbMs).toFixed(1) + "ms";
   }
 
   // Update product count

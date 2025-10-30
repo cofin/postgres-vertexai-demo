@@ -59,13 +59,13 @@ class AgentToolsService(SQLSpecService):
         )
         embedding_ms = (time.time() - embedding_start) * 1000
 
-        search_start = time.time()
+        db_query_start = time.time()
         products = await self.product_service.search_by_vector(
             query_embedding=query_embedding,
             similarity_threshold=similarity_threshold,
             limit=limit,
         )
-        search_ms = (time.time() - search_start) * 1000
+        db_ms = (time.time() - db_query_start) * 1000
 
         total_ms = (time.time() - start_time) * 1000
 
@@ -82,15 +82,15 @@ class AgentToolsService(SQLSpecService):
         ]
 
         sql_query = """SELECT p.id, p.name, p.description, p.current_price,
-       1 - VECTOR_DISTANCE(p.embedding, :query_vector, COSINE) as similarity
+       1 - (p.embedding <=> :query_vector) as similarity
 FROM product p
-WHERE 1 - VECTOR_DISTANCE(p.embedding, :query_vector, COSINE) > :threshold
+WHERE 1 - (p.embedding <=> :query_vector) > :threshold
 ORDER BY similarity DESC
-FETCH FIRST :limit ROWS ONLY"""
+LIMIT :limit"""
 
         return {
             "products": product_list,
-            "timing": {"total_ms": total_ms, "embedding_ms": embedding_ms, "search_ms": search_ms},
+            "timing": {"total_ms": total_ms, "embedding_ms": embedding_ms, "db_ms": db_ms},
             "embedding_cache_hit": embedding_cache_hit,
             "vector_search_cache_hit": False,  # This is no longer tracked in ProductService
             "sql_query": sql_query,
@@ -132,7 +132,7 @@ FETCH FIRST :limit ROWS ONLY"""
 
             sql_query = """WITH query_embedding AS (
         SELECT intent, phrase,
-            1 - VECTOR_DISTANCE(embedding, :query_vector, COSINE) AS similarity,
+            1 - (embedding <=> :query_vector) AS similarity,
             confidence_threshold,
             usage_count
         FROM intent_exemplar)
@@ -140,7 +140,7 @@ SELECT intent, phrase, similarity, confidence_threshold, usage_count
 FROM query_embedding
 WHERE similarity > :min_threshold
 ORDER BY similarity DESC
-FETCH FIRST :limit ROWS ONLY"""
+LIMIT :limit"""
 
             return {
                 "intent": result.intent,

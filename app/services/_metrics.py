@@ -207,10 +207,10 @@ class MetricsService(SQLSpecService):
         # In a real implementation, we'd need to add these fields to the search_metrics table
         stats = await self.get_performance_stats(hours=1)
 
-        # Get the averages
-        avg_total = stats["avg_search_time_ms"]
-        avg_embedding = stats["avg_embedding_time_ms"]
-        avg_db_query = stats["avg_db_query_time_ms"]
+        # Get the averages (already converted to float by round() in get_performance_stats)
+        avg_total = float(stats["avg_search_time_ms"])
+        avg_embedding = float(stats["avg_embedding_time_ms"])
+        avg_db_query = float(stats["avg_db_query_time_ms"])
 
         # Estimate AI generation time as 70% of remaining time (based on typical LLM response times)
         remaining_time = max(0, avg_total - avg_embedding - avg_db_query)

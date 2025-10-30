@@ -145,7 +145,7 @@ class ADKRunner:
             response_cache_hit=from_cache,
             intent=event_data.get("intent_details", {}).get("intent"),
             embedding_ms=search_details.get("embedding_ms", 0),
-            search_ms=search_details.get("search_ms", 0),
+            db_ms=search_details.get("db_ms", 0),
             products_count=len(event_data.get("products_found", [])),
         )
 
@@ -246,7 +246,7 @@ class ADKRunner:
                         "data": {
                             "products": search_result.get("products", []),
                             "embedding_ms": timing.get("embedding_ms", 0),
-                            "search_ms": timing.get("search_ms", 0),
+                            "db_ms": timing.get("db_ms", 0),
                         },
                         "timestamp": time.time(),
                     }
@@ -375,7 +375,7 @@ class ADKRunner:
                             "params": search_result.get("params"),
                             "results_count": search_result.get("results_count", 0),
                             "embedding_ms": timing.get("embedding_ms", 0),
-                            "search_ms": timing.get("search_ms", 0),
+                            "db_ms": timing.get("db_ms", 0),
                             "total_ms": timing.get("total_ms", 0),
                         }
                         # Track embedding cache hit from vector search
@@ -388,7 +388,7 @@ class ADKRunner:
                             "Vector search completed",
                             embedding_cache_hit=embedding_cache_hit_now,
                             embedding_ms=timing.get("embedding_ms", 0),
-                            search_ms=timing.get("search_ms", 0),
+                            db_ms=timing.get("db_ms", 0),
                             products_found=len(products_found),
                         )
 
