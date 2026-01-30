@@ -76,7 +76,7 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         app_config.csrf_config = config.csrf
         # session
         app_config.stores = config.stores
-        app_config.middleware.append(config.session_config.middleware)
+        app_config.middleware.append(config.session.middleware)
         # plugins
         app_config.plugins.extend([plugins.granian, plugins.sqlspec, plugins.structlog, plugins.htmx])
         # Set HTMXRequest as the default request class

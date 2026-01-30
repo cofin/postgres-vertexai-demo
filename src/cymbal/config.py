@@ -9,8 +9,10 @@ import logging
 import warnings
 
 import structlog
+from litestar.contrib.jinja import JinjaTemplateEngine
 from litestar.middleware.session.server_side import ServerSideSessionConfig
 from litestar.stores.registry import StoreRegistry
+from litestar.template.config import TemplateConfig
 from sqlspec import SQLSpec
 from sqlspec.adapters.asyncpg.litestar import AsyncpgStore
 from sqlspec.observability import ObservabilityConfig
@@ -30,6 +32,10 @@ db_manager.load_sql_files(BASE_DIR / "db" / "sql")
 
 stores = StoreRegistry(stores={"sessions": AsyncpgStore(config=db)})  # type: ignore[dict-item]
 session = ServerSideSessionConfig(store="sessions")
+templates = TemplateConfig(
+    directory=BASE_DIR / "server" / "templates",
+    engine=JinjaTemplateEngine,
+)
 compression = _settings.app.get_compression_config()
 csrf = _settings.app.get_csrf_config()
 cors = _settings.app.get_cors_config()
