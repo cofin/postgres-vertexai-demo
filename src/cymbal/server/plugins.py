@@ -16,6 +16,7 @@ from litestar.plugins.htmx import HTMXPlugin
 from litestar.plugins.problem_details import ProblemDetailsPlugin
 from litestar.plugins.structlog import StructlogPlugin
 from litestar_granian import GranianPlugin
+from litestar_vite import VitePlugin
 from sqlspec.extensions.litestar import SQLSpecPlugin
 
 from cymbal import config
@@ -29,3 +30,4 @@ granian = GranianPlugin()
 structlog = StructlogPlugin(config=config.log)
 htmx = HTMXPlugin()
 problem_details = ProblemDetailsPlugin(config=config.problem_details)
+vite = VitePlugin(config=config.vite)
