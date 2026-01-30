@@ -2,8 +2,9 @@
 
 from typing import Any
 
+from cymbal.config import db_manager
 from cymbal.schemas import Product
-from cymbal.services.base import SQLSpecService
+from cymbal.services.base import LimitOffsetFilter, SQLSpecService
 
 
 class ProductService(SQLSpecService):
@@ -11,103 +12,30 @@ class ProductService(SQLSpecService):
 
     async def get_all(self) -> list[Product]:
         """Get all products."""
-        results: list[Product] = await self.driver.select(
-            """
-            SELECT
-                id,
-                name,
-                price,
-                description,
-                category,
-                sku,
-                COALESCE(in_stock, TRUE) AS in_stock,
-                metadata,
-                embedding,
-                created_at,
-                updated_at
-            FROM product
-            ORDER BY name
-            """,
-            schema_type=Product,
-        )
+        results: list[Product] = await self.driver.select(db_manager.get_sql("get-all-products"), schema_type=Product)
         return results
 
     async def get_by_id(self, product_id: int) -> Product | None:
         """Get product by ID."""
         result: Product | None = await self.driver.select_one_or_none(
-            """
-            SELECT
-                id,
-                name,
-                price,
-                description,
-                category,
-                sku,
-                COALESCE(in_stock, TRUE) AS in_stock,
-                metadata,
-                embedding,
-                created_at,
-                updated_at
-            FROM product
-            WHERE id = :id
-            """,
-            id=product_id,
-            schema_type=Product,
+            db_manager.get_sql("get-product-by-id"), id=product_id, schema_type=Product
         )
         return result
 
     async def get_by_name(self, name: str) -> Product | None:
         """Get product by name."""
         result: Product | None = await self.driver.select_one_or_none(
-            """
-            SELECT
-                id,
-                name,
-                price,
-                description,
-                category,
-                sku,
-                COALESCE(in_stock, TRUE) AS in_stock,
-                metadata,
-                embedding,
-                created_at,
-                updated_at
-            FROM product
-            WHERE name = :name
-            """,
-            name=name,
-            schema_type=Product,
+            db_manager.get_sql("get-product-by-name"), name=name, schema_type=Product
         )
         return result
 
     async def get_products_without_embeddings(self, limit: int = 100, offset: int = 0) -> tuple[list[Product], int]:
         """Get products that have null embeddings with pagination."""
-        # Get paginated results
-        products, total_count = await self.driver.select_with_total(
-            """
-            SELECT
-                id,
-                name,
-                price,
-                description,
-                category,
-                sku,
-                COALESCE(in_stock, TRUE) AS in_stock,
-                metadata,
-                embedding,
-                created_at,
-                updated_at
-            FROM product
-            WHERE embedding IS NULL
-            ORDER BY id
-            LIMIT :limit OFFSET :offset
-            """,
-            limit=limit,
-            offset=offset,
-            schema_type=Product,
+        # Use SQLSpecService.paginate which injects LIMIT/OFFSET via AST
+        paginated = await self.paginate(
+            db_manager.get_sql("get-products-without-embeddings"), LimitOffsetFilter(limit, offset), schema_type=Product
         )
-
-        return products, total_count
+        return paginated.items, paginated.total
 
     async def search_by_vector(
         self, query_embedding: list[float], limit: int = 10, similarity_threshold: float = 0.5
@@ -120,26 +48,7 @@ class ProductService(SQLSpecService):
         """
         # PostgreSQL pgvector similarity search
         results: list[dict[str, Any]] = await self.driver.select(
-            """
-            SELECT
-                id,
-                name,
-                price,
-                description,
-                category,
-                sku,
-                COALESCE(in_stock, TRUE) AS in_stock,
-                metadata,
-                embedding,
-                created_at,
-                updated_at,
-                1 - (embedding <=> :query_embedding) AS similarity_score
-            FROM product
-            WHERE embedding IS NOT NULL
-            AND 1 - (embedding <=> :query_embedding) >= :similarity_threshold
-            ORDER BY similarity_score DESC
-            LIMIT :limit
-            """,
+            db_manager.get_sql("search-products-by-vector"),
             query_embedding=query_embedding,
             similarity_threshold=similarity_threshold,
             limit=limit,
@@ -153,14 +62,7 @@ class ProductService(SQLSpecService):
         SQLSpec automatically handles vector conversions - no need for array.array().
         """
         result = await self.driver.execute(
-            """
-            UPDATE product
-            SET embedding = :embedding,
-                updated_at = NOW()
-            WHERE id = :id
-            """,
-            id=product_id,
-            embedding=embedding,
+            db_manager.get_sql("update-product-embedding"), id=product_id, embedding=embedding
         )
         await self.driver.commit()
         return bool(result.rows_affected > 0)
@@ -178,14 +80,7 @@ class ProductService(SQLSpecService):
     ) -> Product | None:
         """Create a new product."""
         product = await self.driver.select_one_or_none(
-            """
-            INSERT INTO product (
-                name, price, description, category, sku, in_stock, metadata, embedding
-            ) VALUES (
-                :name, :price, :description, :category, :sku, :in_stock, :metadata, :embedding
-            )
-            RETURNING id, name, price, description, category, sku, in_stock, metadata, embedding, created_at, updated_at
-            """,
+            db_manager.get_sql("create-product"),
             name=name,
             price=price,
             description=description,
@@ -235,6 +130,6 @@ class ProductService(SQLSpecService):
 
     async def delete_product(self, product_id: int) -> bool:
         """Delete a product."""
-        result = await self.driver.execute("DELETE FROM product WHERE id = :id", id=product_id)
+        result = await self.driver.execute(db_manager.get_sql("delete-product"), id=product_id)
         await self.driver.commit()
         return bool(result.rows_affected > 0)

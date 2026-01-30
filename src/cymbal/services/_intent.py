@@ -235,11 +235,7 @@ class IntentService(SQLSpecService):
 
     async def increment_usage_by_phrase(self, intent: str, phrase: str) -> None:
         """Increment the usage count for a given exemplar."""
-        await self.driver.execute(
-            db_manager.get_sql("increment-usage-by-phrase"),
-            intent=intent,
-            phrase=phrase,
-        )
+        await self.driver.execute(db_manager.get_sql("increment-usage-by-phrase"), intent=intent, phrase=phrase)
 
     async def classify_intent(
         self, query: str, user_embedding: list[float] | None = None, min_threshold: float = 0.6, max_results: int = 5

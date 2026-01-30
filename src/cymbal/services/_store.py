@@ -27,9 +27,7 @@ class StoreService(SQLSpecService):
         Returns:
             List of stores in the specified city
         """
-        return await self.driver.select(
-            db_manager.get_sql("find-stores-by-city"), city=city, schema_type=Store
-        )
+        return await self.driver.select(db_manager.get_sql("find-stores-by-city"), city=city, schema_type=Store)
 
     async def find_stores_by_state(self, state: str) -> list[Store]:
         """Find stores in a specific state.
@@ -40,9 +38,7 @@ class StoreService(SQLSpecService):
         Returns:
             List of stores in the specified state
         """
-        return await self.driver.select(
-            db_manager.get_sql("find-stores-by-state"), state=state, schema_type=Store
-        )
+        return await self.driver.select(db_manager.get_sql("find-stores-by-state"), state=state, schema_type=Store)
 
     async def get_store_by_id(self, store_id: int) -> Store | None:
         """Get a store by ID.

@@ -73,10 +73,7 @@ class ExemplarService(SQLSpecService):
         SQLSpec automatically handles vector conversions - no need for array.array().
         """
         await self.driver.execute(
-            db_manager.get_sql("cache-exemplar"),
-            intent=intent,
-            phrase=phrase,
-            embedding=embedding,
+            db_manager.get_sql("cache-exemplar"), intent=intent, phrase=phrase, embedding=embedding
         )
 
     async def populate_cache(self, exemplars: dict[str, list[str]], vertex_ai_service: VertexAIService) -> int:
@@ -87,9 +84,7 @@ class ExemplarService(SQLSpecService):
             for phrase in phrases:
                 # Check if already cached
                 result = await self.driver.select_one_or_none(
-                    db_manager.get_sql("get-exemplar-embedding"),
-                    intent=intent,
-                    phrase=phrase,
+                    db_manager.get_sql("get-exemplar-embedding"), intent=intent, phrase=phrase
                 )
 
                 # Database returns column names
