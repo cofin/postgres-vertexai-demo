@@ -42,6 +42,7 @@ dependencies = [
     "rich-click",
     "numpy>=2.3.3",
     "dishka",
+    "litestar-vite>=0.18.0",
 ]
 description = "Cymbal Coffee AI Agent Application using PostgreSQL and Vertex AI."
 keywords = ["litestar", "vertexai", "postgresql", "google", "agent", "coffee"]
@@ -68,25 +69,13 @@ include = ["CHANGELOG.md", "/public/**/*", "/src/cymbal/**/*.sql", "/src/cymbal/
 packages = ["src/cymbal"]
 
 [tool.hatch.build.targets.wheel]
+artifacts = ["*.j2", "*.sql", "*.ini", "*.ico", "*.png", "*.svg", "*.css", "*.js", "*.html", "*.txt", "*.json"]
 packages = ["src/cymbal"]
-artifacts = [
-  "*.j2",
-  "*.sql",
-  "*.ini",
-  "*.ico",
-  "*.png",
-  "*.svg",
-  "*.css",
-  "*.js",
-  "*.html",
-  "*.txt",
-  "*.json",
-]
 
 [tool.hatch.build.targets.binary]
-scripts = ["cymbal"]
 pyapp-version = "0.27.0"
 python-version = "3.12"
+scripts = ["cymbal"]
 
 [tool.hatch.build.targets.binary.env]
 PYAPP_DISTRIBUTION_EMBED = "1"
@@ -151,7 +140,6 @@ skip-magic-trailing-comma = true
 
 [tool.ruff.lint]
 fixable = ["ALL"]
-select = ["ALL"]
 ignore = [
     "A003",    # flake8-builtins - class attribute {name} is shadowing a python builtin
     "A005",    # flake8-builtins - module {name} shadows a Python standard-library module
@@ -200,6 +188,7 @@ ignore = [
     "S105",
     "S106",
 ]
+select = ["ALL"]
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
@@ -222,18 +211,31 @@ classmethod-decorators = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["tests", "cymbal", "config"]
-split-on-trailing-comma=false
+split-on-trailing-comma = false
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "D104"]
-"src/cymbal/db/migrations/versions/*.py" = ["ANN201", "INP001"]
 "docs/**/*.*" = ["S", "B", "DTZ", "A", "ERA", "D", "RET", "E731", "RUF012", "FA100", "ARG001"]
 "docs/conf.py" = ["FIX002", "ARG001", "INP001"]
+"manage.py" = ["BLE001", "INP001"]
+"src/cymbal/db/migrations/versions/*.py" = ["ANN201", "INP001"]
 "src/tests/*.py" = ["D103", "S101", "D104", "PLR2004", "S105", "S106", "S404", "ANN001", "S608", "PLW0603"]
 "src/tests/**/*.py" = ["D103", "S101", "D104", "PLR2004", "S105", "S106", "S404", "ANN001", "S608", "PLW0603"]
-"tools/*.py" = ["INP001", "ERA001", "N999", "C901", "A002", "S105", "S106", "S107", "S607", "BLE001", "PLR0911", "PLR0912"]
+"tools/*.py" = [
+    "INP001",
+    "ERA001",
+    "N999",
+    "C901",
+    "A002",
+    "S105",
+    "S106",
+    "S107",
+    "S607",
+    "BLE001",
+    "PLR0911",
+    "PLR0912",
+]
 "tools/**/*.*" = ["D", "ARG", "EM", "TRY", "G", "FBT", "INP001", "S603", "S404", "PLR0915", "S105", "S106"]
-"manage.py" = ["BLE001", "INP001"]
 
 [tool.slotscheck]
 strict-imports = false
@@ -256,8 +258,8 @@ exclude = '''(?x)(
 )'''
 implicit_reexport = false
 plugins = ["pydantic.mypy"]
-show_error_codes = true
 python_version = "3.12"
+show_error_codes = true
 strict = true
 warn_redundant_casts = true
 warn_return_any = true
