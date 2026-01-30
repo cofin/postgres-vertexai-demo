@@ -70,130 +70,6 @@ wheels = [
 ]
 
 [[package]]
-name = "app"
-version = "0.3.0"
-source = { editable = "." }
-dependencies = [
-    { name = "dishka" },
-    { name = "google-adk" },
-    { name = "google-cloud-aiplatform" },
-    { name = "google-genai" },
-    { name = "litestar", extra = ["cryptography", "jinja", "jwt", "structlog"] },
-    { name = "litestar-granian", extra = ["uvloop"] },
-    { name = "litestar-mcp" },
-    { name = "msgspec" },
-    { name = "numpy" },
-    { name = "pgvector" },
-    { name = "python-dotenv" },
-    { name = "rich-click" },
-    { name = "sqlspec", extra = ["adk", "asyncpg", "performance"] },
-]
-
-[package.dev-dependencies]
-build = [
-    { name = "bump-my-version" },
-]
-dev = [
-    { name = "aiofiles" },
-    { name = "anyio" },
-    { name = "bump-my-version" },
-    { name = "coverage" },
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-databases", extra = ["postgres", "valkey"] },
-    { name = "pytest-mock" },
-    { name = "pytest-sugar" },
-    { name = "pytest-xdist" },
-    { name = "ruff" },
-    { name = "slotscheck" },
-    { name = "types-click" },
-]
-lint = [
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pyright" },
-    { name = "ruff" },
-    { name = "slotscheck" },
-    { name = "types-click" },
-]
-test = [
-    { name = "aiofiles" },
-    { name = "anyio" },
-    { name = "coverage" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-databases", extra = ["postgres", "valkey"] },
-    { name = "pytest-mock" },
-    { name = "pytest-sugar" },
-    { name = "pytest-xdist" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "dishka" },
-    { name = "google-adk" },
-    { name = "google-cloud-aiplatform" },
-    { name = "google-genai" },
-    { name = "litestar", extras = ["jinja", "jwt", "cryptography", "structlog"] },
-    { name = "litestar-granian", extras = ["uvloop"] },
-    { name = "litestar-mcp" },
-    { name = "msgspec" },
-    { name = "numpy", specifier = ">=2.3.3" },
-    { name = "pgvector" },
-    { name = "python-dotenv" },
-    { name = "rich-click" },
-    { name = "sqlspec", extras = ["adk", "asyncpg", "performance", "mypyc"] },
-]
-
-[package.metadata.requires-dev]
-build = [{ name = "bump-my-version" }]
-dev = [
-    { name = "aiofiles" },
-    { name = "anyio" },
-    { name = "bump-my-version" },
-    { name = "coverage" },
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-databases", extras = ["valkey", "postgres"] },
-    { name = "pytest-mock" },
-    { name = "pytest-sugar" },
-    { name = "pytest-xdist" },
-    { name = "ruff" },
-    { name = "slotscheck" },
-    { name = "types-click" },
-]
-extras = []
-lint = [
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pyright" },
-    { name = "ruff" },
-    { name = "slotscheck" },
-    { name = "types-click" },
-]
-test = [
-    { name = "aiofiles" },
-    { name = "anyio" },
-    { name = "coverage" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-databases", extras = ["valkey", "postgres"] },
-    { name = "pytest-mock" },
-    { name = "pytest-sugar" },
-    { name = "pytest-xdist" },
-]
-
-[[package]]
 name = "async-timeout"
 version = "5.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -546,6 +422,130 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8a/5f/60e0afb019973ba6a0b322e86b3d61edf487a4f5597618a430a2a15f2d22/cryptography-46.0.4-pp311-pypy311_pp73-manylinux_2_34_aarch64.whl", hash = "sha256:fdc3daab53b212472f1524d070735b2f0c214239df131903bae1d598016fa822", size = 4216066, upload-time = "2026-01-28T00:24:29.056Z" },
     { url = "https://files.pythonhosted.org/packages/81/8e/bf4a0de294f147fee66f879d9bae6f8e8d61515558e3d12785dd90eca0be/cryptography-46.0.4-pp311-pypy311_pp73-manylinux_2_34_x86_64.whl", hash = "sha256:44cc0675b27cadb71bdbb96099cca1fa051cd11d2ade09e5cd3a2edb929ed947", size = 4382025, upload-time = "2026-01-28T00:24:30.681Z" },
     { url = "https://files.pythonhosted.org/packages/79/f4/9ceb90cfd6a3847069b0b0b353fd3075dc69b49defc70182d8af0c4ca390/cryptography-46.0.4-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:be8c01a7d5a55f9a47d1888162b76c8f49d62b234d88f0ff91a9fbebe32ffbc3", size = 3406043, upload-time = "2026-01-28T00:24:32.236Z" },
+]
+
+[[package]]
+name = "cymbal"
+version = "0.3.0"
+source = { editable = "." }
+dependencies = [
+    { name = "dishka" },
+    { name = "google-adk" },
+    { name = "google-cloud-aiplatform" },
+    { name = "google-genai" },
+    { name = "litestar", extra = ["cryptography", "jinja", "jwt", "structlog"] },
+    { name = "litestar-granian", extra = ["uvloop"] },
+    { name = "litestar-mcp" },
+    { name = "msgspec" },
+    { name = "numpy" },
+    { name = "pgvector" },
+    { name = "python-dotenv" },
+    { name = "rich-click" },
+    { name = "sqlspec", extra = ["adk", "asyncpg", "performance"] },
+]
+
+[package.dev-dependencies]
+build = [
+    { name = "bump-my-version" },
+]
+dev = [
+    { name = "aiofiles" },
+    { name = "anyio" },
+    { name = "bump-my-version" },
+    { name = "coverage" },
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-databases", extra = ["postgres", "valkey"] },
+    { name = "pytest-mock" },
+    { name = "pytest-sugar" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
+    { name = "slotscheck" },
+    { name = "types-click" },
+]
+lint = [
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pyright" },
+    { name = "ruff" },
+    { name = "slotscheck" },
+    { name = "types-click" },
+]
+test = [
+    { name = "aiofiles" },
+    { name = "anyio" },
+    { name = "coverage" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-databases", extra = ["postgres", "valkey"] },
+    { name = "pytest-mock" },
+    { name = "pytest-sugar" },
+    { name = "pytest-xdist" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dishka" },
+    { name = "google-adk" },
+    { name = "google-cloud-aiplatform" },
+    { name = "google-genai" },
+    { name = "litestar", extras = ["jinja", "jwt", "cryptography", "structlog"] },
+    { name = "litestar-granian", extras = ["uvloop"] },
+    { name = "litestar-mcp" },
+    { name = "msgspec" },
+    { name = "numpy", specifier = ">=2.3.3" },
+    { name = "pgvector" },
+    { name = "python-dotenv" },
+    { name = "rich-click" },
+    { name = "sqlspec", extras = ["adk", "asyncpg", "performance", "mypyc"] },
+]
+
+[package.metadata.requires-dev]
+build = [{ name = "bump-my-version" }]
+dev = [
+    { name = "aiofiles" },
+    { name = "anyio" },
+    { name = "bump-my-version" },
+    { name = "coverage" },
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-databases", extras = ["valkey", "postgres"] },
+    { name = "pytest-mock" },
+    { name = "pytest-sugar" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
+    { name = "slotscheck" },
+    { name = "types-click" },
+]
+extras = []
+lint = [
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pyright" },
+    { name = "ruff" },
+    { name = "slotscheck" },
+    { name = "types-click" },
+]
+test = [
+    { name = "aiofiles" },
+    { name = "anyio" },
+    { name = "coverage" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-databases", extras = ["valkey", "postgres"] },
+    { name = "pytest-mock" },
+    { name = "pytest-sugar" },
+    { name = "pytest-xdist" },
 ]
 
 [[package]]

@@ -26,7 +26,7 @@
   },
   "mypy-type-checker.importStrategy": "fromEnvironment",
   "pylint.importStrategy": "fromEnvironment",
-  "python.autoComplete.extraPaths": ["${workspaceFolder}"],
+  "python.autoComplete.extraPaths": ["${workspaceFolder}/src"],
   "python.terminal.activateEnvInCurrentTerminal": true,
   "python.terminal.executeInFileDir": true,
   "python.testing.pytestEnabled": true,
@@ -65,7 +65,7 @@
   "sqltools.disableReleaseNotifications": true,
   "sqltools.disableNodeDetectNotifications": true,
   "cloudcode.compute.sshInternalIp": true,
-  "python.testing.pytestArgs": ["tests"],
+  "python.testing.pytestArgs": ["src/tests"],
   "markdownlint.run": "onSave",
   "markdownlint.config": {
     "default": true,
@@ -95,7 +95,7 @@
     "package.json": "package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb, tsconfig.*.json, tsconfig.json, .stylelintrc.json,angular.json,proxy.conf.json,cypress.*.ts,extra-webpack*.cjs,.eslintrc.json, tailwind.config.*, vite.config.ts, postcss.config.*, components.json, .prettierignore, .prettierrc.json, .eslintrc.cjs"
   },
   "sqltools.useNodeRuntime": true,
-  "python.analysis.extraPaths": ["${workspaceFolder}"],
+  "python.analysis.extraPaths": ["${workspaceFolder}/src"],
   "geminicodeassist.enable": true,
   "sqltools.format": {
 

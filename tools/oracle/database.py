@@ -31,9 +31,9 @@ class DatabaseConfig:
     container_port: int = 1521
 
     # Environment variables (from docker-compose.yml)
-    oracle_system_password: str = "super-secret"  # noqa: S105
-    oracle_password: str = "super-secret"  # noqa: S105
-    app_user_password: str = "super-secret"  # noqa: S105
+    oracle_system_password: str = "super-secret"
+    oracle_password: str = "super-secret"
+    app_user_password: str = "super-secret"
     app_user: str = "app"
 
     # Volumes
@@ -80,10 +80,7 @@ class OracleDatabase:
     """Manage Oracle 23 Free database container lifecycle."""
 
     def __init__(
-        self,
-        runtime: ContainerRuntime,
-        config: DatabaseConfig | None = None,
-        console: Console | None = None,
+        self, runtime: ContainerRuntime, config: DatabaseConfig | None = None, console: Console | None = None
     ) -> None:
         """Initialize Oracle database manager.
 
@@ -96,12 +93,7 @@ class OracleDatabase:
         self.config = config or DatabaseConfig()
         self.console = console or Console()
 
-    def start(
-        self,
-        *,
-        pull: bool = False,
-        recreate: bool = False,
-    ) -> None:
+    def start(self, *, pull: bool = False, recreate: bool = False) -> None:
         """Start Oracle database container.
 
         Args:
@@ -213,12 +205,7 @@ class OracleDatabase:
         self.runtime.run_command(["restart", "-t", str(timeout), self.config.container_name])
         self.console.print("[green]✓[/green] Container restarted")
 
-    def remove(
-        self,
-        *,
-        volumes: bool = False,
-        force: bool = False,
-    ) -> None:
+    def remove(self, *, volumes: bool = False, force: bool = False) -> None:
         """Remove Oracle database container.
 
         Args:
@@ -245,13 +232,7 @@ class OracleDatabase:
             self.runtime.run_command(["volume", "rm", self.config.data_volume_name])
             self.console.print("[green]✓[/green] Volume removed")
 
-    def logs(
-        self,
-        *,
-        follow: bool = False,
-        tail: int | None = None,
-        since: str | None = None,
-    ) -> None:
+    def logs(self, *, follow: bool = False, tail: int | None = None, since: str | None = None) -> None:
         """Stream container logs.
 
         Args:
@@ -339,20 +320,14 @@ class OracleDatabase:
 
         try:
             _, stdout, _ = self.runtime.run_command(
-                ["inspect", "--format", "{{.State.Health.Status}}", self.config.container_name],
-                check=False,
+                ["inspect", "--format", "{{.State.Health.Status}}", self.config.container_name], check=False
             )
             health_status = stdout.strip()
             return health_status == "healthy"
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
-    def wait_for_healthy(
-        self,
-        timeout: int = 300,
-        *,
-        show_progress: bool = True,
-    ) -> bool:
+    def wait_for_healthy(self, timeout: int = 300, *, show_progress: bool = True) -> bool:
         """Wait for container to become healthy.
 
         Args:
@@ -499,10 +474,7 @@ class OracleDatabase:
             for script_file in sorted(on_init_dir.glob("*.sql")) + sorted(on_init_dir.glob("*.sh")):
                 if script_file.is_file() and script_file.name != ".gitkeep":
                     # Use :z for SELinux compatibility (works with both Docker and Podman)
-                    cmd.extend([
-                        "-v",
-                        f"{script_file.absolute()}:/container-entrypoint-initdb.d/{script_file.name}:z",
-                    ])
+                    cmd.extend(["-v", f"{script_file.absolute()}:/container-entrypoint-initdb.d/{script_file.name}:z"])
 
         # Mount individual files from on_startup folder (run every time container starts)
         # Mounted to /container-entrypoint-startdb.d (gvenzl/oracle-free standard)
@@ -511,10 +483,7 @@ class OracleDatabase:
             for script_file in sorted(on_startup_dir.glob("*.sql")) + sorted(on_startup_dir.glob("*.sh")):
                 if script_file.is_file() and script_file.name != ".gitkeep":
                     # Use :z for SELinux compatibility (works with both Docker and Podman)
-                    cmd.extend([
-                        "-v",
-                        f"{script_file.absolute()}:/container-entrypoint-startdb.d/{script_file.name}:z",
-                    ])
+                    cmd.extend(["-v", f"{script_file.absolute()}:/container-entrypoint-startdb.d/{script_file.name}:z"])
 
         # Image name
         cmd.append(self.config.image)

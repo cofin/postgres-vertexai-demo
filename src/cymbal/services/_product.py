@@ -235,9 +235,6 @@ class ProductService(SQLSpecService):
 
     async def delete_product(self, product_id: int) -> bool:
         """Delete a product."""
-        result = await self.driver.execute(
-            "DELETE FROM product WHERE id = :id",
-            id=product_id,
-        )
+        result = await self.driver.execute("DELETE FROM product WHERE id = :id", id=product_id)
         await self.driver.commit()
         return bool(result.rows_affected > 0)

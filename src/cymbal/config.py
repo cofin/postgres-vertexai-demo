@@ -1,41 +1,19 @@
-# Copyright 2024 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+"""Cymbal database and server configurations.
+
+This module serves as a thin facade that materializes configuration objects
+from settings classes. Following the litestar-fullstack-spa pattern, all
+configuration logic lives in settings.py via get_config() methods.
+"""
 
 import logging
 import warnings
-from typing import cast
 
 import structlog
-from litestar.config.cors import CORSConfig
-from litestar.config.csrf import CSRFConfig
-from litestar.contrib.jinja import JinjaTemplateEngine
-from litestar.exceptions import NotFoundException
-from litestar.logging.config import (
-    LoggingConfig,
-    StructLoggingConfig,
-    default_logger_factory,
-    default_structlog_processors,
-    default_structlog_standard_lib_processors,
-)
-from litestar.middleware.logging import LoggingMiddlewareConfig
 from litestar.middleware.session.server_side import ServerSideSessionConfig
-from litestar.plugins.problem_details import ProblemDetailsConfig
-from litestar.plugins.structlog import StructlogConfig
 from litestar.stores.registry import StoreRegistry
-from litestar.template import TemplateConfig
+from sqlspec import SQLSpec
 from sqlspec.adapters.asyncpg.litestar import AsyncpgStore
-from sqlspec.base import SQLSpec
+from sqlspec.observability import ObservabilityConfig
 
 from cymbal.lib import log as log_conf
 from cymbal.lib.settings import BASE_DIR, get_settings
@@ -43,103 +21,29 @@ from cymbal.lib.settings import BASE_DIR, get_settings
 _settings = get_settings()
 settings = _settings  # Alias for compatibility
 
-csrf = CSRFConfig(
-    secret=_settings.app.SECRET_KEY,
-    cookie_secure=_settings.app.CSRF_COOKIE_SECURE,
-    cookie_name=_settings.app.CSRF_COOKIE_NAME,
-    header_name=_settings.app.CSRF_HEADER_NAME,
-)
-cors = CORSConfig(allow_origins=cast("list[str]", _settings.app.ALLOWED_CORS_ORIGINS))
-problem_details = ProblemDetailsConfig(enable_for_all_http_exceptions=True)
-
-templates = TemplateConfig(directory=BASE_DIR / "server" / "templates", engine=JinjaTemplateEngine)
-
-db_manager = SQLSpec()
-db = _settings.db.create_config()
-db_manager.add_config(db)
+# Observability (SQL logging)
+_observability = ObservabilityConfig(print_sql=_settings.db.ECHO)
+db_manager = SQLSpec(observability_config=_observability)
+db = db_manager.add_config(_settings.db.get_config())
+# Load SQL files - we will create this directory in Ch3
+db_manager.load_sql_files(BASE_DIR / "db" / "sql")
 
 stores = StoreRegistry(stores={"sessions": AsyncpgStore(config=db)})  # type: ignore[dict-item]
-session_config = ServerSideSessionConfig(store="sessions")
-
-
-log = StructlogConfig(
-    enable_middleware_logging=False,
-    structlog_logging_config=StructLoggingConfig(
-        disable_stack_trace={NotFoundException, 404},
-        log_exceptions="always",
-        processors=default_structlog_processors(as_json=False),
-        logger_factory=default_logger_factory(as_json=False),
-        standard_lib_logging_config=LoggingConfig(
-            root={"level": _settings.log.LEVEL, "handlers": ["queue_listener"]},
-            formatters={
-                "standard": {
-                    "()": structlog.stdlib.ProcessorFormatter,
-                    "processors": default_structlog_standard_lib_processors(as_json=False),
-                },
-            },
-            loggers={
-                "sqlspec": {
-                    "propagate": False,
-                    "level": "INFO",
-                    "handlers": ["queue_listener"],
-                },
-                "sqlglot": {
-                    "propagate": False,
-                    "level": "ERROR",
-                    "handlers": ["queue_listener"],
-                },
-                "_granian": {
-                    "propagate": False,
-                    "level": _settings.log.GRANIAN_ERROR_LEVEL,
-                    "handlers": ["queue_listener"],
-                },
-                "granian.server": {
-                    "propagate": False,
-                    "level": _settings.log.GRANIAN_ERROR_LEVEL,
-                    "handlers": ["queue_listener"],
-                },
-                "granian.access": {
-                    "propagate": False,
-                    "level": _settings.log.GRANIAN_ACCESS_LEVEL,
-                    "handlers": ["queue_listener"],
-                },
-                "google.adk": {
-                    "propagate": False,
-                    "level": _settings.log.LEVEL,
-                    "handlers": ["queue_listener"],
-                },
-                "google.genai": {
-                    "propagate": False,
-                    "level": _settings.log.LEVEL,
-                    "handlers": ["queue_listener"],
-                },
-                "google_genai": {
-                    "propagate": False,
-                    "level": _settings.log.LEVEL,
-                    "handlers": ["queue_listener"],
-                },
-                "google_genai.types": {
-                    "propagate": False,
-                    "level": _settings.log.LEVEL,
-                    "handlers": ["queue_listener"],
-                },
-            },
-        ),
-    ),
-    middleware_logging_config=LoggingMiddlewareConfig(
-        request_log_fields=["method", "path", "path_params", "query"],
-        response_log_fields=["status_code"],
-    ),
-)
+session = ServerSideSessionConfig(store="sessions")
+compression = _settings.app.get_compression_config()
+csrf = _settings.app.get_csrf_config()
+cors = _settings.app.get_cors_config()
+problem_details = _settings.app.get_problem_details_config()
+vite = _settings.vite.get_config()
+channels = _settings.channels.get_config()
+log = _settings.logging.get_structlog_config()
+email = _settings.email.get_email_config()
 
 
 def setup_logging() -> None:
-    """Return a configured logger for the given name.
+    """Set up structured logging configuration.
 
-    Args:
-        args: positional arguments to pass to the bound logger instance
-        kwargs: keyword arguments to pass to the bound logger instance
-
+    Configures both structlog and standard library logging for the application.
     """
     if log.structlog_logging_config.standard_lib_logging_config:
         log.structlog_logging_config.standard_lib_logging_config.configure()
@@ -148,9 +52,8 @@ def setup_logging() -> None:
         cache_logger_on_first_use=True,
         logger_factory=log.structlog_logging_config.logger_factory,
         processors=log.structlog_logging_config.processors,
-        wrapper_class=structlog.make_filtering_bound_logger(settings.log.LEVEL),
+        wrapper_class=structlog.make_filtering_bound_logger(_settings.logging.LEVEL),
     )
-
     # Capture Python warnings into logging so we can filter them
     logging.captureWarnings(True)
 
@@ -168,6 +71,14 @@ def setup_logging() -> None:
 
     # Also apply to root logger and queue_listener handlers to catch in listener thread
     logging.root.addFilter(adk_warning_filter)
+
+    # Suppress asyncio "Task exception was never retrieved" messages
+    asyncio_filter = log_conf.SuppressAsyncioTaskExceptionFilter()
+    logging.getLogger("asyncio").addFilter(asyncio_filter)
+
+    # Suppress duplicate traceback when message already contains a formatted traceback
+    granian_exc_filter = log_conf.SuppressGranianExcInfoFilter()
+    logging.getLogger("_granian").addFilter(granian_exc_filter)
 
     # Suppress at Python warnings level too (belt and suspenders)
     warnings.filterwarnings(

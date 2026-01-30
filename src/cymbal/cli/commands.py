@@ -27,7 +27,7 @@ async def _fetch_products_to_embed(product_service: Any, force: bool) -> tuple[l
     with console.status("[bold yellow]Finding products to process...", spinner="dots"):
         if force:
             products = await product_service.driver.select(
-                "SELECT id, name, description, embedding FROM product ORDER BY id",
+                "SELECT id, name, description, embedding FROM product ORDER BY id"
             )
             message = f"[cyan]Processing ALL {len(products)} products (force mode)[/cyan]"
         else:
@@ -38,11 +38,7 @@ async def _fetch_products_to_embed(product_service: Any, force: bool) -> tuple[l
 
 
 async def _process_product_batch(
-    batch: list[dict[str, Any]],
-    product_service: Any,
-    vertex_ai_service: Any,
-    start_idx: int,
-    total_products: int,
+    batch: list[dict[str, Any]], product_service: Any, vertex_ai_service: Any, start_idx: int, total_products: int
 ) -> tuple[int, int]:
     """Process a batch of products for embedding generation.
 
@@ -87,10 +83,7 @@ def _print_embedding_results(total_success: int, total_errors: int) -> None:
     console.print()
 
 
-@coffee_demo_group.command(
-    name="bulk-embed",
-    help="Run bulk embedding job for all products using Vertex AI.",
-)
+@coffee_demo_group.command(name="bulk-embed", help="Run bulk embedding job for all products using Vertex AI.")
 @click.option("--batch-size", default=50, help="Number of products to process in each batch (default: 50)")
 @click.option("--force", "-f", is_flag=True, help="Re-embed all products, even if they already have embeddings")
 def bulk_embed(batch_size: int, force: bool) -> None:
@@ -154,17 +147,8 @@ def bulk_embed(batch_size: int, force: bool) -> None:
 
 
 @coffee_demo_group.command(name="clear-cache", help="Clear cache tables in the database.")
-@click.option(
-    "--include-exemplars",
-    is_flag=True,
-    help="Also clear intent exemplar embeddings (slow to regenerate)",
-)
-@click.option(
-    "--force",
-    "-f",
-    is_flag=True,
-    help="Skip confirmation prompt",
-)
+@click.option("--include-exemplars", is_flag=True, help="Also clear intent exemplar embeddings (slow to regenerate)")
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt")
 def clear_cache(include_exemplars: bool, force: bool) -> None:
     """Clear application caches.
 
@@ -192,9 +176,7 @@ def clear_cache(include_exemplars: bool, force: bool) -> None:
             )
 
         confirm = Prompt.ask(
-            "\n[bold red]Are you sure you want to clear these caches?[/bold red]",
-            choices=["y", "n"],
-            default="n",
+            "\n[bold red]Are you sure you want to clear these caches?[/bold red]", choices=["y", "n"], default="n"
         )
         if confirm.lower() != "y":
             console.print("[yellow]Operation cancelled.[/yellow]")
@@ -298,7 +280,6 @@ def _display_fixture_list() -> None:
         # Extract table name from filename (remove .json or .json.gz)
         table_name = fixture_file.name.replace(".json.gz", "").replace(".json", "")
         try:
-
             # Load data to count records
             if fixture_file.suffix == ".gz":
                 with gzip.open(fixture_file, "rb") as f:

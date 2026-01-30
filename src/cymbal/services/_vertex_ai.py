@@ -83,34 +83,18 @@ class VertexAIService:
         return embeddings
 
     @overload
-    async def get_text_embedding(
-        self,
-        text: str,
-        model: str | None = None,
-    ) -> list[float]: ...
+    async def get_text_embedding(self, text: str, model: str | None = None) -> list[float]: ...
 
     @overload
     async def get_text_embedding(
-        self,
-        text: str,
-        model: str | None = None,
-        *,
-        return_cache_status: bool = True,
+        self, text: str, model: str | None = None, *, return_cache_status: bool = True
     ) -> tuple[list[float], bool]: ...
 
     @overload
-    async def get_text_embedding(
-        self,
-        text: list[str],
-        model: str | None = None,
-    ) -> list[list[float]]: ...
+    async def get_text_embedding(self, text: list[str], model: str | None = None) -> list[list[float]]: ...
 
     async def get_text_embedding(
-        self,
-        text: str | list[str],
-        model: str | None = None,
-        *,
-        return_cache_status: bool = False,
+        self, text: str | list[str], model: str | None = None, *, return_cache_status: bool = False
     ) -> list[float] | list[list[float]] | tuple[list[float], bool]:
         """Generate text embedding(s) using Vertex AI with optional cache status.
 
@@ -202,10 +186,7 @@ class VertexAIService:
 
         try:
             async for chunk in self._generate_chat_response_stream_async(
-                messages,
-                model_name,
-                temperature,
-                max_output_tokens,
+                messages, model_name, temperature, max_output_tokens
             ):
                 yield chunk
 
@@ -220,11 +201,7 @@ class VertexAIService:
             raise ValueError(msg) from e
 
     async def _generate_chat_response_stream_async(
-        self,
-        messages: list[dict[str, str]],
-        model: str,
-        temperature: float,
-        max_output_tokens: int,
+        self, messages: list[dict[str, str]], model: str, temperature: float, max_output_tokens: int
     ) -> AsyncGenerator[str, None]:
         """Asynchronous streaming chat response generation using Google GenAI SDK."""
         if not self._genai_client:
@@ -241,10 +218,7 @@ class VertexAIService:
         async for chunk in await self._genai_client.aio.models.generate_content_stream(
             model=model,
             contents=formatted_messages,
-            config=genai.types.GenerateContentConfig(
-                temperature=temperature,
-                max_output_tokens=max_output_tokens,
-            ),
+            config=genai.types.GenerateContentConfig(temperature=temperature, max_output_tokens=max_output_tokens),
         ):
             # Extract text from chunk
             if chunk.candidates:
@@ -260,10 +234,7 @@ class VertexAIService:
             msg = "GenAI client not initialized"
             raise RuntimeError(msg)
 
-        response = await self._genai_client.aio.models.embed_content(
-            model=model,
-            contents=text,
-        )
+        response = await self._genai_client.aio.models.embed_content(model=model, contents=text)
         if not response.embeddings or len(response.embeddings) == 0:
             msg = "No embeddings returned from API"
             raise ValueError(msg)
@@ -296,10 +267,7 @@ class VectorSearchService:
     """
 
     def __init__(
-        self,
-        products_service: Any,
-        vertex_ai_service: VertexAIService,
-        embedding_cache: CacheService | None = None,
+        self, products_service: Any, vertex_ai_service: VertexAIService, embedding_cache: CacheService | None = None
     ) -> None:
         """Initialize PostgreSQL/AlloyDB vector search service.
 
@@ -388,11 +356,7 @@ class VectorSearchService:
 
             # Calculate total time and return timing data
             total_time = (time.time() - start_time) * 1000
-            timing_data = {
-                "embedding_ms": embedding_time,
-                "db_ms": db_query_time,
-                "total_ms": total_time,
-            }
+            timing_data = {"embedding_ms": embedding_time, "db_ms": db_query_time, "total_ms": total_time}
 
         except (KeyError, AttributeError) as e:
             # Return empty results on error, but log it

@@ -104,11 +104,7 @@ class SQLSpecProvider(Provider):
         return db
 
     @provide(scope=Scope.REQUEST)
-    async def get_db_session(
-        self,
-        manager: SQLSpec,
-        config: AsyncpgConfig,
-    ) -> AsyncIterable[AsyncDriverAdapterBase]:
+    async def get_db_session(self, manager: SQLSpec, config: AsyncpgConfig) -> AsyncIterable[AsyncDriverAdapterBase]:
         """Provide SQLSpec async database session.
 
         This wraps SQLSpec's provide_session() context manager for
@@ -191,10 +187,7 @@ class CoreServiceProvider(Provider):
     # Complex services - auto-wired with multiple dependencies
     @provide
     def get_intent_service(
-        self,
-        driver: AsyncDriverAdapterBase,
-        exemplar_service: ExemplarService,
-        vertex_ai_service: VertexAIService,
+        self, driver: AsyncDriverAdapterBase, exemplar_service: ExemplarService, vertex_ai_service: VertexAIService
     ) -> IntentService:
         """Provide IntentService with auto-wired dependencies.
 
@@ -203,11 +196,7 @@ class CoreServiceProvider(Provider):
         - exemplar_service: from this provider
         - vertex_ai_service: from this provider (APP scope)
         """
-        return IntentService(
-            driver=driver,
-            exemplar_service=exemplar_service,
-            vertex_ai_service=vertex_ai_service,
-        )
+        return IntentService(driver=driver, exemplar_service=exemplar_service, vertex_ai_service=vertex_ai_service)
 
     @provide
     def get_agent_tools_service(
@@ -235,10 +224,7 @@ class CoreServiceProvider(Provider):
 
     @provide
     def get_vector_search_service(
-        self,
-        product_service: ProductService,
-        vertex_ai_service: VertexAIService,
-        cache_service: CacheService,
+        self, product_service: ProductService, vertex_ai_service: VertexAIService, cache_service: CacheService
     ) -> VectorSearchService:
         """Provide VectorSearchService with mixed-scope dependencies.
 
@@ -250,9 +236,7 @@ class CoreServiceProvider(Provider):
         Dishka handles the mixed scopes correctly.
         """
         return VectorSearchService(
-            products_service=product_service,
-            vertex_ai_service=vertex_ai_service,
-            embedding_cache=cache_service,
+            products_service=product_service, vertex_ai_service=vertex_ai_service, embedding_cache=cache_service
         )
 
 
@@ -289,10 +273,4 @@ class ADKProvider(Provider):
         return QueryContext(query_id=qid)
 
 
-__all__ = [
-    "ADKProvider",
-    "CoreServiceProvider",
-    "SQLSpecProvider",
-    "get_request_container",
-    "set_request_container",
-]
+__all__ = ["ADKProvider", "CoreServiceProvider", "SQLSpecProvider", "get_request_container", "set_request_container"]

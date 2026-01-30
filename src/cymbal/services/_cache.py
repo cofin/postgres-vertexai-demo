@@ -35,10 +35,7 @@ class CacheService(SQLSpecService):
         )
 
     async def set_cached_response(
-        self,
-        cache_key: str,
-        response_data: dict[str, Any],
-        ttl_minutes: int = 5,
+        self, cache_key: str, response_data: dict[str, Any], ttl_minutes: int = 5
     ) -> ResponseCache:
         """Cache a response with TTL using PostgreSQL UPSERT.
 
@@ -131,12 +128,7 @@ class CacheService(SQLSpecService):
 
         return result
 
-    async def set_cached_embedding(
-        self,
-        text: str,
-        embedding: list[float],
-        model_name: str,
-    ) -> EmbeddingCache:
+    async def set_cached_embedding(self, text: str, embedding: list[float], model_name: str) -> EmbeddingCache:
         """Cache an embedding using PostgreSQL UPSERT.
 
         Args:
@@ -202,7 +194,7 @@ class CacheService(SQLSpecService):
             Number of records deleted
         """
         result = await self.driver.execute(
-            "DELETE FROM response_cache WHERE expires_at IS NOT NULL AND expires_at < NOW()",
+            "DELETE FROM response_cache WHERE expires_at IS NOT NULL AND expires_at < NOW()"
         )
         return result.rows_affected
 
@@ -251,12 +243,7 @@ class CacheService(SQLSpecService):
         """
         await self.set_cached_response(cache_key, data, ttl)
 
-    async def set_query_state(
-        self,
-        query_id: str,
-        state: dict[str, Any],
-        ttl_minutes: int = 5,
-    ) -> None:
+    async def set_query_state(self, query_id: str, state: dict[str, Any], ttl_minutes: int = 5) -> None:
         """Store query state for streaming endpoint.
 
         Args:
@@ -287,8 +274,5 @@ class CacheService(SQLSpecService):
             query_id: Unique query identifier
         """
         cache_key = f"query:{query_id}"
-        await self.driver.execute(
-            "DELETE FROM response_cache WHERE cache_key = :cache_key",
-            cache_key=cache_key,
-        )
+        await self.driver.execute("DELETE FROM response_cache WHERE cache_key = :cache_key", cache_key=cache_key)
         await self.driver.commit()

@@ -59,11 +59,7 @@ class ADKRunner:
         store = AsyncpgADKStore(config=db)
         self.session_service = SQLSpecSessionService(store)
         # Single runner for all personas (ADK best practice)
-        self._runner = Runner(
-            agent=_coffee_agent,
-            app_name="coffee-assistant",
-            session_service=self.session_service,
-        )
+        self._runner = Runner(agent=_coffee_agent, app_name="coffee-assistant", session_service=self.session_service)
         logger.debug("ADKRunner initialized with single Runner instance")
 
     async def process_request(
@@ -107,11 +103,7 @@ class ADKRunner:
         )
 
         agent_start = time.time()
-        events = self._runner.run_async(
-            user_id=user_id,
-            session_id=session.id,
-            new_message=content,
-        )
+        events = self._runner.run_async(user_id=user_id, session_id=session.id, new_message=content)
 
         event_data = await self._process_events(events)
         agent_processing_ms = round((time.time() - agent_start) * 1000, 2)
@@ -153,9 +145,7 @@ class ADKRunner:
         if cache_service and event_data["final_response_text"]:
             try:
                 result = await cache_service.set_cached_response(
-                    cache_key=cache_key,
-                    response_data=response,
-                    ttl_minutes=5,
+                    cache_key=cache_key, response_data=response, ttl_minutes=5
                 )
                 logger.info(
                     "Response cached successfully",
@@ -203,11 +193,7 @@ class ADKRunner:
         )
 
         # Start ADK async generator with single runner
-        events = self._runner.run_async(
-            user_id=user_id,
-            session_id=session.id,
-            new_message=content,
-        )
+        events = self._runner.run_async(user_id=user_id, session_id=session.id, new_message=content)
 
         # Process and stream events progressively
         async for event in events:
@@ -215,11 +201,7 @@ class ADKRunner:
             text_parts = self._extract_text_from_event(event)
             if text_parts and not self._should_filter_text("".join(text_parts)):
                 for text in text_parts:
-                    yield {
-                        "type": "text",
-                        "text": text,
-                        "timestamp": time.time(),
-                    }
+                    yield {"type": "text", "text": text, "timestamp": time.time()}
 
             # Extract function responses for metadata
             function_responses = event.get_function_responses() if hasattr(event, "get_function_responses") else []
@@ -266,11 +248,7 @@ class ADKRunner:
 
                     yield {
                         "type": "stores",
-                        "data": {
-                            "stores": stores,
-                            "function": func_response.name,
-                            "count": len(stores),
-                        },
+                        "data": {"stores": stores, "function": func_response.name, "count": len(stores)},
                         "timestamp": time.time(),
                     }
 
@@ -278,18 +256,13 @@ class ADKRunner:
         """Ensure session exists using get-or-create pattern."""
         if session_id:
             existing = await self.session_service.get_session(
-                app_name="coffee-assistant",
-                user_id=user_id,
-                session_id=session_id,
+                app_name="coffee-assistant", user_id=user_id, session_id=session_id
             )
             if existing:
                 return existing
 
         return await self.session_service.create_session(
-            app_name="coffee-assistant",
-            user_id=user_id,
-            session_id=session_id,
-            state={},
+            app_name="coffee-assistant", user_id=user_id, session_id=session_id, state={}
         )
 
     async def _process_events(self, events: AsyncGenerator) -> dict[str, Any]:
@@ -402,14 +375,9 @@ class ADKRunner:
                                 # get_store_hours returns a dict with store info
                                 stores_found = [store_result]
 
-                            store_details = {
-                                "function": func_response.name,
-                                "count": len(stores_found),
-                            }
+                            store_details = {"function": func_response.name, "count": len(stores_found)}
                             logger.info(
-                                "Store lookup completed",
-                                function=func_response.name,
-                                stores_found=len(stores_found),
+                                "Store lookup completed", function=func_response.name, stores_found=len(stores_found)
                             )
 
         # Use final response if available, otherwise use collected responses
@@ -421,9 +389,7 @@ class ADKRunner:
         if not final_response_text:
             final_response_text = self._generate_fallback_response(intent_details, products_found)
             logger.info(
-                "Generated fallback response",
-                intent=intent_details.get("intent"),
-                products_count=len(products_found),
+                "Generated fallback response", intent=intent_details.get("intent"), products_count=len(products_found)
             )
 
         return {

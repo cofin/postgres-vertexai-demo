@@ -15,10 +15,7 @@ class StoreService(SQLSpecService):
         Returns:
             List of all stores
         """
-        return await self.driver.select(
-            "SELECT * FROM store ORDER BY name",
-            schema_type=Store,
-        )
+        return await self.driver.select("SELECT * FROM store ORDER BY name", schema_type=Store)
 
     async def find_stores_by_city(self, city: str) -> list[Store]:
         """Find stores in a specific city.

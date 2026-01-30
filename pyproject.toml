@@ -1,3 +1,17 @@
+# Copyright 2024 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 [project]
 authors = [{ name = "Cody Fincher", email = "cody.fincher@gmail.com" }]
 classifiers = [
@@ -49,9 +63,35 @@ requires = ["hatchling", "nodeenv"]
 allow-direct-references = true
 
 [tool.hatch.build]
-dev-mode-dirs = ["./"]
+dev-mode-dirs = ["src"]
 include = ["CHANGELOG.md", "/public/**/*", "/src/cymbal/**/*.sql", "/src/cymbal/db/**/*.ini"]
 packages = ["src/cymbal"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cymbal"]
+artifacts = [
+  "*.j2",
+  "*.sql",
+  "*.ini",
+  "*.ico",
+  "*.png",
+  "*.svg",
+  "*.css",
+  "*.js",
+  "*.html",
+  "*.txt",
+  "*.json",
+]
+
+[tool.hatch.build.targets.binary]
+scripts = ["cymbal"]
+pyapp-version = "0.27.0"
+python-version = "3.12"
+
+[tool.hatch.build.targets.binary.env]
+PYAPP_DISTRIBUTION_EMBED = "1"
+PYAPP_FULL_ISOLATION = "1"
+PYAPP_UV_ENABLED = "1"
 
 [dependency-groups]
 build = ["bump-my-version"]
@@ -101,11 +141,17 @@ exclude = [
 ]
 fix = true
 line-length = 120
-src = ["."]
+src = ["src/cymbal", "src/tests"]
 target-version = "py311"
+unsafe-fixes = true
+
+[tool.ruff.format]
+preview = true
+skip-magic-trailing-comma = true
 
 [tool.ruff.lint]
 fixable = ["ALL"]
+select = ["ALL"]
 ignore = [
     "A003",    # flake8-builtins - class attribute {name} is shadowing a python builtin
     "A005",    # flake8-builtins - module {name} shadows a Python standard-library module
@@ -124,11 +170,11 @@ ignore = [
     "E501",    # pydocstyle line too long, handled by black
     "PLW2901", # pylint - for loop variable overwritten by assignment target
     "RUF012",  # Ruff-specific rule - annotated with classvar
-    "ANN401",
-    "FBT",
+    "ANN401",  # ruff - Dynamically typed expressions (typing.Any) are disallowed
+    "FBT",     # flake8-boolean-trap
     "PLR0913", # too many arguments
-    "PT",
-    "TD",
+    "PT",      # flake8-pytest-style
+    "TD",      # flake8-todos
     "ARG001",  # ignore for now; investigate
     "ARG002",  # ignore for now; investigate
     "ARG003",  # ignore for now; investigate
@@ -149,8 +195,11 @@ ignore = [
     "PLW3201",
     "PLR6301",
     "S608",
+    "S104",
+    "S311",
+    "S105",
+    "S106",
 ]
-select = ["ALL"]
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
@@ -166,20 +215,25 @@ classmethod-decorators = [
     "sqlalchemy.ext.declarative.declared_attr",
     "sqlalchemy.orm.declared_attr.directive",
     "sqlalchemy.orm.declared_attr",
+    "pydantic.field_validator",
+    "pydantic.root_validator",
+    "pydantic.validator",
 ]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tests", "cymbal", "config"]
+split-on-trailing-comma=false
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "D104"]
 "src/cymbal/db/migrations/versions/*.py" = ["ANN201", "INP001"]
 "docs/**/*.*" = ["S", "B", "DTZ", "A", "ERA", "D", "RET", "E731", "RUF012", "FA100", "ARG001"]
 "docs/conf.py" = ["FIX002", "ARG001", "INP001"]
-"tests/*.py" = ["D103", "S101", "D104", "PLR2004"]
-"tests/**/*.py" = ["D103", "S101", "D104", "PLR2004"]
-"tools/*.py" = ["INP001", "ERA001", "N999"]
-"tools/**/*.*" = ["D", "ARG", "EM", "TRY", "G", "FBT", "INP001", "S603", "S404", "PLR0915"]
+"src/tests/*.py" = ["D103", "S101", "D104", "PLR2004", "S105", "S106", "S404", "ANN001", "S608", "PLW0603"]
+"src/tests/**/*.py" = ["D103", "S101", "D104", "PLR2004", "S105", "S106", "S404", "ANN001", "S608", "PLW0603"]
+"tools/*.py" = ["INP001", "ERA001", "N999", "C901", "A002", "S105", "S106", "S107", "S607", "BLE001", "PLR0911", "PLR0912"]
+"tools/**/*.*" = ["D", "ARG", "EM", "TRY", "G", "FBT", "INP001", "S603", "S404", "PLR0915", "S105", "S106"]
+"manage.py" = ["BLE001", "INP001"]
 
 [tool.slotscheck]
 strict-imports = false
@@ -201,7 +255,8 @@ exclude = '''(?x)(
 |^migrations/
 )'''
 implicit_reexport = false
-plugins = []
+plugins = ["pydantic.mypy"]
+show_error_codes = true
 python_version = "3.12"
 strict = true
 warn_redundant_casts = true
@@ -210,10 +265,15 @@ warn_unreachable = true
 warn_unused_configs = true
 warn_unused_ignores = true
 
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+warn_untyped_fields = true
+
 [[tool.mypy.overrides]]
 disallow_untyped_decorators = false
 module = ["tests.*"]
-
 
 [[tool.mypy.overrides]]
 ignore_missing_imports = true
@@ -231,6 +291,12 @@ module = [
     "vertexai.*",
     "sklearn",
     "sklearn.*",
+    "google.*",
+    "google.auth",
+    "google.cloud.*",
+    "google.protobuf.*",
+    "googleapiclient",
+    "googleapiclient.*",
 ]
 
 [[tool.mypy.overrides]]
@@ -244,8 +310,10 @@ filterwarnings = [
     "ignore::DeprecationWarning:google.*",
     "ignore::PendingDeprecationWarning",
     "ignore::UserWarning:sqlalchemy.*",
+    "ignore::DeprecationWarning:litestar.*",
+    "ignore::DeprecationWarning:httpx.*",
 ]
-testpaths = ["tests"]
+testpaths = ["src/tests"]
 
 [tool.pyright]
 exclude = ["scripts", "docs"]

@@ -29,9 +29,7 @@ if TYPE_CHECKING:
 
 
 pytestmark = pytest.mark.anyio
-pytest_plugins = [
-    "pytest_databases.docker.postgres",
-]
+pytest_plugins = ["pytest_databases.docker.postgres"]
 
 
 @pytest.fixture(scope="session")

@@ -42,11 +42,7 @@ def create_app() -> Litestar:
     settings = get_settings()
 
     # Create Dishka container with all providers
-    container = make_async_container(
-        SQLSpecProvider(),
-        CoreServiceProvider(),
-        ADKProvider(),
-    )
+    container = make_async_container(SQLSpecProvider(), CoreServiceProvider(), ADKProvider())
 
     # Make container available to ADK tools
     from cymbal.services._adk.tools import set_app_container
@@ -61,11 +57,7 @@ def create_app() -> Litestar:
 
     # Create app with Dishka integration
     # Create fresh ApplicationCore instance (don't use plugins.app_config which was created at import time)
-    app = Litestar(
-        debug=settings.app.DEBUG,
-        plugins=[ApplicationCore()],
-        lifespan=[dishka_lifespan],
-    )
+    app = Litestar(debug=settings.app.DEBUG, plugins=[ApplicationCore()], lifespan=[dishka_lifespan])
 
     # Setup Dishka integration with Litestar
     setup_dishka(container, app)

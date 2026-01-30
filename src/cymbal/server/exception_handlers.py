@@ -108,12 +108,7 @@ def handle_htmx_api_exception(request: Request, exc: HTMXAPIException) -> Respon
 
     return HTMXTemplate(
         template_name="partials/chat_error.html",
-        context={
-            "user_message": user_message,
-            "ai_response": exc.detail,
-            "query_id": "",
-            "csp_nonce": csp_nonce,
-        },
+        context={"user_message": user_message, "ai_response": exc.detail, "query_id": "", "csp_nonce": csp_nonce},
         status_code=exc.status_code,
         # Trigger an API error event for client-side handling
         trigger_event="api:error",
@@ -202,11 +197,7 @@ def handle_vector_demo_exception(request: Request, exc: VectorDemoException) -> 
         status_code=exc.status_code,
         # Trigger vector-specific error event
         trigger_event="vector:error",
-        params={
-            "operation": exc.operation,
-            "error_type": exc.error_type,
-            "retry": exc.error_type != "validation",
-        },
+        params={"operation": exc.operation, "error_type": exc.error_type, "retry": exc.error_type != "validation"},
         after="settle",
     )
 

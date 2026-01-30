@@ -45,10 +45,7 @@ class AgentToolsService(SQLSpecService):
         self.store_service = store_service
 
     async def search_products_by_vector(
-        self,
-        query: str,
-        limit: int = 5,
-        similarity_threshold: float = 0.7,
+        self, query: str, limit: int = 5, similarity_threshold: float = 0.7
     ) -> dict[str, Any]:
         """Search for coffee products using vector similarity."""
         start_time = time.time()
@@ -61,9 +58,7 @@ class AgentToolsService(SQLSpecService):
 
         db_query_start = time.time()
         products = await self.product_service.search_by_vector(
-            query_embedding=query_embedding,
-            similarity_threshold=similarity_threshold,
-            limit=limit,
+            query_embedding=query_embedding, similarity_threshold=similarity_threshold, limit=limit
         )
         db_ms = (time.time() - db_query_start) * 1000
 
@@ -178,6 +173,7 @@ LIMIT :limit"""
         """Record metrics for a search operation."""
         try:
             from cymbal.schemas import SearchMetricsCreate
+
             avg_similarity = 0.0
             if vector_results:
                 similarity_scores = [

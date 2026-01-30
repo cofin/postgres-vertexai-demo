@@ -44,17 +44,8 @@ def install_group() -> None:
     type=click.Choice(["managed", "external"], case_sensitive=False),
     help="Install prerequisites for specific mode (auto-detect if not specified)",
 )
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Force reinstall even if already installed",
-)
-@click.option(
-    "--yes",
-    "-y",
-    is_flag=True,
-    help="Skip confirmation prompts",
-)
+@click.option("--force", is_flag=True, help="Force reinstall even if already installed")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
 def install_all_command(mode: str | None, force: bool, yes: bool) -> None:
     """Install all prerequisites for deployment mode.
 
@@ -123,42 +114,14 @@ def install_list_command() -> None:
     table.add_column("Modes", width=30)
     table.add_column("Description")
 
+    table.add_row("uv", "[green]Yes[/green]", "managed, external", "Fast Python package manager")
+    table.add_row("java", "[yellow]Optional[/yellow]", "managed, external", "Java 11+ (required for SQLcl)")
+    table.add_row("sqlcl", "[yellow]Optional[/yellow]", "managed, external", "Oracle SQL command-line tool")
+    table.add_row("docker", "[yellow]Optional[/yellow]", "managed", "Container runtime (not auto-installed)")
     table.add_row(
-        "uv",
-        "[green]Yes[/green]",
-        "managed, external",
-        "Fast Python package manager",
+        "gemini-cli", "[yellow]Optional[/yellow]", "managed, external", "Google Gemini CLI (AI terminal assistant)"
     )
-    table.add_row(
-        "java",
-        "[yellow]Optional[/yellow]",
-        "managed, external",
-        "Java 11+ (required for SQLcl)",
-    )
-    table.add_row(
-        "sqlcl",
-        "[yellow]Optional[/yellow]",
-        "managed, external",
-        "Oracle SQL command-line tool",
-    )
-    table.add_row(
-        "docker",
-        "[yellow]Optional[/yellow]",
-        "managed",
-        "Container runtime (not auto-installed)",
-    )
-    table.add_row(
-        "gemini-cli",
-        "[yellow]Optional[/yellow]",
-        "managed, external",
-        "Google Gemini CLI (AI terminal assistant)",
-    )
-    table.add_row(
-        "mcp-toolbox",
-        "[yellow]Optional[/yellow]",
-        "managed, external",
-        "MCP Toolbox for Databases",
-    )
+    table.add_row("mcp-toolbox", "[yellow]Optional[/yellow]", "managed, external", "MCP Toolbox for Databases")
 
     console.print(table)
     console.print()
@@ -167,15 +130,8 @@ def install_list_command() -> None:
 
 
 @install_group.command(name="uv")
-@click.option(
-    "--version",
-    help="Specific version to install (default: latest)",
-)
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Force reinstall even if already installed",
-)
+@click.option("--version", help="Specific version to install (default: latest)")
+@click.option("--force", is_flag=True, help="Force reinstall even if already installed")
 def install_uv_command(version: str | None, force: bool) -> None:
     r"""Install Astral's UV package manager.
 
@@ -267,23 +223,12 @@ def install_uv_command(version: str | None, force: bool) -> None:
 
 
 @install_group.command(name="sqlcl")
+@click.option("--dir", "install_dir", type=click.Path(), help="Installation directory (default: ~/.local/bin)")
+@click.option("--force", is_flag=True, help="Reinstall even if already installed")
 @click.option(
-    "--dir",
-    "install_dir",
-    type=click.Path(),
-    help="Installation directory (default: ~/.local/bin)",
+    "--connection-name", default="cymbal_coffee", help="Name for saved SQLcl connection (default: cymbal_coffee)"
 )
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Reinstall even if already installed",
-)
-@click.option(
-    "--connection-name",
-    default="cymbal_coffee",
-    help="Name for saved SQLcl connection (default: cymbal_coffee)",
-)
-def install_sqlcl_command(install_dir: str | None, force: bool, connection_name: str) -> None:  # noqa: C901
+def install_sqlcl_command(install_dir: str | None, force: bool, connection_name: str) -> None:
     """Install Oracle SQLcl command-line tool.
 
     Idempotent: Safe to run multiple times. Skips installation if SQLcl is already
@@ -475,18 +420,9 @@ def _configure_missing_mcp_extensions() -> None:
 
 
 @install_group.command(name="gemini-cli")
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Force reinstall even if already installed",
-)
-@click.option(
-    "--configure-mcp",
-    is_flag=True,
-    default=True,
-    help="Configure MCP extensions (default: True)",
-)
-def install_gemini_cli_command(force: bool, configure_mcp: bool) -> None:  # noqa: C901
+@click.option("--force", is_flag=True, help="Force reinstall even if already installed")
+@click.option("--configure-mcp", is_flag=True, default=True, help="Configure MCP extensions (default: True)")
+def install_gemini_cli_command(force: bool, configure_mcp: bool) -> None:
     """Install Google Gemini CLI.
 
     Idempotent: Safe to run multiple times. Skips installation if Gemini CLI is
@@ -553,11 +489,7 @@ def install_gemini_cli_command(force: bool, configure_mcp: bool) -> None:  # noq
     console.print()
 
     try:
-        subprocess.run(
-            ["npm", "install", "-g", "@google/gemini-cli"],  # noqa: S607
-            check=True,
-            text=True,
-        )
+        subprocess.run(["npm", "install", "-g", "@google/gemini-cli"], check=True, text=True)
 
         console.print()
         console.print("[green]✓ Gemini CLI installed successfully![/green]")
@@ -624,16 +556,8 @@ def install_gemini_cli_command(force: bool, configure_mcp: bool) -> None:  # noq
 
 
 @install_group.command(name="mcp-toolbox")
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Force reinstall even if already installed",
-)
-@click.option(
-    "--version",
-    default="v0.16.0",
-    help="Specific version to install (default: v0.16.0)",
-)
+@click.option("--force", is_flag=True, help="Force reinstall even if already installed")
+@click.option("--version", default="v0.16.0", help="Specific version to install (default: v0.16.0)")
 def install_mcp_toolbox_command(force: bool, version: str) -> None:
     """Install MCP Toolbox for Databases.
 

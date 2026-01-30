@@ -126,7 +126,7 @@ def main() -> None:
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted by user[/yellow]")
         sys.exit(130)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
 

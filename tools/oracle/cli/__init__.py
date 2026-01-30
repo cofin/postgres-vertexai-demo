@@ -6,13 +6,7 @@ in any Click-based CLI application.
 
 from __future__ import annotations
 
-__all__ = [
-    "connect_group",
-    "database_group",
-    "sqlcl_group",
-    "status_command",
-    "wallet_group",
-]
+__all__ = ["connect_group", "database_group", "sqlcl_group", "status_command", "wallet_group"]
 
 from tools.oracle.cli.connection import connect_group
 from tools.oracle.cli.database import database_group

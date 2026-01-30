@@ -1,14 +1,10 @@
 """Environment variable utilities with type-safe parsing."""
 
-from __future__ import annotations
-
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, TypeVar, get_origin, overload
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from typing import Any, Final, TypeVar, cast, get_args, get_origin, overload
 
 TRUE_VALUES: Final[frozenset[str]] = frozenset({"True", "true", "1", "yes", "YES", "Y", "y", "T", "t"})
 
@@ -60,9 +56,7 @@ def get_env(key: str, default: dict[str, Any], type_hint: UnsetType = _UNSET) ->
 
 
 def get_env(
-    key: str,
-    default: ParseTypes | None,
-    type_hint: type[T] | UnsetType = _UNSET,
+    key: str, default: ParseTypes | None, type_hint: type[T] | UnsetType = _UNSET
 ) -> Callable[[], ParseTypes | T | None]:
     """Return a lambda that gets configuration value from environment."""
     return lambda: get_config_val(key=key, default=default, type_hint=type_hint)
@@ -99,9 +93,7 @@ def _parse_basic_type(key: str, value: str, final_type: type | None, default: Pa
 
 
 def get_config_val(
-    key: str,
-    default: ParseTypes | None,
-    type_hint: type[T] | UnsetType = _UNSET,
+    key: str, default: ParseTypes | None, type_hint: type[T] | UnsetType = _UNSET
 ) -> ParseTypes | T | None:
     """Parse environment variables with proper type handling.
 
@@ -112,10 +104,6 @@ def get_config_val(
 
     Returns:
         Parsed value of specified type
-
-    Raises:
-        RuntimeError: When value cannot be parsed
-        ValueError: When value format is invalid
     """
     str_value = os.getenv(key)
     if str_value is None:
@@ -130,10 +118,12 @@ def get_config_val(
 
     # Handle list types
     if final_type and get_origin(final_type) is list:
-        return _parse_list(key, value, str)  # Default to string items
-    if isinstance(default, list) and default:
+        args = get_args(final_type)
+        item_type = cast("type", args[0]) if args else str
+        return _parse_list(key, value, item_type)
+    if isinstance(default, list):
         item_type = type(default[0]) if default else str
-        return _parse_list(key, value, item_type)  # type: ignore[return-value]
+        return cast("list[str]", _parse_list(key, value, item_type))
 
     # Handle dict types
     if final_type is dict or isinstance(default, dict):
@@ -145,13 +135,23 @@ def get_config_val(
 
 def _parse_list(key: str, value: str, item_constructor: type[T]) -> list[T]:
     """Parse list from environment value."""
+
+    def _coerce_item(item: Any) -> T:
+        if item_constructor is bool:
+            if isinstance(item, bool):
+                return cast("T", item)
+            if isinstance(item, (int, float)):
+                return cast("T", bool(item))
+            return cast("T", str(item).strip() in TRUE_VALUES)
+        return item_constructor(item)  # type: ignore[call-arg]
+
     if value.startswith("[") and value.endswith("]"):
         try:
             parsed_json = json.loads(value)
             if not isinstance(parsed_json, list):
                 msg = f"'{key}' is not a valid list representation"
                 raise TypeError(msg)
-            return [item_constructor(item) for item in parsed_json]  # type: ignore[call-arg]
+            return [_coerce_item(item) for item in parsed_json]
         except (json.JSONDecodeError, ValueError) as e:
             msg = f"'{key}' is not a valid JSON list"
             raise ValueError(msg) from e
@@ -159,7 +159,7 @@ def _parse_list(key: str, value: str, item_constructor: type[T]) -> list[T]:
     # Split by comma
     items = [item.strip() for item in value.split(",") if item.strip()]
     try:
-        return [item_constructor(item) for item in items]  # type: ignore[call-arg]
+        return [_coerce_item(item) for item in items]
     except (ValueError, TypeError) as e:
         msg = f"Error parsing list items for '{key}': {e}"
         raise ValueError(msg) from e

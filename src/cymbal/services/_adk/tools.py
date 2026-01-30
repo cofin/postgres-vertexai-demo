@@ -45,11 +45,7 @@ def get_app_container() -> AsyncContainer:
     return _app_container
 
 
-async def search_products_by_vector(
-    query: str,
-    limit: int,
-    similarity_threshold: float,
-) -> dict[str, Any]:
+async def search_products_by_vector(query: str, limit: int, similarity_threshold: float) -> dict[str, Any]:
     """Search for coffee products using vector similarity with fresh session."""
     # Apply defaults within function to avoid ADK schema issues
     limit = limit or 5
@@ -60,6 +56,7 @@ async def search_products_by_vector(
     async with container() as request_container:
         tools_service = await request_container.get(AgentToolsService)
         return await tools_service.search_products_by_vector(query, limit, similarity_threshold)
+
 
 async def get_product_details(product_id: str) -> dict[str, Any]:
     """Get detailed information about a specific product by ID or name with fresh session."""

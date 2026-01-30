@@ -24,11 +24,7 @@ import structlog
 from litestar import Controller, get, post
 from litestar.enums import RequestEncodingType
 from litestar.params import Body
-from litestar.plugins.htmx import (
-    HTMXRequest,
-    HTMXTemplate,
-    HXStopPolling,
-)
+from litestar.plugins.htmx import HTMXRequest, HTMXTemplate, HXStopPolling
 from litestar.response import File, Stream
 from sqlspec.adapters.asyncpg import AsyncpgDriver
 
@@ -120,11 +116,7 @@ class CoffeeChatController(Controller):
             "user_id": "web_user",
             "timestamp": time.time(),
         }
-        await cache_service.set_query_state(
-            query_id=query_id,
-            state=query_state,
-            ttl_minutes=5,
-        )
+        await cache_service.set_query_state(query_id=query_id, state=query_state, ttl_minutes=5)
 
         # ALWAYS return streaming UI (no fallback, clean cut)
         return HTMXTemplate(
@@ -141,10 +133,7 @@ class CoffeeChatController(Controller):
         )
 
     async def _stream_cached_response(
-        self,
-        cached: Any,
-        query_id: str,
-        cache_service: CacheService,
+        self, cached: Any, query_id: str, cache_service: CacheService
     ) -> AsyncGenerator[str, None]:
         """Stream cached response as SSE events.
 
@@ -189,11 +178,7 @@ class CoffeeChatController(Controller):
         embedding_cache_hit = False
 
         events = adk_runner.stream_request(
-            query=query,
-            user_id=user_id,
-            session_id=session_id,
-            persona=persona,
-            cache_service=cache_service,
+            query=query, user_id=user_id, session_id=session_id, persona=persona, cache_service=cache_service
         )
 
         async for chunk in events:
@@ -202,38 +187,27 @@ class CoffeeChatController(Controller):
             if chunk_type == "text":
                 text = chunk.get("text", "")
                 accumulated_text.append(text)
-                yield (
-                    f"event: chunk\ndata: {to_json({'text': text}, as_bytes=False)}\n\n",
-                    {
-                        "text": accumulated_text,
-                    },
-                )
+                yield (f"event: chunk\ndata: {to_json({'text': text}, as_bytes=False)}\n\n", {"text": accumulated_text})
 
             elif chunk_type == "intent":
                 intent_details = chunk.get("data", {})
                 yield (
                     f"event: metadata\ndata: {to_json({'type': 'intent', 'data': intent_details}, as_bytes=False)}\n\n",
-                    {
-                        "intent": intent_details,
-                    },
+                    {"intent": intent_details},
                 )
 
             elif chunk_type == "products":
                 search_details = chunk.get("data", {})
                 yield (
                     f"event: metadata\ndata: {to_json({'type': 'products', 'data': search_details}, as_bytes=False)}\n\n",
-                    {
-                        "products": search_details,
-                    },
+                    {"products": search_details},
                 )
 
             elif chunk_type == "stores":
                 store_details = chunk.get("data", {})
                 yield (
                     f"event: metadata\ndata: {to_json({'type': 'stores', 'data': store_details}, as_bytes=False)}\n\n",
-                    {
-                        "stores": store_details,
-                    },
+                    {"stores": store_details},
                 )
 
             elif chunk_type == "cache_hit":
@@ -389,10 +363,7 @@ class CoffeeChatController(Controller):
 
         return HTMXTemplate(
             template_name="performance_dashboard.html",
-            context={
-                "metrics": metrics,
-                "csp_nonce": self.generate_csp_nonce(),
-            },
+            context={"metrics": metrics, "csp_nonce": self.generate_csp_nonce()},
             trigger_event="dashboard:loaded",
             params={"total_searches": metrics.get("total_searches", 0)},
             after="settle",
@@ -427,10 +398,7 @@ class CoffeeChatController(Controller):
     @get(path="/api/metrics/summary", name="metrics.summary")
     @inject
     async def get_metrics_summary(
-        self,
-        metrics_service: Inject[MetricsService],
-        cache_service: Inject[CacheService],
-        request: HTMXRequest,
+        self, metrics_service: Inject[MetricsService], cache_service: Inject[CacheService], request: HTMXRequest
     ) -> HTMXTemplate:
         """Get summary metrics for dashboard cards."""
         # Get performance stats
@@ -447,10 +415,7 @@ class CoffeeChatController(Controller):
             return ("up" if change > 0 else "down", abs(change))
 
         # Build metric cards data
-        total_trend, total_change = calculate_trend(
-            perf_stats["total_searches"],
-            prev_stats["total_searches"],
-        )
+        total_trend, total_change = calculate_trend(perf_stats["total_searches"], prev_stats["total_searches"])
 
         metrics_data = {
             "total_searches": {
@@ -500,10 +465,7 @@ class CoffeeChatController(Controller):
 
     @get(path="/api/metrics/charts", name="metrics.charts")
     @inject
-    async def get_chart_data(
-        self,
-        metrics_service: Inject[MetricsService],
-    ) -> s.ChartDataResponse:
+    async def get_chart_data(self, metrics_service: Inject[MetricsService]) -> s.ChartDataResponse:
         """Get chart data for dashboard visualizations."""
         time_series = await metrics_service.get_time_series_data(minutes=60)
         scatter_data = await metrics_service.get_scatter_data(hours=1)
@@ -584,10 +546,7 @@ class CoffeeChatController(Controller):
 
         # Log detailed timings for debugging
         request.logger.info(
-            "vector_demo_detailed_timings",
-            query=query[:50],
-            timings=detailed_timings,
-            cache_hit=embedding_cache_hit,
+            "vector_demo_detailed_timings", query=query[:50], timings=detailed_timings, cache_hit=embedding_cache_hit
         )
 
         # Determine performance level and trigger appropriate event
@@ -677,13 +636,7 @@ class CoffeeChatController(Controller):
                 "vector_search_time": 8.7,
             }
 
-    @get(
-        path="/favicon.ico",
-        name="favicon",
-        exclude_from_auth=True,
-        sync_to_thread=False,
-        include_in_schema=False,
-    )
+    @get(path="/favicon.ico", name="favicon", exclude_from_auth=True, sync_to_thread=False, include_in_schema=False)
     def favicon(self) -> File:
         """Serve favicon with security headers."""
         return File(

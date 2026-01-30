@@ -81,12 +81,7 @@ class ExemplarService(SQLSpecService):
 
         return numpy_result
 
-    async def cache_exemplar(
-        self,
-        intent: str,
-        phrase: str,
-        embedding: list[float],
-    ) -> None:
+    async def cache_exemplar(self, intent: str, phrase: str, embedding: list[float]) -> None:
         """Cache a single exemplar embedding.
 
         SQLSpec automatically handles vector conversions - no need for array.array().
@@ -103,11 +98,7 @@ class ExemplarService(SQLSpecService):
             embedding=embedding,
         )
 
-    async def populate_cache(
-        self,
-        exemplars: dict[str, list[str]],
-        vertex_ai_service: VertexAIService,
-    ) -> int:
+    async def populate_cache(self, exemplars: dict[str, list[str]], vertex_ai_service: VertexAIService) -> int:
         """Populate cache with all exemplars. Returns count of embeddings created."""
         count = 0
 
@@ -139,12 +130,7 @@ class ExemplarService(SQLSpecService):
         logger.info("Populated cache with %d new exemplar embeddings", count)
         return count
 
-    async def add_intent_phrases(
-        self,
-        intent: str,
-        phrases: list[str],
-        vertex_ai_service: VertexAIService,
-    ) -> int:
+    async def add_intent_phrases(self, intent: str, phrases: list[str], vertex_ai_service: VertexAIService) -> int:
         """Add multiple phrases for a specific intent.
 
         Args:
@@ -168,12 +154,7 @@ class ExemplarService(SQLSpecService):
         logger.info("Added %d new phrases for intent '%s'", count, intent)
         return count
 
-    async def add_new_intent(
-        self,
-        intent: str,
-        phrases: list[str],
-        vertex_ai_service: VertexAIService,
-    ) -> int:
+    async def add_new_intent(self, intent: str, phrases: list[str], vertex_ai_service: VertexAIService) -> int:
         """Add a completely new intent with its phrases.
 
         This is a convenience method that wraps add_intent_phrases.

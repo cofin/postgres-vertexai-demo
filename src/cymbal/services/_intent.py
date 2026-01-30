@@ -213,10 +213,7 @@ class IntentService(SQLSpecService):
     """PostgreSQL native vector similarity search for intent routing."""
 
     def __init__(
-        self,
-        driver: AsyncDriverAdapterBase,
-        exemplar_service: ExemplarService,
-        vertex_ai_service: VertexAIService,
+        self, driver: AsyncDriverAdapterBase, exemplar_service: ExemplarService, vertex_ai_service: VertexAIService
     ) -> None:
         """Initialize intent service."""
         super().__init__(driver)
@@ -224,10 +221,7 @@ class IntentService(SQLSpecService):
         self.vertex_ai_service = vertex_ai_service
 
     async def search_similar_intents(
-        self,
-        query_embedding: list[float],
-        min_threshold: float,
-        limit: int,
+        self, query_embedding: list[float], min_threshold: float, limit: int
     ) -> list[SimilarIntent]:
         """Search for similar intents in the exemplar table."""
         return await self.driver.select(
@@ -261,11 +255,7 @@ class IntentService(SQLSpecService):
         )
 
     async def classify_intent(
-        self,
-        query: str,
-        user_embedding: list[float] | None = None,
-        min_threshold: float = 0.6,
-        max_results: int = 5,
+        self, query: str, user_embedding: list[float] | None = None, min_threshold: float = 0.6, max_results: int = 5
     ) -> IntentResult:
         """Classify intent using vector similarity with exemplars."""
         if user_embedding is None:
@@ -276,9 +266,7 @@ class IntentService(SQLSpecService):
             embedding_cache_hit = True
 
         similar_intents = await self.search_similar_intents(
-            query_embedding=user_embedding,
-            min_threshold=min_threshold,
-            limit=max_results,
+            query_embedding=user_embedding, min_threshold=min_threshold, limit=max_results
         )
 
         if not similar_intents:

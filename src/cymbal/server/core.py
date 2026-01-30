@@ -78,14 +78,7 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         app_config.stores = config.stores
         app_config.middleware.append(config.session_config.middleware)
         # plugins
-        app_config.plugins.extend(
-            [
-                plugins.granian,
-                plugins.sqlspec,
-                plugins.structlog,
-                plugins.htmx,
-            ],
-        )
+        app_config.plugins.extend([plugins.granian, plugins.sqlspec, plugins.structlog, plugins.htmx])
         # Set HTMXRequest as the default request class
         app_config.request_class = HTMXRequest
         app_config.template_config = config.templates
@@ -98,48 +91,44 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         )
 
         # routes
-        app_config.route_handlers.extend(
-            [
-                CoffeeChatController,
-                create_static_files_router(
-                    path="/static",
-                    directories=[str(BASE_DIR / "server" / "static")],
-                    name="static",
-                    html_mode=False,
-                    send_as_attachment=False,
-                ),
-            ],
-        )
+        app_config.route_handlers.extend([
+            CoffeeChatController,
+            create_static_files_router(
+                path="/static",
+                directories=[str(BASE_DIR / "server" / "static")],
+                name="static",
+                html_mode=False,
+                send_as_attachment=False,
+            ),
+        ])
         # startup hooks
         app_config.on_startup.append(startup.on_startup)
         # exception handlers
         app_config.exception_handlers.update(exception_handlers)  # type: ignore[arg-type]
         # signatures
-        app_config.signature_namespace.update(
-            {
-                # SQLSpec PostgreSQL driver
-                "AsyncpgDriver": AsyncpgDriver,
-                "RequestEncodingType": RequestEncodingType,
-                "Body": Body,
-                "State": State,
-                "ChannelsPlugin": ChannelsPlugin,
-                "WebSocket": WebSocket,
-                "AsyncGenerator": AsyncGenerator,
-                "schemas": schemas,
-                "services": services,
-                "ProductService": ProductService,
-                "CacheService": CacheService,
-                "MetricsService": MetricsService,
-                "ExemplarService": ExemplarService,
-                "VertexAIService": VertexAIService,
-                "VectorSearchService": VectorSearchService,
-                "ADKRunner": ADKRunner,
-                "Request": Request,
-                "HTMXRequest": HTMXRequest,
-                "SQLSpec": SQLSpec,
-                "AsyncDriverAdapterBase": AsyncDriverAdapterBase,
-            },
-        )
+        app_config.signature_namespace.update({
+            # SQLSpec PostgreSQL driver
+            "AsyncpgDriver": AsyncpgDriver,
+            "RequestEncodingType": RequestEncodingType,
+            "Body": Body,
+            "State": State,
+            "ChannelsPlugin": ChannelsPlugin,
+            "WebSocket": WebSocket,
+            "AsyncGenerator": AsyncGenerator,
+            "schemas": schemas,
+            "services": services,
+            "ProductService": ProductService,
+            "CacheService": CacheService,
+            "MetricsService": MetricsService,
+            "ExemplarService": ExemplarService,
+            "VertexAIService": VertexAIService,
+            "VectorSearchService": VectorSearchService,
+            "ADKRunner": ADKRunner,
+            "Request": Request,
+            "HTMXRequest": HTMXRequest,
+            "SQLSpec": SQLSpec,
+            "AsyncDriverAdapterBase": AsyncDriverAdapterBase,
+        })
         return app_config
 
     def on_cli_init(self, cli: Group) -> None:
