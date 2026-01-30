@@ -402,15 +402,16 @@ class ViteSettings:
         from litestar_vite import PathConfig, RuntimeConfig, TypeGenConfig, ViteConfig
 
         return ViteConfig(
-            mode="spa",
+            mode="htmx",
             dev_mode=self.DEV_MODE,
             paths=PathConfig(
-                root=BASE_DIR.parent.parent / "js" / "web", # Assuming future structure, may need adjustment
+                root=BASE_DIR.parent.parent / "js" / "web",
+                resource_dir=Path("resources"),
                 bundle_dir=Path(BASE_DIR / "server" / "static"),
                 asset_url=self.ASSET_URL,
             ),
-            runtime=RuntimeConfig(executor="bun"),
-            types=TypeGenConfig(output=Path("src/lib/generated")),
+            runtime=RuntimeConfig(executor="bun", set_static_folders=False),
+            types=TypeGenConfig(output=Path("resources/generated")),
         )
 
 
