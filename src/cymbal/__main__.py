@@ -12,12 +12,12 @@ def setup_environment() -> None:
     sys.path.append(str(current_path))
     from litestar.cli._utils import LitestarExtensionGroup
 
-    from app import config
-    from app.lib.settings import get_settings
+    from cymbal import config
+    from cymbal.lib.settings import get_settings
 
     _ = config.log.structlog_logging_config.configure()()
     settings = get_settings()
-    os.environ.setdefault("LITESTAR_APP", "app.server.asgi:create_app")
+    os.environ.setdefault("LITESTAR_APP", "cymbal.server.asgi:create_app")
     os.environ.setdefault("LITESTAR_APP_NAME", settings.app.NAME)
     os.environ.setdefault("LITESTAR_GRANIAN_IN_SUBPROCESS", "false")
     os.environ.setdefault("LITESTAR_GRANIAN_USE_LITESTAR_LOGGER", "true")

@@ -18,7 +18,7 @@ from uuid import UUID
 
 import msgspec
 
-from app.lib.schema import BaseStruct, CamelizedBaseStruct, Message, camel_case
+from cymbal.lib.schema import BaseStruct, CamelizedBaseStruct, Message, camel_case
 
 __all__ = (
     "BaseStruct",

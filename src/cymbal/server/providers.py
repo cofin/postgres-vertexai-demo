@@ -19,11 +19,11 @@ from sqlspec.adapters.asyncpg import AsyncpgConfig
 from sqlspec.base import SQLSpec
 from sqlspec.driver import AsyncDriverAdapterBase
 
-from app.config import db, db_manager
-from app.lib.di import QueryContext, query_id_var
+from cymbal.config import db, db_manager
+from cymbal.lib.di import QueryContext, query_id_var
 
 # Import service types for proper type registration (aliased to avoid conflicts)
-from app.services import (
+from cymbal.services import (
     CacheService,
     ExemplarService,
     MetricsService,
@@ -31,9 +31,9 @@ from app.services import (
     VectorSearchService,
     VertexAIService,
 )
-from app.services._adk import ADKRunner, AgentToolsService
-from app.services._intent import IntentService
-from app.services._store import StoreService
+from cymbal.services._adk import ADKRunner, AgentToolsService
+from cymbal.services._intent import IntentService
+from cymbal.services._store import StoreService
 
 # Context variable for request container access in ADK tools
 _request_container: ContextVar[AsyncContainer | None] = ContextVar("_request_container", default=None)
@@ -97,7 +97,7 @@ class SQLSpecProvider(Provider):
     def get_database_config(self) -> AsyncpgConfig:
         """Provide database configuration singleton.
 
-        Returns the database configuration from app.config.
+        Returns the database configuration from cymbal.config.
         Created once at application startup.
         """
 

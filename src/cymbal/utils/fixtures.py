@@ -15,7 +15,7 @@ from typing import Any
 
 from sqlspec import sql
 
-from app.utils.serialization import from_json, to_json
+from cymbal.utils.serialization import from_json, to_json
 
 
 class FixtureProcessor:

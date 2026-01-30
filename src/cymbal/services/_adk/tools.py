@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING, Any
 
 from dishka import AsyncContainer  # noqa: TC002
 
-from app.services._adk.tool_service import AgentToolsService
-from app.utils.serialization import from_json
+from cymbal.services._adk.tool_service import AgentToolsService
+from cymbal.utils.serialization import from_json
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -102,7 +102,7 @@ async def record_search_metric(
     async with container() as request_container:
         tools_service = await request_container.get(AgentToolsService)
 
-        from app.lib.di import QueryContext
+        from cymbal.lib.di import QueryContext
 
         query_context = await request_container.get(QueryContext | None)
         query_id = query_context.query_id if query_context else None

@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 import structlog
 
-from app.services.base import SQLSpecService
+from cymbal.services.base import SQLSpecService
 
 if TYPE_CHECKING:
     from sqlspec import AsyncDriverAdapterBase
 
-    from app.services._vertex_ai import VertexAIService
+    from cymbal.services._vertex_ai import VertexAIService
 
 logger = structlog.get_logger()
 

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from app.schemas import Store
-from app.services.base import SQLSpecService
+from cymbal.schemas import Store
+from cymbal.services.base import SQLSpecService
 
 
 class StoreService(SQLSpecService):

@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any, overload
 import structlog
 from google import genai
 
-from app.lib.settings import get_settings
-from app.services._cache import CacheService
+from cymbal.lib.settings import get_settings
+from cymbal.services._cache import CacheService
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator

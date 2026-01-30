@@ -1,12 +1,12 @@
 """Public API for app services - single entry point."""
 
-from app.services._cache import CacheService
-from app.services._exemplar import ExemplarService
-from app.services._intent import INTENT_EXEMPLARS, IntentService
-from app.services._metrics import MetricsService
-from app.services._product import ProductService
-from app.services._store import StoreService
-from app.services._vertex_ai import VectorSearchService, VertexAIService
+from cymbal.services._cache import CacheService
+from cymbal.services._exemplar import ExemplarService
+from cymbal.services._intent import INTENT_EXEMPLARS, IntentService
+from cymbal.services._metrics import MetricsService
+from cymbal.services._product import ProductService
+from cymbal.services._store import StoreService
+from cymbal.services._vertex_ai import VectorSearchService, VertexAIService
 
 __all__ = [
     "INTENT_EXEMPLARS",

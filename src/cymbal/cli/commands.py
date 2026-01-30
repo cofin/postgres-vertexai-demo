@@ -102,9 +102,9 @@ def bulk_embed(batch_size: int, force: bool) -> None:
     console.print()
 
     async def _bulk_embed_products() -> None:
-        from app.config import db, db_manager
-        from app.services import ProductService, VertexAIService
-        from app.services._cache import CacheService
+        from cymbal.config import db, db_manager
+        from cymbal.services import ProductService, VertexAIService
+        from cymbal.services._cache import CacheService
 
         # Use SQLSpec session directly
         async with db_manager.provide_session(db) as session:
@@ -202,8 +202,8 @@ def clear_cache(include_exemplars: bool, force: bool) -> None:
 
     async def _clear_cache() -> None:
         """Clear cache tables."""
-        from app.config import db, db_manager
-        from app.services._cache import CacheService
+        from cymbal.config import db, db_manager
+        from cymbal.services._cache import CacheService
 
         async with db_manager.provide_session(db) as session:
             cache_service = CacheService(session)
@@ -222,8 +222,8 @@ def clear_cache(include_exemplars: bool, force: bool) -> None:
 @coffee_demo_group.command(name="model-info", help="Show information about currently configured AI models.")
 def model_info() -> None:
     """Show information about currently configured AI models."""
-    from app.lib.settings import get_settings
-    from app.services import VertexAIService
+    from cymbal.lib.settings import get_settings
+    from cymbal.services import VertexAIService
 
     console = get_console()
     console.rule("[bold blue]AI Model Configuration", style="blue", align="left")
@@ -268,8 +268,8 @@ def _display_fixture_list() -> None:
 
     from rich.table import Table
 
-    from app.lib.settings import get_settings
-    from app.utils.serialization import from_json
+    from cymbal.lib.settings import get_settings
+    from cymbal.utils.serialization import from_json
 
     console = get_console()
     console.rule("[bold blue]Available Fixture Files", style="blue", align="left")
@@ -340,7 +340,7 @@ def _load_fixture_data(tables: str | None) -> None:
     console.print()
 
     async def _load_fixtures() -> None:
-        from app.db.utils import load_fixtures
+        from cymbal.db.utils import load_fixtures
 
         with console.status("[bold yellow]Loading fixtures...", spinner="dots"):
             results = await load_fixtures(table_list)
@@ -473,8 +473,8 @@ def _display_available_tables() -> None:
     """Display available tables for export."""
     from rich.table import Table
 
-    from app.db.utils import COFFEE_SHOP_TABLES
-    from app.lib.settings import get_settings
+    from cymbal.db.utils import COFFEE_SHOP_TABLES
+    from cymbal.lib.settings import get_settings
 
     console = get_console()
     console.rule("[bold blue]Available Tables for Export", style="blue", align="left")
@@ -526,7 +526,7 @@ def _export_fixture_data(tables: str | None, output_dir: str | None, no_compress
     console.print()
 
     async def _export_fixtures() -> None:
-        from app.db.utils import export_fixtures
+        from cymbal.db.utils import export_fixtures
 
         with console.status("[bold yellow]Exporting fixtures...", spinner="dots"):
             results = await export_fixtures(table_list, output_path, compress)

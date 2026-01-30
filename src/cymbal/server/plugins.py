@@ -18,9 +18,9 @@ from litestar.plugins.structlog import StructlogPlugin
 from litestar_granian import GranianPlugin
 from sqlspec.extensions.litestar import SQLSpecPlugin
 
-from app import config
-from app.lib.settings import get_settings
-from app.server.core import ApplicationCore
+from cymbal import config
+from cymbal.lib.settings import get_settings
+from cymbal.server.core import ApplicationCore
 
 settings = get_settings()
 app_config = ApplicationCore()

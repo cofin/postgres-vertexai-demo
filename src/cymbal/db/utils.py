@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from app.config import db, db_manager
-from app.lib.settings import get_settings
-from app.utils.fixtures import FixtureExporter, FixtureLoader
+from cymbal.config import db, db_manager
+from cymbal.lib.settings import get_settings
+from cymbal.utils.fixtures import FixtureExporter, FixtureLoader
 
 if TYPE_CHECKING:
     from sqlspec.driver import AsyncDriverAdapterBase

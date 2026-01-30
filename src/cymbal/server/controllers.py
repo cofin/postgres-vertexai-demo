@@ -32,12 +32,12 @@ from litestar.plugins.htmx import (
 from litestar.response import File, Stream
 from sqlspec.adapters.asyncpg import AsyncpgDriver
 
-from app import schemas as s
-from app.lib.di import Inject, inject, query_id_var
-from app.server.exception_handlers import HTMXValidationException
-from app.services import CacheService, MetricsService, VectorSearchService, VertexAIService
-from app.services._adk import ADKRunner
-from app.utils.serialization import to_json
+from cymbal import schemas as s
+from cymbal.lib.di import Inject, inject, query_id_var
+from cymbal.server.exception_handlers import HTMXValidationException
+from cymbal.services import CacheService, MetricsService, VectorSearchService, VertexAIService
+from cymbal.services._adk import ADKRunner
+from cymbal.utils.serialization import to_json
 
 logger = structlog.get_logger()
 

@@ -95,12 +95,12 @@ def init_command(mode: str | None, run_install: bool, run_doctor: bool, non_inte
     if mode == "managed":
         console.print("  1. Run: [cyan]python manage.py install all[/cyan]")
         console.print("  2. Run: [cyan]python manage.py database postgres start[/cyan]")
-        console.print("  3. Run: [cyan]uv run app db upgrade[/cyan]")
-        console.print("  4. Run: [cyan]uv run app db load-fixtures[/cyan]")
+        console.print("  3. Run: [cyan]uv run cymbal db upgrade[/cyan]")
+        console.print("  4. Run: [cyan]uv run cymbal db load-fixtures[/cyan]")
     else:  # external
         console.print("  2. Run: [cyan]python manage.py database postgres connect test[/cyan]")
-        console.print("  3. Run: [cyan]uv run app db upgrade[/cyan]")
-        console.print("  4. Run: [cyan]uv run app db load-fixtures[/cyan]")
+        console.print("  3. Run: [cyan]uv run cymbal db upgrade[/cyan]")
+        console.print("  4. Run: [cyan]uv run cymbal db load-fixtures[/cyan]")
 
     console.print()
 

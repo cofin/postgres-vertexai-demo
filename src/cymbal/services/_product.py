@@ -2,8 +2,8 @@
 
 from typing import Any
 
-from app.schemas import Product
-from app.services.base import SQLSpecService
+from cymbal.schemas import Product
+from cymbal.services.base import SQLSpecService
 
 
 class ProductService(SQLSpecService):

@@ -6,14 +6,14 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from app.schemas import IntentResult, SimilarIntent
-from app.services.base import SQLSpecService
+from cymbal.schemas import IntentResult, SimilarIntent
+from cymbal.services.base import SQLSpecService
 
 if TYPE_CHECKING:
     from sqlspec import AsyncDriverAdapterBase
 
-    from app.services._exemplar import ExemplarService
-    from app.services._vertex_ai import VertexAIService
+    from cymbal.services._exemplar import ExemplarService
+    from cymbal.services._vertex_ai import VertexAIService
 
 INTENT_EXEMPLARS = {
     "PRODUCT_RAG": [

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from app.services._adk.monkey_patches import apply_genai_client_patch
+from cymbal.services._adk.monkey_patches import apply_genai_client_patch
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -34,10 +34,10 @@ def create_app() -> Litestar:
     from dishka import make_async_container
     from litestar import Litestar
 
-    from app.lib.di import setup_dishka
-    from app.lib.settings import get_settings
-    from app.server.core import ApplicationCore
-    from app.server.providers import ADKProvider, CoreServiceProvider, SQLSpecProvider
+    from cymbal.lib.di import setup_dishka
+    from cymbal.lib.settings import get_settings
+    from cymbal.server.core import ApplicationCore
+    from cymbal.server.providers import ADKProvider, CoreServiceProvider, SQLSpecProvider
 
     settings = get_settings()
 
@@ -49,7 +49,7 @@ def create_app() -> Litestar:
     )
 
     # Make container available to ADK tools
-    from app.services._adk.tools import set_app_container
+    from cymbal.services._adk.tools import set_app_container
 
     set_app_container(container)
 

@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from app import config
-from app.services import INTENT_EXEMPLARS, ExemplarService, ProductService, VertexAIService
+from cymbal import config
+from cymbal.services import INTENT_EXEMPLARS, ExemplarService, ProductService, VertexAIService
 
 if TYPE_CHECKING:
     from litestar import Litestar

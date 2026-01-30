@@ -21,6 +21,6 @@ async def client(app: Litestar) -> AsyncGenerator[AsyncTestClient, None]:
 @pytest.fixture
 def app() -> Litestar:
     """Create test app instance."""
-    from app.server.asgi import create_app
+    from cymbal.server.asgi import create_app
 
     return create_app()

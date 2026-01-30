@@ -33,13 +33,13 @@ description = "Cymbal Coffee AI Agent Application using PostgreSQL and Vertex AI
 keywords = ["litestar", "vertexai", "postgresql", "google", "agent", "coffee"]
 license = { text = "MIT" }
 maintainers = [{ name = "Cody Fincher", email = "cody.fincher@gmail.com" }]
-name = "app"
+name = "cymbal"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 version = "0.3.0"
 
 [project.scripts]
-app = "app.__main__:run_cli"
+cymbal = "cymbal.__main__:run_cli"
 
 [build-system]
 build-backend = "hatchling.build"
@@ -50,8 +50,8 @@ allow-direct-references = true
 
 [tool.hatch.build]
 dev-mode-dirs = ["./"]
-include = ["CHANGELOG.md", "/public/**/*", "/app/**/*.sql", "/app/db/**/*.ini"]
-packages = ["app"]
+include = ["CHANGELOG.md", "/public/**/*", "/src/cymbal/**/*.sql", "/src/cymbal/db/**/*.ini"]
+packages = ["src/cymbal"]
 
 [dependency-groups]
 build = ["bump-my-version"]
@@ -97,7 +97,7 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
-    "app/db/migrations/versions/*.py",
+    "src/cymbal/db/migrations/versions/*.py",
 ]
 fix = true
 line-length = 120
@@ -169,11 +169,11 @@ classmethod-decorators = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["tests", "app", "config"]
+known-first-party = ["tests", "cymbal", "config"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "D104"]
-"app/db/migrations/versions/*.py" = ["ANN201", "INP001"]
+"src/cymbal/db/migrations/versions/*.py" = ["ANN201", "INP001"]
 "docs/**/*.*" = ["S", "B", "DTZ", "A", "ERA", "D", "RET", "E731", "RUF012", "FA100", "ARG001"]
 "docs/conf.py" = ["FIX002", "ARG001", "INP001"]
 "tests/*.py" = ["D103", "S101", "D104", "PLR2004"]
@@ -235,10 +235,10 @@ module = [
 
 [[tool.mypy.overrides]]
 ignore_errors = true
-module = ["app.db.migrations.*"]
+module = ["cymbal.db.migrations.*"]
 
 [tool.pytest.ini_options]
-addopts = ["-ra", "--ignore", "app/db/migrations"]
+addopts = ["-ra", "--ignore", "src/cymbal/db/migrations"]
 filterwarnings = [
     "ignore::DeprecationWarning:pkg_resources",
     "ignore::DeprecationWarning:google.*",
@@ -249,5 +249,5 @@ testpaths = ["tests"]
 
 [tool.pyright]
 exclude = ["scripts", "docs"]
-include = ["app", "tests"]
+include = ["src/cymbal", "src/tests"]
 reportMissingImports = "information"

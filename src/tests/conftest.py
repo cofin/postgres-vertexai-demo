@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from litestar import Litestar
     from litestar.testing import AsyncTestClient
 
-from app.lib import settings as app_settings
+from cymbal.lib import settings as app_settings
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -54,7 +54,7 @@ def _patch_settings(monkeypatch: MonkeyPatch) -> None:
 @pytest.fixture
 def app() -> Litestar:
     """Create test app instance."""
-    from app.server.asgi import create_app
+    from cymbal.server.asgi import create_app
 
     return create_app()
 

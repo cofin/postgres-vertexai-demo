@@ -19,12 +19,12 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from app.services.base import SQLSpecService
+from cymbal.services.base import SQLSpecService
 
 if TYPE_CHECKING:
     from sqlspec import AsyncDriverAdapterBase
 
-    from app.schemas import SearchMetricsCreate
+    from cymbal.schemas import SearchMetricsCreate
 
 
 class MetricsService(SQLSpecService):

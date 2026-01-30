@@ -203,20 +203,20 @@ db-migrate: ## Create new migration
 .PHONY: db-upgrade
 db-upgrade: ## Apply database migrations
 	@echo "${INFO} Applying database migrations... ⬆️"
-	@uv run app db upgrade head
+	@uv run cymbal db upgrade head
 	@echo "${OK} Database migrations applied"
 
 .PHONY: db-downgrade
 db-downgrade: ## Rollback database migration
 	@echo "${INFO} Rolling back database migration... ⬇️"
-	@uv run app db downgrade -1
+	@uv run cymbal db downgrade -1
 	@echo "${OK} Database migration rolled back"
 
 .PHONY: db-reset
 db-reset: wipe-infra start-infra ## Reset database (wipe and recreate)
 	@echo "${INFO} Resetting database... 🔄"
 	@sleep 5
-	@uv run app db upgrade head
+	@uv run cymbal db upgrade head
 	@echo "${OK} Database reset complete"
 
 .PHONY: db-connect-test
@@ -234,7 +234,7 @@ db-connect-info: ## Display database connection information
 .PHONY: dev
 dev: ## Run development server
 	@echo "${INFO} Starting development server... 🚀"
-	@uv run app --reload
+	@uv run cymbal --reload
 
 .PHONY: shell
 shell: ## Open application shell

@@ -37,8 +37,8 @@ from litestar.template import TemplateConfig
 from sqlspec.adapters.asyncpg.litestar import AsyncpgStore
 from sqlspec.base import SQLSpec
 
-from app.lib import log as log_conf
-from app.lib.settings import BASE_DIR, get_settings
+from cymbal.lib import log as log_conf
+from cymbal.lib.settings import BASE_DIR, get_settings
 
 _settings = get_settings()
 settings = _settings  # Alias for compatibility

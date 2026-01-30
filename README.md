@@ -14,17 +14,17 @@ cp .env.example .env  # Edit with your API keys
 
 # Start PostgreSQL
 make start-infra
-uv run app load-fixtures
+uv run cymbal load-fixtures
 
 # Start the application
-uv run app run
+uv run cymbal run
 ```
 
 **Note: Embedding are included in the gzipped fixtures.**
 If you'd like to regenerate embeddings, you can use:
 
 ```sh
-uv run app load-vectors
+uv run cymbal load-vectors
 ```
 
 Visit [http://localhost:5006](http://localhost:5006) to try the demo!
@@ -85,18 +85,18 @@ This implementation is designed for conference demonstration with:
 
 ```bash
 # Database operations
-uv run app load-fixtures        # Load sample data
-uv run app load-vectors         # Generate embeddings
-uv run app truncate-tables      # Reset all data
-uv run app clear-cache          # Clear response cache
+uv run cymbal load-fixtures        # Load sample data
+uv run cymbal load-vectors         # Generate embeddings
+uv run cymbal truncate-tables      # Reset all data
+uv run cymbal clear-cache          # Clear response cache
 
 # Export/Import (for faster demo startup)
-uv run app dump-data           # Export all data with embeddings
-uv run app dump-data --table intent_exemplar  # Export specific table
-uv run app dump-data --path /tmp/backup --no-compress  # Custom options
+uv run cymbal dump-data           # Export all data with embeddings
+uv run cymbal dump-data --table intent_exemplar  # Export specific table
+uv run cymbal dump-data --path /tmp/backup --no-compress  # Custom options
 
 # Development
-uv run app run                 # Start the application
+uv run cymbal run                 # Start the application
 uv run pytest                  # Run tests
 make lint                      # Code quality checks
 ```

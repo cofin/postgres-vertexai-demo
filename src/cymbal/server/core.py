@@ -50,13 +50,13 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         from sqlspec import AsyncDriverAdapterBase, SQLSpec
         from sqlspec.adapters.asyncpg import AsyncpgDriver
 
-        from app import config, schemas, services
-        from app.lib import log
-        from app.lib.settings import BASE_DIR, get_settings
-        from app.server import plugins, startup
-        from app.server.controllers import CoffeeChatController
-        from app.server.exception_handlers import exception_handlers
-        from app.services import (
+        from cymbal import config, schemas, services
+        from cymbal.lib import log
+        from cymbal.lib.settings import BASE_DIR, get_settings
+        from cymbal.server import plugins, startup
+        from cymbal.server.controllers import CoffeeChatController
+        from cymbal.server.exception_handlers import exception_handlers
+        from cymbal.services import (
             CacheService,
             ExemplarService,
             MetricsService,
@@ -64,7 +64,7 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
             VectorSearchService,
             VertexAIService,
         )
-        from app.services._adk.runner import ADKRunner
+        from cymbal.services._adk.runner import ADKRunner
 
         settings = get_settings()
         # logging
@@ -145,8 +145,8 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
     def on_cli_init(self, cli: Group) -> None:
         from sqlspec.extensions.litestar.cli import database_group
 
-        from app.cli import coffee_demo_group
-        from app.cli.commands import export_fixtures_cmd, load_fixtures_cmd
+        from cymbal.cli import coffee_demo_group
+        from cymbal.cli.commands import export_fixtures_cmd, load_fixtures_cmd
 
         # Register custom database commands to the database group
         database_group.add_command(load_fixtures_cmd)

@@ -12,14 +12,14 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from app.services.base import SQLSpecService
+from cymbal.services.base import SQLSpecService
 
 if TYPE_CHECKING:
-    from app.services._intent import IntentService
-    from app.services._metrics import MetricsService
-    from app.services._product import ProductService
-    from app.services._store import StoreService
-    from app.services._vertex_ai import VertexAIService
+    from cymbal.services._intent import IntentService
+    from cymbal.services._metrics import MetricsService
+    from cymbal.services._product import ProductService
+    from cymbal.services._store import StoreService
+    from cymbal.services._vertex_ai import VertexAIService
 
 logger = structlog.get_logger()
 
@@ -177,7 +177,7 @@ LIMIT :limit"""
     ) -> dict[str, Any]:
         """Record metrics for a search operation."""
         try:
-            from app.schemas import SearchMetricsCreate
+            from cymbal.schemas import SearchMetricsCreate
             avg_similarity = 0.0
             if vector_results:
                 similarity_scores = [
