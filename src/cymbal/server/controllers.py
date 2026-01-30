@@ -29,7 +29,7 @@ from litestar.response import File, Stream
 from sqlspec.adapters.asyncpg import AsyncpgDriver
 
 from cymbal import schemas as s
-from cymbal.lib.di import Inject, inject, query_id_var
+from cymbal.lib.di import Inject, query_id_var
 from cymbal.server.exception_handlers import HTMXValidationException
 from cymbal.services import CacheService, MetricsService, VectorSearchService, VertexAIService
 from cymbal.services._adk import ADKRunner
@@ -88,7 +88,6 @@ class CoffeeChatController(Controller):
         )
 
     @post(path="/", name="coffee_chat.get")
-    @inject
     async def handle_coffee_chat(
         self,
         data: Annotated[s.CoffeeChatMessage, Body(title="Discover Coffee", media_type=RequestEncodingType.URL_ENCODED)],
@@ -227,7 +226,6 @@ class CoffeeChatController(Controller):
         )
 
     @get(path="/chat/stream/{query_id:str}", name="chat.stream")
-    @inject
     async def stream_response(
         self,
         query_id: str,
@@ -355,7 +353,6 @@ class CoffeeChatController(Controller):
         )
 
     @get(path="/dashboard", name="performance_dashboard")
-    @inject
     async def performance_dashboard(self, metrics_service: Inject[MetricsService]) -> HTMXTemplate:
         """Display performance dashboard."""
         # Get metrics for dashboard
@@ -376,7 +373,6 @@ class CoffeeChatController(Controller):
         )
 
     @get(path="/metrics", name="metrics")
-    @inject
     async def get_metrics(self, metrics_service: Inject[MetricsService], request: HTMXRequest) -> dict | HXStopPolling:
         """Get performance metrics with validation."""
         if request.headers.get("X-Requested-With") != "XMLHttpRequest" and not request.htmx:
@@ -396,7 +392,6 @@ class CoffeeChatController(Controller):
             return {"total_searches": 0, "avg_search_time_ms": 0, "avg_db_query_time_ms": 0, "avg_similarity_score": 0}
 
     @get(path="/api/metrics/summary", name="metrics.summary")
-    @inject
     async def get_metrics_summary(
         self, metrics_service: Inject[MetricsService], cache_service: Inject[CacheService], request: HTMXRequest
     ) -> HTMXTemplate:
@@ -464,7 +459,6 @@ class CoffeeChatController(Controller):
         )
 
     @get(path="/api/metrics/charts", name="metrics.charts")
-    @inject
     async def get_chart_data(self, metrics_service: Inject[MetricsService]) -> s.ChartDataResponse:
         """Get chart data for dashboard visualizations."""
         time_series = await metrics_service.get_time_series_data(minutes=60)
@@ -483,7 +477,6 @@ class CoffeeChatController(Controller):
         )
 
     @post(path="/api/vector-demo", name="vector.demo")
-    @inject
     async def vector_search_demo(
         self,
         data: Annotated[s.VectorDemoRequest, Body(media_type=RequestEncodingType.URL_ENCODED)],
@@ -590,7 +583,6 @@ class CoffeeChatController(Controller):
         return response
 
     @get(path="/api/help/query-log/{message_id:str}", name="help.query_log")
-    @inject
     async def get_query_log(
         self,
         message_id: str,
