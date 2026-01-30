@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 import structlog
 
+from cymbal.config import db_manager
 from cymbal.services.base import SQLSpecService
 
 if TYPE_CHECKING:
@@ -26,15 +27,7 @@ class ExemplarService(SQLSpecService):
 
     async def get_exemplars_with_phrases(self) -> dict[str, list[tuple[str, list[float]]]]:
         """Get all exemplars with their phrases and embeddings."""
-        results = await self.driver.select("""
-            SELECT
-                intent AS "intent",
-                phrase AS "phrase",
-                embedding AS "embedding"
-            FROM intent_exemplar
-            WHERE embedding IS NOT NULL
-            ORDER BY intent, phrase
-        """)
+        results = await self.driver.select(db_manager.get_sql("get-exemplars-with-phrases"))
 
         result: dict[str, list[tuple[str, list[float]]]] = {}
         for row in results:
@@ -55,14 +48,7 @@ class ExemplarService(SQLSpecService):
 
     async def load_all_exemplars(self) -> dict[str, np.ndarray]:
         """Load all cached exemplar embeddings grouped by intent."""
-        results = await self.driver.select("""
-            SELECT
-                intent AS "intent",
-                embedding AS "embedding"
-            FROM intent_exemplar
-            WHERE embedding IS NOT NULL
-            ORDER BY intent
-        """)
+        results = await self.driver.select(db_manager.get_sql("load-all-exemplars"))
 
         result: dict[str, list[list[float]]] = {}
         for row in results:
@@ -87,12 +73,7 @@ class ExemplarService(SQLSpecService):
         SQLSpec automatically handles vector conversions - no need for array.array().
         """
         await self.driver.execute(
-            """
-            INSERT INTO intent_exemplar (intent, phrase, embedding)
-            VALUES (:intent, :phrase, :embedding)
-            ON CONFLICT (intent, phrase) DO UPDATE SET
-                embedding = EXCLUDED.embedding
-            """,
+            db_manager.get_sql("cache-exemplar"),
             intent=intent,
             phrase=phrase,
             embedding=embedding,
@@ -106,10 +87,7 @@ class ExemplarService(SQLSpecService):
             for phrase in phrases:
                 # Check if already cached
                 result = await self.driver.select_one_or_none(
-                    """
-                    SELECT embedding AS "embedding" FROM intent_exemplar
-                    WHERE intent = :intent AND phrase = :phrase
-                    """,
+                    db_manager.get_sql("get-exemplar-embedding"),
                     intent=intent,
                     phrase=phrase,
                 )

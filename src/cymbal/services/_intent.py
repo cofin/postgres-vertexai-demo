@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from cymbal.config import db_manager
 from cymbal.schemas import IntentResult, SimilarIntent
 from cymbal.services.base import SQLSpecService
 
@@ -225,17 +226,7 @@ class IntentService(SQLSpecService):
     ) -> list[SimilarIntent]:
         """Search for similar intents in the exemplar table."""
         return await self.driver.select(
-            """
-            SELECT
-                intent,
-                phrase,
-                1 - (embedding <=> :query_embedding) AS "similarity",
-                confidence_threshold
-            FROM intent_exemplar
-            WHERE 1 - (embedding <=> :query_embedding) > :min_threshold
-            ORDER BY "similarity" DESC
-            LIMIT :limit
-            """,
+            db_manager.get_sql("search-similar-intents"),
             query_embedding=query_embedding,
             min_threshold=min_threshold,
             limit=limit,
@@ -245,11 +236,7 @@ class IntentService(SQLSpecService):
     async def increment_usage_by_phrase(self, intent: str, phrase: str) -> None:
         """Increment the usage count for a given exemplar."""
         await self.driver.execute(
-            """
-            UPDATE intent_exemplar
-            SET usage_count = usage_count + 1
-            WHERE intent = :intent AND phrase = :phrase
-            """,
+            db_manager.get_sql("increment-usage-by-phrase"),
             intent=intent,
             phrase=phrase,
         )
