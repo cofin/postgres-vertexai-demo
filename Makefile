@@ -215,27 +215,27 @@ shell:                                             ## Open application shell
 
 .PHONY: start-infra
 start-infra:                                        ## Start local containers
-	@uv run python manage.py infra start
+	@uv run python manage.py database postgres start
 
 .PHONY: stop-infra
 stop-infra:                                         ## Stop local containers
-	@uv run python manage.py infra stop
+	@uv run python manage.py database postgres stop
 
 .PHONY: restart-infra
 restart-infra:                                      ## Restart local containers
-	@uv run python manage.py infra restart
+	@uv run python manage.py database postgres restart
 
 .PHONY: infra-status
 infra-status:                                       ## Show status of all containers
-	@uv run python manage.py infra status
+	@uv run python manage.py database postgres status
 
 .PHONY: infra-logs
 infra-logs:                                         ## Tail development infrastructure logs
-	@uv run python manage.py infra logs
+	@uv run python manage.py database postgres logs
 
 .PHONY: wipe-infra
- wipe-infra:                                         ## Wipe all infrastructure (containers and volumes)
-	@uv run python manage.py infra wipe
+wipe-infra:                                         ## Wipe all infrastructure (containers and volumes)
+	@uv run python manage.py database postgres wipe
 
 .PHONY: infra-cleanup
 infra-cleanup: wipe-infra                           ## Alias for wipe-infra (deprecated, use wipe-infra)

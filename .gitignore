@@ -169,3 +169,5 @@ uv.toml
 .agent/
 .geminiignore
 .beads/
+.litestar.json
+resources/generated/*

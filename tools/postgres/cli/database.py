@@ -32,7 +32,7 @@ def start_database(pull: bool, recreate: bool) -> None:
     - Auto-restart on failure
 
     Environment Variables:
-        DATABASE_PORT: Host port (default: 15432)
+        DATABASE_PORT: Host port (default: 35432)
         DATABASE_PASSWORD: PostgreSQL password (default: super-secret)
         DATABASE_USER: PostgreSQL user (default: app)
         DATABASE_NAME: Database name (default: app)

@@ -53,7 +53,7 @@ class ConnectionConfig:
             - DATABASE_USER (default: app)
             - DATABASE_PASSWORD (default: super-secret for managed, empty for external)
             - DATABASE_HOST (default: localhost for managed)
-            - DATABASE_PORT (default: 15432 for managed, 5432 for external)
+            - DATABASE_PORT (default: 35432 for managed, 5432 for external)
             - DATABASE_NAME (default: app)
             - DATABASE_URL (full connection string, overrides individual params)
         """
@@ -82,7 +82,7 @@ class ConnectionConfig:
         user = os.getenv("DATABASE_USER", "app")
         password = os.getenv("DATABASE_PASSWORD", "super-secret" if mode == DeploymentMode.MANAGED else "")
         host = os.getenv("DATABASE_HOST", "localhost" if mode == DeploymentMode.MANAGED else "")
-        port = int(os.getenv("DATABASE_PORT", "15432" if mode == DeploymentMode.MANAGED else "5432"))
+        port = int(os.getenv("DATABASE_PORT", "35432" if mode == DeploymentMode.MANAGED else "5432"))
         database = os.getenv("DATABASE_NAME", "app")
 
         return cls(mode=mode, user=user, password=password, host=host, port=port, database=database)
@@ -93,7 +93,7 @@ class ConnectionConfig:
         user: str = "app",
         password: str = "super-secret",
         host: str = "localhost",
-        port: int = 15432,
+        port: int = 35432,
         database: str = "app",
     ) -> ConnectionConfig:
         """Create config for managed Docker/Podman container."""

@@ -139,6 +139,41 @@ def database_logs(follow: bool, tail: int | None, since: str | None) -> None:
         raise click.Abort from e
 
 
+@database_group.command(name="wipe")
+@click.confirmation_option(prompt="⚠️  This will DELETE ALL ORACLE DATABASE DATA. Are you absolutely sure?")
+def database_wipe() -> None:
+    """Completely wipe Oracle database container and data.
+
+    ⚠️  WARNING: This will permanently delete all Oracle database data!
+
+    This command:
+    1. Removes the database container (forced)
+    2. Deletes the data volume
+    3. All data will be lost permanently
+
+    Example:
+        python manage.py database oracle wipe
+    """
+    from tools.lib.container import ContainerRuntime
+    from tools.oracle.database import DatabaseConfig, OracleDatabase
+
+    try:
+        runtime = ContainerRuntime()
+        config = DatabaseConfig.from_env()
+        db = OracleDatabase(runtime=runtime, config=config, console=console)
+
+        console.rule("[bold red]⚠️  Wiping Oracle Database")
+
+        # Remove container and volumes
+        db.remove(volumes=True, force=True)
+
+        console.print("\n[bold red]All Oracle database data has been permanently deleted[/bold red]")
+
+    except Exception as e:
+        console.print(f"[red]✗ Failed to wipe database: {e}[/red]")
+        raise click.Abort from e
+
+
 @database_group.command(name="status")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed status")
 def database_status(verbose: bool) -> None:
