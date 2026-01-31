@@ -405,7 +405,7 @@ class ViteSettings:
             mode="htmx",
             dev_mode=self.DEV_MODE,
             paths=PathConfig(
-                root=BASE_DIR.parent.parent / "js" / "web",
+                root=BASE_DIR.parent.parent,
                 resource_dir=Path("resources"),
                 bundle_dir=Path(BASE_DIR / "server" / "static"),
                 asset_url=self.ASSET_URL,

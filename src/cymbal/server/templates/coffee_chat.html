@@ -18,6 +18,10 @@
     <meta name="msapplication-TileColor" content="#da532c">
     <meta name="theme-color" content="#ffffff">
 
+    <!-- Vite HMR and Assets -->
+    {{ vite_hmr() }}
+    {{ vite("resources/main.js") }}
+
     <!-- HTMX for real-time updates -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>

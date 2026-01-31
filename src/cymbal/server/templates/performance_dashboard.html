@@ -19,6 +19,10 @@
     <meta name="theme-color" content="#ffffff">
     <title>Performance Dashboard - Cymbal Coffee</title>
 
+    <!-- Vite HMR and Assets -->
+    {{ vite_hmr() }}
+    {{ vite("resources/main.js") }}
+
     <!-- Chart.js for visualizations -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
 
