@@ -40,6 +40,7 @@ TRANSFORMER_DMA_CLASSIC_SQL_DIR = BASE_DIR / "transformer" / "formats" / "dma_cl
 
 TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
 
+
 @dataclass
 class DatabaseSettings:
     """Database connection settings following SQLSpec patterns."""
@@ -70,9 +71,7 @@ class DatabaseSettings:
     """Command timeout in seconds."""
     ECHO: bool = field(default_factory=get_env("DATABASE_ECHO", False))
     """Print SQL statements to console for debugging."""
-    MIGRATION_PATH: str = field(
-        default_factory=get_env("DATABASE_MIGRATION_PATH", str(BASE_DIR / "db" / "migrations"))
-    )
+    MIGRATION_PATH: str = field(default_factory=get_env("DATABASE_MIGRATION_PATH", str(BASE_DIR / "db" / "migrations")))
     """The path to database migrations."""
     MIGRATION_DDL_VERSION_TABLE: str = field(
         default_factory=get_env("DATABASE_MIGRATION_DDL_VERSION_TABLE", "migrations")
@@ -128,22 +127,21 @@ class DatabaseSettings:
         }
 
         return AsyncpgConfig(
-            connection_config=connection_config, # sqlspec > 0.14 uses connection_config not pool_config
+            connection_config=connection_config,  # sqlspec > 0.14 uses connection_config not pool_config
             migration_config={
                 "version_table_name": self.MIGRATION_DDL_VERSION_TABLE,
                 "script_location": self.MIGRATION_PATH,
                 "project_root": BASE_DIR,
                 "include_extensions": ["litestar"],
             },
-            extension_config={
-                "litestar": {"session_table": "app_session", "disable_di": True}
-            },
+            extension_config={"litestar": {"session_table": "app_session", "disable_di": True}},
         )
 
 
 @dataclass
 class ETLSettings:
     """Database connection settings following SQLSpec patterns."""
+
     # Placeholder for future use
     WORKING_PATH: str | None = field(default_factory=get_env("ETL_WORKING_PATH", None))
 
@@ -156,6 +154,7 @@ class ETLSettings:
 @dataclass
 class CollectorSettings:
     """Database collector configuration."""
+
     # Placeholder
     DEFAULT_OUTPUT_DIR: Path = field(default_factory=get_env("OUTPUT_DIR", Path("./dist")))
 
@@ -182,9 +181,7 @@ class LoggingSettings:
     REQUEST_FIELDS: set[str] = field(
         default_factory=lambda: set(get_env("LOG_REQUEST_FIELDS", ["method", "path", "query"])())
     )
-    RESPONSE_FIELDS: set[str] = field(
-        default_factory=lambda: set(get_env("LOG_RESPONSE_FIELDS", ["status_code"])())
-    )
+    RESPONSE_FIELDS: set[str] = field(default_factory=lambda: set(get_env("LOG_RESPONSE_FIELDS", ["status_code"])()))
 
     EXCLUDE_PATHS: str = field(
         default_factory=get_env(
@@ -224,16 +221,34 @@ class LoggingSettings:
                 processors=log_conf.structlog_processors(as_json=not log_conf.is_tty()),  # type: ignore[has-type,unused-ignore]
                 logger_factory=default_logger_factory(as_json=not log_conf.is_tty()),  # type: ignore[has-type,unused-ignore]
                 disable_stack_trace={
-                    400, 401, 403, 404, 409,
-                    ClientError, ConflictError, NotAuthorizedException, NotFoundError,
-                    PasswordValidationError, PermissionDeniedException, ValidationError,
+                    400,
+                    401,
+                    403,
+                    404,
+                    409,
+                    ClientError,
+                    ConflictError,
+                    NotAuthorizedException,
+                    NotFoundError,
+                    PasswordValidationError,
+                    PermissionDeniedException,
+                    ValidationError,
                 },
                 standard_lib_logging_config=LoggingConfig(
                     log_exceptions="always",
                     disable_stack_trace={
-                        400, 401, 403, 404, 409,
-                        ClientError, ConflictError, NotAuthorizedException, NotFoundError,
-                        PasswordValidationError, PermissionDeniedException, ValidationError,
+                        400,
+                        401,
+                        403,
+                        404,
+                        409,
+                        ClientError,
+                        ConflictError,
+                        NotAuthorizedException,
+                        NotFoundError,
+                        PasswordValidationError,
+                        PermissionDeniedException,
+                        ValidationError,
                     },
                     root={"level": logging.getLevelName(self.LEVEL), "handlers": ["queue_listener"]},
                     formatters={
@@ -264,11 +279,7 @@ class LoggingSettings:
                             "level": self.ASGI_ACCESS_LEVEL,
                             "handlers": ["queue_listener"],
                         },
-                        "google.adk": {
-                            "propagate": False,
-                            "level": self.LEVEL,
-                            "handlers": ["queue_listener"],
-                        },
+                        "google.adk": {"propagate": False, "level": self.LEVEL, "handlers": ["queue_listener"]},
                     },
                 ),
             ),
@@ -282,7 +293,9 @@ class LoggingSettings:
 @dataclass
 class EmailSettings:
     """Email configuration settings."""
+
     BACKEND: str = field(default_factory=get_env("EMAIL_BACKEND", "console"))
+
     # Stub implementation for now
     def get_email_config(self) -> Any:
         return None
@@ -291,6 +304,7 @@ class EmailSettings:
 @dataclass
 class TaskSettings:
     """Task execution settings."""
+
     DEFAULT_EXECUTION_TARGET: Literal["local", "cloudrun", "immediate"] = cast(
         'Literal["local", "cloudrun", "immediate"]', field(default_factory=get_env("EXECUTION_TARGET", "local"))
     )
@@ -300,6 +314,7 @@ class TaskSettings:
 @dataclass
 class GoogleCloudSettings:
     """Google Cloud Platform integration settings."""
+
     PROJECT_ID: str | None = field(default_factory=get_env("GOOGLE_CLOUD_PROJECT", None))
     CREDENTIALS_PATH: str | None = field(default_factory=get_env("GOOGLE_APPLICATION_CREDENTIALS", None))
     REGION: str = field(default_factory=get_env("GCP_REGION", "us-central1"))
@@ -325,7 +340,7 @@ class AppSettings:
     SECRET_KEY: str = field(default_factory=get_env("SECRET_KEY", "super-secret-key-change-in-production"))
     """Secret key for session management and CSRF protection."""
     COOKIE_SECURE: bool = field(default_factory=get_env("COOKIE_SECURE", True))
-    
+
     CSRF_COOKIE_SECURE: bool = field(default_factory=get_env("CSRF_COOKIE_SECURE", True))
     CSRF_COOKIE_NAME: str = field(default_factory=get_env("CSRF_COOKIE_NAME", "XSRF-TOKEN"))
     CSRF_HEADER_NAME: str = field(default_factory=get_env("CSRF_HEADER_NAME", "X-XSRF-TOKEN"))
@@ -341,6 +356,7 @@ class AppSettings:
 
     def get_csrf_config(self) -> "CSRFConfig":
         from litestar.config.csrf import CSRFConfig
+
         return CSRFConfig(
             secret=self.SECRET_KEY,
             cookie_secure=self.CSRF_COOKIE_SECURE,
@@ -350,10 +366,12 @@ class AppSettings:
 
     def get_cors_config(self) -> "CORSConfig":
         from litestar.config.cors import CORSConfig
+
         return CORSConfig(allow_origins=self.ALLOWED_CORS_ORIGINS)
 
     def get_compression_config(self) -> "CompressionConfig":
         from litestar.config.compression import CompressionConfig
+
         return CompressionConfig(backend="gzip")
 
     def get_problem_details_config(self) -> "ProblemDetailsConfig":
@@ -361,10 +379,15 @@ class AppSettings:
         from litestar.plugins.problem_details import ProblemDetailsConfig
         from sqlspec.exceptions import UniqueViolationError
         from cymbal.lib.exceptions import (
-            ConflictError, NotFoundError, PasswordValidationError,
-            ValidationError, conflict_error_to_problem_details,
-            http_exception_to_problem_details, not_found_error_to_problem_details,
-            unique_violation_to_problem_details, validation_error_to_problem_details,
+            ConflictError,
+            NotFoundError,
+            PasswordValidationError,
+            ValidationError,
+            conflict_error_to_problem_details,
+            http_exception_to_problem_details,
+            not_found_error_to_problem_details,
+            unique_violation_to_problem_details,
+            validation_error_to_problem_details,
         )
 
         return ProblemDetailsConfig(
@@ -383,6 +406,7 @@ class AppSettings:
 @dataclass
 class AuthSettings:
     """Authentication configuration settings."""
+
     # Placeholder for future expansion
     pass
 
@@ -416,35 +440,37 @@ class ViteSettings:
 
 
 @dataclass
+@dataclass
 class ChannelSettings:
     """Configuration for Litestar Channels (WebSockets)."""
+
     BACKEND_URL: str = field(default_factory=get_env("CHANNELS_BACKEND_URL", "memory"))
     HISTORY_TTL: int = field(default_factory=get_env("CHANNELS_HISTORY_TTL", 60))
+    CHANNEL_GROUPS: list[str] = field(default_factory=lambda: ["metrics", "chat", "notifications"])
 
     def get_config(self) -> "ChannelsPlugin":
         from litestar.channels import ChannelsPlugin
         from litestar.channels.backends.memory import MemoryChannelsBackend
+
         return ChannelsPlugin(backend=MemoryChannelsBackend(history=self.HISTORY_TTL), arbitrary_channels_allowed=True)
 
 
 # --- Vertex AI Demo Specific Settings ---
+
 
 @dataclass
 class VertexAISettings:
     """Vertex AI configuration settings."""
 
     PROJECT_ID: str = field(
-        default_factory=lambda: get_config_val(
-            "VERTEX_AI_PROJECT_ID", get_config_val("GOOGLE_PROJECT_ID", "")
-        )
+        default_factory=lambda: get_config_val("VERTEX_AI_PROJECT_ID", get_config_val("GOOGLE_PROJECT_ID", ""))
     )
     LOCATION: str = field(default_factory=get_env("VERTEX_AI_LOCATION", "us-central1"))
     API_KEY: str | None = field(
         default_factory=lambda: get_config_val(
             "VERTEX_AI_API_KEY",
             get_config_val(
-                "GOOGLE_AI_API_KEY",
-                get_config_val("GOOGLE_API_KEY", get_config_val("GENAI_API_KEY", None)),
+                "GOOGLE_AI_API_KEY", get_config_val("GOOGLE_API_KEY", get_config_val("GENAI_API_KEY", None))
             ),
         )
     )
@@ -503,7 +529,7 @@ class Settings:
     channels: ChannelSettings = field(default_factory=ChannelSettings)
     gcp: GoogleCloudSettings = field(default_factory=GoogleCloudSettings)
     task: TaskSettings = field(default_factory=TaskSettings)
-    
+
     # AI specific
     vertex_ai: VertexAISettings = field(default_factory=VertexAISettings)
     agent: AgentSettings = field(default_factory=AgentSettings)
@@ -533,9 +559,10 @@ class Settings:
         env_file = Path.cwd() / dotenv_filename
         if env_file.exists():
             from dotenv import load_dotenv
+
             # console.print(f"[yellow]Loading environment configuration from {dotenv_filename}[/]")
             load_dotenv(env_file, override=True)
-        
+
         settings = cls()
         settings.setup_litestar_env()
         return settings

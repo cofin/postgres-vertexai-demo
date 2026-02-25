@@ -1,9 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Cymbal Coffee{% endblock %}</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', file_path='favicon.ico') }}">
+    <link rel="shortcut icon" type="image/x-icon" href="{{ url_for('static', file_path='favicon.ico') }}">
+    
+    <!-- Theme must load first to prevent flash -->
+    <script src="{{ url_for('static', file_path='js/theme-toggle.js') }}"></script>
     
     <!-- Vite HMR and Assets -->
     {{ vite_hmr() }}
@@ -11,7 +18,7 @@
     
     {% block head %}{% endblock %}
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-bg-primary text-text-primary min-h-screen custom-scrollbar">
     {% block content %}{% endblock %}
     
     {% block scripts %}{% endblock %}

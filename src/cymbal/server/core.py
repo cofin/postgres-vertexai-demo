@@ -78,21 +78,24 @@ class ApplicationCore(InitPluginProtocol, CLIPluginProtocol):
         app_config.stores = config.stores
         app_config.middleware.append(config.session.middleware)
         # plugins
-        app_config.plugins.extend([plugins.granian, plugins.sqlspec, plugins.structlog, plugins.htmx, plugins.vite])
+        app_config.plugins.extend([
+            plugins.granian,
+            plugins.sqlspec,
+            plugins.structlog,
+            plugins.channels,
+            plugins.htmx,
+            plugins.vite,
+        ])
         # Set HTMXRequest as the default request class
         app_config.request_class = HTMXRequest
         app_config.template_config = config.templates
-        # openapi
-        app_config.openapi_config = OpenAPIConfig(
-            title=settings.app.NAME,
-            version="0.2.0",
-            use_handler_docstrings=True,
-            render_plugins=[ScalarRenderPlugin(version="latest")],
-        )
-
         # routes
+        from cymbal.server.routes.websocket import ChatWebSocketController, DashboardWebSocketController
+
         app_config.route_handlers.extend([
             CoffeeChatController,
+            DashboardWebSocketController,
+            ChatWebSocketController,
             create_static_files_router(
                 path="/static",
                 directories=[str(BASE_DIR / "server" / "static")],

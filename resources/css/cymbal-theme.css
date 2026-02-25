@@ -1,0 +1,253 @@
+/* Cymbal Theme - Dark Mode First with Tailwind CSS v4
+ * 
+ * This is the main theme file using Tailwind CSS v4 CSS-first configuration.
+ * It provides a modern, dark-mode-first design with subtle coffee accents.
+ * 
+ * Structure:
+ * 1. Tailwind imports
+ * 2. Theme variables (dark mode default, light override)
+ * 3. Custom utilities
+ * 4. Component patterns
+ */
+
+/* Import Tailwind CSS v4 */
+@import "tailwindcss";
+
+/* Import theme variables */
+@import "./theme-variables.css";
+
+/* ============================================
+   THEME CONFIGURATION
+   ============================================ */
+
+@theme {
+  /* Colors mapped to CSS variables */
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-bg-tertiary: var(--bg-tertiary);
+  --color-bg-elevated: var(--bg-elevated);
+  
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-muted: var(--text-muted);
+  
+  --color-accent-primary: var(--accent-primary);
+  --color-accent-secondary: var(--accent-secondary);
+  --color-accent-tertiary: var(--accent-tertiary);
+  
+  --color-border-primary: var(--border-primary);
+  --color-border-secondary: var(--border-secondary);
+  --color-border-accent: var(--border-accent);
+  
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  
+  /* Shadows */
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  
+  /* Transitions */
+  --transition-theme: var(--transition-theme);
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+
+@layer base {
+  * {
+    @apply transition-colors duration-300;
+  }
+  
+  html {
+    @apply antialiased;
+  }
+  
+  body {
+    @apply bg-bg-primary text-text-primary font-sans;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  
+  /* Smooth theme transitions */
+  html, body, div, span, p, a, button, input, textarea, select {
+    transition: background-color 300ms ease-in-out, 
+                color 300ms ease-in-out, 
+                border-color 300ms ease-in-out,
+                box-shadow 300ms ease-in-out;
+  }
+}
+
+/* ============================================
+   COMPONENT PATTERNS
+   ============================================ */
+
+@layer components {
+  /* Cards */
+  .cymbal-card {
+    @apply bg-bg-secondary rounded-lg border border-border-primary shadow-md p-5;
+  }
+  
+  .cymbal-card-elevated {
+    @apply bg-bg-elevated rounded-lg border border-border-secondary shadow-lg p-5;
+  }
+  
+  /* Buttons */
+  .cymbal-btn {
+    @apply px-4 py-2 rounded-md font-medium transition-all duration-200;
+    @apply bg-accent-primary text-white hover:bg-accent-secondary;
+    @apply focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2;
+    @apply focus:ring-offset-bg-primary;
+  }
+  
+  .cymbal-btn-secondary {
+    @apply px-4 py-2 rounded-md font-medium transition-all duration-200;
+    @apply bg-bg-tertiary text-text-primary border border-border-secondary;
+    @apply hover:bg-bg-elevated hover:border-border-accent;
+    @apply focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2;
+    @apply focus:ring-offset-bg-primary;
+  }
+  
+  .cymbal-btn-ghost {
+    @apply px-4 py-2 rounded-md font-medium transition-all duration-200;
+    @apply text-text-secondary hover:text-text-primary hover:bg-bg-tertiary;
+    @apply focus:outline-none focus:ring-2 focus:ring-accent-primary focus:ring-offset-2;
+    @apply focus:ring-offset-bg-primary;
+  }
+  
+  /* Form inputs */
+  .cymbal-input {
+    @apply w-full px-3 py-2 rounded-md border border-border-secondary;
+    @apply bg-bg-secondary text-text-primary;
+    @apply placeholder:text-text-muted;
+    @apply focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary;
+    @apply transition-all duration-200;
+  }
+  
+  .cymbal-input:focus {
+    @apply border-accent-primary ring-1 ring-accent-primary;
+  }
+  
+  /* Navigation */
+  .cymbal-nav-link {
+    @apply px-4 py-2 rounded-full text-sm font-medium transition-all duration-200;
+    @apply text-text-secondary hover:text-text-primary hover:bg-bg-tertiary;
+  }
+  
+  .cymbal-nav-link-active {
+    @apply px-4 py-2 rounded-full text-sm font-medium transition-all duration-200;
+    @apply bg-accent-primary text-white hover:bg-accent-secondary;
+  }
+  
+  /* Status badges */
+  .cymbal-badge-success {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply bg-success/20 text-success;
+  }
+  
+  .cymbal-badge-warning {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply bg-warning/20 text-warning;
+  }
+  
+  .cymbal-badge-danger {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply bg-danger/20 text-danger;
+  }
+  
+  /* Chat specific */
+  .chat-message-user {
+    @apply bg-accent-primary text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%] ml-auto;
+  }
+  
+  .chat-message-assistant {
+    @apply bg-bg-tertiary text-text-primary rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%];
+    @apply border border-border-secondary;
+  }
+  
+  /* Loading states */
+  .cymbal-skeleton {
+    @apply animate-pulse bg-bg-tertiary rounded;
+  }
+  
+  .cymbal-loading-dots {
+    @apply flex space-x-1;
+  }
+  
+  .cymbal-loading-dots > span {
+    @apply w-2 h-2 bg-accent-primary rounded-full animate-bounce;
+  }
+  
+  .cymbal-loading-dots > span:nth-child(2) {
+    animation-delay: 0.1s;
+  }
+  
+  .cymbal-loading-dots > span:nth-child(3) {
+    animation-delay: 0.2s;
+  }
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+@layer utilities {
+  /* Text gradient for headers */
+  .text-gradient {
+    @apply bg-gradient-to-r from-accent-primary to-accent-tertiary bg-clip-text text-transparent;
+  }
+  
+  /* Glass effect for overlays */
+  .glass {
+    @apply bg-bg-secondary/80 backdrop-blur-md border border-border-secondary;
+  }
+  
+  /* Scrollbar styling */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-secondary) var(--bg-primary);
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar {
+    @apply w-2;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-bg-primary rounded;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-border-secondary rounded hover:bg-border-accent;
+  }
+}
+
+/* ============================================
+   ANIMATION KEYFRAMES
+   ============================================ */
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { 
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 300ms ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 300ms ease-out;
+}

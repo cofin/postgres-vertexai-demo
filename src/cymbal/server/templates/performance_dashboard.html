@@ -423,30 +423,29 @@
                 data-tippy-content="Real-time metrics showing the overall performance of the PostgreSQL/AlloyDB Vector Search and Google Vertex AI integration. These update every 10 seconds.">?</span>
         </div>
 
-        <!-- Key Metrics Cards -->
-        <div class="metrics-grid" hx-get="/api/metrics/summary" hx-trigger="load, every 10s" hx-swap="innerHTML">
-            <!-- Loading state -->
-            <div class="metric-card">
+        <!-- Key Metrics Cards (WebSocket-powered, no polling) -->
+        <div class="metrics-grid" id="metrics-container" data-ws-connected="false">
+            <div class="metric-card" id="metric-searches">
                 <div class="metric-label">Total Searches</div>
-                <div class="metric-value">
+                <div class="metric-value" id="value-searches">
                     <span class="loading-indicator"></span>
                 </div>
             </div>
-            <div class="metric-card">
+            <div class="metric-card" id="metric-response">
                 <div class="metric-label">Avg Response Time</div>
-                <div class="metric-value">
+                <div class="metric-value" id="value-response">
                     <span class="loading-indicator"></span>
                 </div>
             </div>
-            <div class="metric-card">
+            <div class="metric-card" id="metric-db">
                 <div class="metric-label">Database Query Time</div>
-                <div class="metric-value">
+                <div class="metric-value" id="value-db">
                     <span class="loading-indicator"></span>
                 </div>
             </div>
-            <div class="metric-card">
+            <div class="metric-card" id="metric-cache">
                 <div class="metric-label">Cache Hit Rate</div>
-                <div class="metric-value">
+                <div class="metric-value" id="value-cache">
                     <span class="loading-indicator"></span>
                 </div>
             </div>
@@ -741,6 +740,47 @@
                 });
             }
         });
+
+        // WebSocket Connection for Real-time Metrics (Replaces HTMX polling)
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws/dashboard/metrics`;
+        const metricsWs = new WebSocket(wsUrl);
+        
+        metricsWs.onopen = function() {
+            console.log('WebSocket connected: metrics');
+            document.getElementById('metrics-container').setAttribute('data-ws-connected', 'true');
+            // Request initial data
+            metricsWs.send(JSON.stringify({action: 'subscribe'}));
+        };
+        
+        metricsWs.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (data.type === 'metrics') {
+                // Update metric values
+                if (data.searches !== undefined) {
+                    document.getElementById('value-searches').textContent = data.searches;
+                }
+                if (data.response_time !== undefined) {
+                    document.getElementById('value-response').textContent = data.response_time + 'ms';
+                }
+                if (data.db_time !== undefined) {
+                    document.getElementById('value-db').textContent = data.db_time + 'ms';
+                }
+                if (data.cache_rate !== undefined) {
+                    document.getElementById('value-cache').textContent = data.cache_rate + '%';
+                }
+            }
+        };
+        
+        metricsWs.onerror = function(error) {
+            console.error('WebSocket error:', error);
+            document.getElementById('metrics-container').setAttribute('data-ws-connected', 'false');
+        };
+        
+        metricsWs.onclose = function() {
+            console.log('WebSocket disconnected: metrics');
+            document.getElementById('metrics-container').setAttribute('data-ws-connected', 'false');
+        };
     </script>
 </body>
 

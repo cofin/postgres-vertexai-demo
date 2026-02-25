@@ -25,7 +25,7 @@ from litestar import Controller, get, post
 from litestar.enums import RequestEncodingType
 from litestar.params import Body
 from litestar.plugins.htmx import HTMXRequest, HTMXTemplate, HXStopPolling
-from litestar.response import File, Stream
+from litestar.response import Stream
 from sqlspec.adapters.asyncpg import AsyncpgDriver
 
 from cymbal import schemas as s
@@ -627,11 +627,3 @@ class CoffeeChatController(Controller):
                 "similarity": 0.9,
                 "vector_search_time": 8.7,
             }
-
-    @get(path="/favicon.ico", name="favicon", exclude_from_auth=True, sync_to_thread=False, include_in_schema=False)
-    def favicon(self) -> File:
-        """Serve favicon with security headers."""
-        return File(
-            path="app/server/static/favicon.ico",
-            headers={"Cache-Control": "public, max-age=31536000", "X-Content-Type-Options": "nosniff"},
-        )

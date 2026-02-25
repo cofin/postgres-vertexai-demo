@@ -28,6 +28,7 @@ app_config = ApplicationCore()
 sqlspec = SQLSpecPlugin(config.db_manager)
 granian = GranianPlugin()
 structlog = StructlogPlugin(config=config.log)
+channels = config.channels
 htmx = HTMXPlugin()
 problem_details = ProblemDetailsPlugin(config=config.problem_details)
 vite = VitePlugin(config=config.vite)
