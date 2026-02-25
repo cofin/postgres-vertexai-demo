@@ -53,7 +53,7 @@ class ConnectionConfig:
             - DATABASE_USER (default: app)
             - DATABASE_PASSWORD (default: super-secret for managed, empty for external)
             - DATABASE_HOST (default: localhost for managed)
-            - DATABASE_PORT (default: 15432 for managed, 5432 for external)
+            - DATABASE_PORT (default: 35432 for managed, 5432 for external)
             - DATABASE_NAME (default: app)
             - DATABASE_URL (full connection string, overrides individual params)
         """
@@ -65,10 +65,7 @@ class ConnectionConfig:
             import re
 
             # Parse postgresql:// or postgres:// URLs
-            match = re.match(
-                r"(?:postgresql|postgres)://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)",
-                database_url,
-            )
+            match = re.match(r"(?:postgresql|postgres)://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)", database_url)
             if match:
                 user, password, host, port, database = match.groups()
                 return cls(
@@ -83,41 +80,24 @@ class ConnectionConfig:
 
         # Standard connection parameters
         user = os.getenv("DATABASE_USER", "app")
-        password = os.getenv(
-            "DATABASE_PASSWORD",
-            "super-secret" if mode == DeploymentMode.MANAGED else "",
-        )
+        password = os.getenv("DATABASE_PASSWORD", "super-secret" if mode == DeploymentMode.MANAGED else "")
         host = os.getenv("DATABASE_HOST", "localhost" if mode == DeploymentMode.MANAGED else "")
-        port = int(os.getenv("DATABASE_PORT", "15432" if mode == DeploymentMode.MANAGED else "5432"))
+        port = int(os.getenv("DATABASE_PORT", "35432" if mode == DeploymentMode.MANAGED else "5432"))
         database = os.getenv("DATABASE_NAME", "app")
 
-        return cls(
-            mode=mode,
-            user=user,
-            password=password,
-            host=host,
-            port=port,
-            database=database,
-        )
+        return cls(mode=mode, user=user, password=password, host=host, port=port, database=database)
 
     @classmethod
     def for_managed(
         cls,
         user: str = "app",
-        password: str = "super-secret",  # noqa: S107
+        password: str = "super-secret",
         host: str = "localhost",
-        port: int = 15432,
+        port: int = 35432,
         database: str = "app",
     ) -> ConnectionConfig:
         """Create config for managed Docker/Podman container."""
-        return cls(
-            mode=DeploymentMode.MANAGED,
-            user=user,
-            password=password,
-            host=host,
-            port=port,
-            database=database,
-        )
+        return cls(mode=DeploymentMode.MANAGED, user=user, password=password, host=host, port=port, database=database)
 
     @classmethod
     def for_external(
@@ -190,11 +170,7 @@ class ConnectionTester:
         self.console = console or Console()
 
     def test(
-        self,
-        config: ConnectionConfig | None = None,
-        *,
-        timeout: int = 10,
-        display: bool = True,
+        self, config: ConnectionConfig | None = None, *, timeout: int = 10, display: bool = True
     ) -> ConnectionTestResult:
         """Test database connection.
 
@@ -223,11 +199,7 @@ class ConnectionTester:
 
         return result
 
-    def _do_connection_test(
-        self,
-        config: ConnectionConfig,
-        timeout: int = 10,
-    ) -> ConnectionTestResult:
+    def _do_connection_test(self, config: ConnectionConfig, timeout: int = 10) -> ConnectionTestResult:
         """Execute connection test.
 
         Args:
@@ -242,10 +214,10 @@ class ConnectionTester:
         start_time = time.time()
 
         try:
-            import asyncpg
-
             # Test connection with asyncpg
             import asyncio
+
+            import asyncpg
 
             async def test_async() -> ConnectionTestResult:
                 try:
@@ -260,7 +232,7 @@ class ConnectionTester:
 
                     try:
                         # Execute test query
-                        result = await conn.fetchval("SELECT 'OK'")
+                        await conn.fetchval("SELECT 'OK'")
 
                         # Get server version
                         version_row = await conn.fetchrow("SELECT version()")
@@ -275,13 +247,17 @@ class ConnectionTester:
                                 "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'vector')"
                             )
                             db_info["pgvector_installed"] = bool(pgvector_check)
-                        except Exception:  # noqa: S110
+                        except Exception:
                             db_info["pgvector_installed"] = False
 
                         connection_time_ms = (time.time() - start_time) * 1000
 
-                        mode_desc = "managed container" if config.mode == DeploymentMode.MANAGED else "external database"
-                        message = f"successfully connected to {mode_desc}: {config.host}:{config.port}/{config.database}"
+                        mode_desc = (
+                            "managed container" if config.mode == DeploymentMode.MANAGED else "external database"
+                        )
+                        message = (
+                            f"successfully connected to {mode_desc}: {config.host}:{config.port}/{config.database}"
+                        )
 
                         return ConnectionTestResult(
                             success=True,
@@ -295,7 +271,7 @@ class ConnectionTester:
                     finally:
                         await conn.close()
 
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     error_msg = str(e)
                     suggestions = self._get_error_suggestions(error_msg, config)
 
@@ -319,7 +295,7 @@ class ConnectionTester:
                 suggestions=["Install asyncpg: uv add asyncpg"],
             )
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             error_msg = str(e)
             suggestions = self._get_error_suggestions(error_msg, config)
 
@@ -331,11 +307,7 @@ class ConnectionTester:
                 suggestions=suggestions,
             )
 
-    def _get_error_suggestions(
-        self,
-        error: str,
-        config: ConnectionConfig,
-    ) -> list[str]:
+    def _get_error_suggestions(self, error: str, config: ConnectionConfig) -> list[str]:
         """Get troubleshooting suggestions based on error.
 
         Args:
@@ -373,11 +345,7 @@ class ConnectionTester:
             ])
 
         elif "timeout" in error_lower:
-            suggestions.extend([
-                "Check network connectivity",
-                "Increase timeout value",
-                "Verify firewall settings",
-            ])
+            suggestions.extend(["Check network connectivity", "Increase timeout value", "Verify firewall settings"])
 
         else:
             suggestions.extend([
@@ -397,11 +365,7 @@ class ConnectionTester:
         if result.success:
             self.console.print()
             self.console.print(
-                Panel(
-                    f"[green]✓ {result.message}[/green]",
-                    style="green",
-                    title="Connection Test Success",
-                )
+                Panel(f"[green]✓ {result.message}[/green]", style="green", title="Connection Test Success")
             )
 
             # Details table
@@ -428,13 +392,7 @@ class ConnectionTester:
 
         else:
             self.console.print()
-            self.console.print(
-                Panel(
-                    f"[red]✗ {result.message}[/red]",
-                    style="red",
-                    title="Connection Test Failed",
-                )
-            )
+            self.console.print(Panel(f"[red]✗ {result.message}[/red]", style="red", title="Connection Test Failed"))
 
             if result.suggestions:
                 self.console.print("\n[yellow]Suggestions:[/yellow]")
@@ -443,10 +401,7 @@ class ConnectionTester:
 
         self.console.print()
 
-    def get_connection_info(
-        self,
-        config: ConnectionConfig | None = None,
-    ) -> ConnectionInfo:
+    def get_connection_info(self, config: ConnectionConfig | None = None) -> ConnectionInfo:
         """Get connection information without testing.
 
         Args:
@@ -467,10 +422,7 @@ class ConnectionTester:
             connection_string=config.get_connection_string(),
         )
 
-    def display_connection_info(
-        self,
-        info: ConnectionInfo,
-    ) -> None:
+    def display_connection_info(self, info: ConnectionInfo) -> None:
         """Display connection information.
 
         Args:

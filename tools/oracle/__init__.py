@@ -36,13 +36,7 @@ __all__ = [
 ]
 
 # Import CLI command groups
-from tools.oracle.cli import (
-    connect_group,
-    database_group,
-    sqlcl_group,
-    status_command,
-    wallet_group,
-)
+from tools.oracle.cli import connect_group, database_group, sqlcl_group, status_command, wallet_group
 from tools.oracle.connection import ConnectionConfig, ConnectionTester, DeploymentMode
 from tools.oracle.database import DatabaseConfig, OracleDatabase
 from tools.oracle.health import HealthChecker, HealthStatus, SystemHealth

@@ -20,19 +20,9 @@ console = Console()
     type=click.Choice(["managed", "external"], case_sensitive=False),
     help="Check prerequisites for specific mode (auto-detect if not specified)",
 )
-@click.option(
-    "--json",
-    "json_output",
-    is_flag=True,
-    help="Output results as JSON",
-)
-@click.option(
-    "--verbose",
-    "-v",
-    is_flag=True,
-    help="Show detailed diagnostic information",
-)
-def doctor_command(mode: str | None, json_output: bool, verbose: bool) -> None:  # noqa: C901
+@click.option("--json", "json_output", is_flag=True, help="Output results as JSON")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed diagnostic information")
+def doctor_command(mode: str | None, json_output: bool, verbose: bool) -> None:
     """Verify all prerequisites and configuration.
 
     Checks:
@@ -52,12 +42,7 @@ def doctor_command(mode: str | None, json_output: bool, verbose: bool) -> None: 
         console.rule(f"[bold blue]Health Check for '{mode}' Mode", style="blue")
         console.print()
 
-    checks = {
-        "env_file": False,
-        "uv_installed": False,
-        "mode_specific": {},
-        "overall": False,
-    }
+    checks = {"env_file": False, "uv_installed": False, "mode_specific": {}, "overall": False}
 
     # Check .env file
     if not json_output:
@@ -158,7 +143,7 @@ def doctor_command(mode: str | None, json_output: bool, verbose: bool) -> None: 
             console.print()
             console.print("[bold]Next steps:[/bold]")
             console.print("  • Run [cyan]python manage.py connect test[/cyan] to verify database connection")
-            console.print("  • Run [cyan]uv run app run[/cyan] to start the application")
+            console.print("  • Run [cyan]uv run cymbal run[/cyan] to start the application")
         else:
             console.print("[bold red]✗ Some checks failed[/bold red]")
             console.print()

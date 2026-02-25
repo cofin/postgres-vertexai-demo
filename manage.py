@@ -66,7 +66,7 @@ def cli() -> None:
       1. python manage.py init              # Set up .env
       2. python manage.py install all       # Install prerequisites
       3. python manage.py doctor            # Verify setup
-      4. make start-infra                   # Start AlloyDB Omni container (via Makefile)
+      4. make start-infra                   # Start AlloyDB Omni container
 
     For help on any command:
       python manage.py <command> --help
@@ -126,7 +126,7 @@ def main() -> None:
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted by user[/yellow]")
         sys.exit(130)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
 

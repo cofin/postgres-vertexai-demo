@@ -34,7 +34,7 @@ def test_connection(timeout: int) -> None:
         DATABASE_USER=app
         DATABASE_PASSWORD=super-secret
         DATABASE_HOST=localhost
-        DATABASE_PORT=15432
+        DATABASE_PORT=35432
         DATABASE_NAME=app
 
     Examples:

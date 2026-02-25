@@ -26,11 +26,11 @@ class DatabaseConfig:
     hostname: str = "db"
 
     # Port mapping
-    host_port: int = 15432
+    host_port: int = 35432
     container_port: int = 5432
 
     # Environment variables
-    postgres_password: str = "super-secret"  # noqa: S105
+    postgres_password: str = "super-secret"
     postgres_user: str = "app"
     postgres_db: str = "app"
 
@@ -54,7 +54,7 @@ class DatabaseConfig:
         """Create configuration from environment variables.
 
         Reads from:
-        - DATABASE_PORT (default: 15432)
+        - DATABASE_PORT (default: 35432)
         - DATABASE_PASSWORD (default: super-secret)
         - DATABASE_USER (default: app)
         - DATABASE_NAME (default: app)
@@ -63,7 +63,7 @@ class DatabaseConfig:
             DatabaseConfig: Configuration instance
         """
         return cls(
-            host_port=int(os.getenv("DATABASE_PORT", "15432")),
+            host_port=int(os.getenv("DATABASE_PORT", "35432")),
             postgres_password=os.getenv("DATABASE_PASSWORD", "super-secret"),
             postgres_user=os.getenv("DATABASE_USER", "app"),
             postgres_db=os.getenv("DATABASE_NAME", "app"),
@@ -74,10 +74,7 @@ class PostgreSQLDatabase:
     """Manage PostgreSQL/AlloyDB Omni database container lifecycle."""
 
     def __init__(
-        self,
-        runtime: ContainerRuntime,
-        config: DatabaseConfig | None = None,
-        console: Console | None = None,
+        self, runtime: ContainerRuntime, config: DatabaseConfig | None = None, console: Console | None = None
     ) -> None:
         """Initialize PostgreSQL database manager.
 
@@ -90,12 +87,7 @@ class PostgreSQLDatabase:
         self.config = config or DatabaseConfig()
         self.console = console or Console()
 
-    def start(
-        self,
-        *,
-        pull: bool = False,
-        recreate: bool = False,
-    ) -> None:
+    def start(self, *, pull: bool = False, recreate: bool = False) -> None:
         """Start PostgreSQL database container.
 
         Args:
@@ -115,7 +107,6 @@ class PostgreSQLDatabase:
             ContainerAlreadyRunningError: If container is already running
             ContainerStartError: If container fails to start
         """
-        from tools.lib.container import ContainerNotFoundError
 
         self.console.rule("[bold blue]Starting PostgreSQL Database Container")
 
@@ -223,8 +214,7 @@ class PostgreSQLDatabase:
                 if status.get("status") == "running":
                     # Check health
                     _, stdout, _ = self.runtime.run_command(
-                        ["inspect", "--format", "{{.State.Health.Status}}", self.config.container_name],
-                        check=False,
+                        ["inspect", "--format", "{{.State.Health.Status}}", self.config.container_name], check=False
                     )
                     health_status = stdout.strip()
 
@@ -246,7 +236,7 @@ class PostgreSQLDatabase:
         """Display connection information."""
         self.console.print("\n[bold green]✓ Database Started Successfully[/bold green]")
         self.console.print("\n[bold]Connection Details:[/bold]")
-        self.console.print(f"  Host: [cyan]localhost[/cyan]")
+        self.console.print("  Host: [cyan]localhost[/cyan]")
         self.console.print(f"  Port: [cyan]{self.config.host_port}[/cyan]")
         self.console.print(f"  Database: [cyan]{self.config.postgres_db}[/cyan]")
         self.console.print(f"  User: [cyan]{self.config.postgres_user}[/cyan]")

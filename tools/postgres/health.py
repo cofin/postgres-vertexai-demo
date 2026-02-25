@@ -118,9 +118,7 @@ class HealthChecker:
             overall_status = HealthStatus.UNKNOWN
 
         return SystemHealth(
-            overall_status=overall_status,
-            components=components,
-            timestamp=datetime.now(UTC).isoformat(),
+            overall_status=overall_status, components=components, timestamp=datetime.now(UTC).isoformat()
         )
 
     def check_runtime(self) -> ComponentHealth:
@@ -177,8 +175,7 @@ class HealthChecker:
         # Check health status
         try:
             _, stdout, _ = self.runtime.run_command(
-                ["inspect", "--format", "{{.State.Health.Status}}", config.container_name],
-                check=False,
+                ["inspect", "--format", "{{.State.Health.Status}}", config.container_name], check=False
             )
             health_status = stdout.strip()
 
@@ -206,7 +203,7 @@ class HealthChecker:
                 details={"container": config.container_name, "health": health_status},
             )
 
-        except Exception:  # noqa: BLE001
+        except Exception:
             return ComponentHealth(
                 name="Database Container",
                 status=HealthStatus.DEGRADED,
@@ -221,13 +218,7 @@ class HealthChecker:
             ComponentHealth: psql status
         """
         try:
-            result = subprocess.run(
-                ["psql", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-            )
+            result = subprocess.run(["psql", "--version"], capture_output=True, text=True, timeout=5, check=False)
 
             if result.returncode == 0:
                 version = result.stdout.strip()
@@ -312,7 +303,7 @@ class HealthChecker:
                 suggestions=["Wait for database to finish initializing"],
             )
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return ComponentHealth(
                 name="Database Connectivity",
                 status=HealthStatus.UNHEALTHY,
@@ -320,12 +311,7 @@ class HealthChecker:
                 suggestions=["Check database logs: python manage.py database postgres logs"],
             )
 
-    def display_health(
-        self,
-        health: SystemHealth,
-        *,
-        verbose: bool = False,
-    ) -> None:
+    def display_health(self, health: SystemHealth, *, verbose: bool = False) -> None:
         """Display health report with Rich formatting.
 
         Args:
@@ -363,10 +349,7 @@ class HealthChecker:
 
         self.console.print()
 
-    def _create_component_table(
-        self,
-        components: list[ComponentHealth],
-    ) -> Table:
+    def _create_component_table(self, components: list[ComponentHealth]) -> Table:
         """Create Rich table of component health."""
         table = Table(title="Component Health")
         table.add_column("Component", style="cyan")
@@ -381,10 +364,7 @@ class HealthChecker:
 
         return table
 
-    def _display_suggestions(
-        self,
-        health: SystemHealth,
-    ) -> None:
+    def _display_suggestions(self, health: SystemHealth) -> None:
         """Display troubleshooting suggestions."""
         self.console.print("\n[yellow]Troubleshooting Suggestions:[/yellow]")
         for component in health.unhealthy_components:

@@ -164,3 +164,10 @@ GEMINI.md
 AGENTS.md
 specs/
 !tools/lib
+.geminiignore
+uv.toml
+.agent/
+.geminiignore
+.beads/
+.litestar.json
+resources/generated/*

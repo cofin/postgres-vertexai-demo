@@ -45,7 +45,7 @@ def generate_secret_key() -> str:
     return secrets.token_hex(32)
 
 
-def create_env_interactive(mode: str, non_interactive: bool = False) -> bool:  # noqa: C901, PLR0915
+def create_env_interactive(mode: str, non_interactive: bool = False) -> bool:
     """Create .env file interactively based on deployment mode.
 
     Args:
@@ -92,7 +92,7 @@ def create_env_interactive(mode: str, non_interactive: bool = False) -> bool:  #
         # Managed mode: container with known defaults
         if non_interactive:
             db_user = "app"
-            db_password = "super-secret"  # noqa: S105
+            db_password = "super-secret"
             db_host = "localhost"
             db_port = "1521"
             db_service = "freepdb1"
@@ -114,7 +114,7 @@ def create_env_interactive(mode: str, non_interactive: bool = False) -> bool:  #
     elif non_interactive:
         use_wallet = False
         db_user = "app"
-        db_password = "your-password"  # noqa: S105
+        db_password = "your-password"
         db_host = "your-oracle-host"
         db_port = "1521"
         db_service = "your-service-name"
@@ -155,7 +155,7 @@ def create_env_interactive(mode: str, non_interactive: bool = False) -> bool:  #
     env_content += f"GOOGLE_PROJECT_ID={google_project}\n"
     if google_api_key:
         env_content += f"GOOGLE_API_KEY={google_api_key}\n"
-    env_content += f"VERTEX_AI_PROJECT_ID=${{GOOGLE_PROJECT_ID}}\n\n"
+    env_content += "VERTEX_AI_PROJECT_ID=${GOOGLE_PROJECT_ID}\n\n"
 
     # Server settings
     env_content += "# server\n"
@@ -176,7 +176,7 @@ def create_env_interactive(mode: str, non_interactive: bool = False) -> bool:  #
     try:
         env_path.write_text(env_content)
         console.print("[green]✓ Created .env file[/green]")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         console.print(f"[red]✗ Failed to create .env: {e}[/red]")
         return False
     else:
@@ -186,15 +186,10 @@ def create_env_interactive(mode: str, non_interactive: bool = False) -> bool:  #
 def run_command(cmd: list[str], check: bool = True) -> tuple[int, str, str]:
     """Run shell command and return exit code, stdout, stderr."""
     try:
-        result = subprocess.run(  # noqa: S603
-            cmd,
-            capture_output=True,
-            text=True,
-            check=check,
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, check=check)
     except subprocess.CalledProcessError as e:
         return e.returncode, e.stdout, e.stderr
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return 1, "", str(e)
     else:
         return result.returncode, result.stdout, result.stderr
@@ -217,7 +212,7 @@ def is_tool_installed(tool_name: str, version_flag: str = "--version") -> tuple[
         returncode, stdout, _ = run_command([tool_name, version_flag], check=False)
         if returncode == 0:
             return True, stdout.strip()
-    except Exception:  # noqa: BLE001, S110
+    except Exception:  # noqa: S110
         pass
 
     return False, ""
@@ -242,7 +237,7 @@ def is_mcp_server_configured(server_name: str) -> bool:
         mcp_servers = settings.get("mcpServers", {})
         # Check if server exists and is not None/null
         return server_name in mcp_servers and mcp_servers[server_name] is not None
-    except Exception:  # noqa: BLE001
+    except Exception:
         return False
 
 
@@ -260,21 +255,15 @@ def is_sqlcl_connection_saved(connection_name: str = "cymbal_coffee") -> bool:
 
     try:
         # Use sql -L to list saved connections
-        result = subprocess.run(
-            ["sql", "-L"],  # noqa: S607
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-    except Exception:  # noqa: BLE001
+        result = subprocess.run(["sql", "-L"], capture_output=True, text=True, timeout=5, check=False)
+    except Exception:
         return False
     else:
         # Check if connection_name appears in the output
         return connection_name in result.stdout
 
 
-def migrate_sqlcl_connection(old_name: str = "mcp_demo", new_name: str = "cymbal_coffee") -> tuple[bool, str]:  # noqa: PLR0911
+def migrate_sqlcl_connection(old_name: str = "mcp_demo", new_name: str = "cymbal_coffee") -> tuple[bool, str]:
     """Migrate old SQLcl connection name to new name.
 
     Args:
@@ -315,12 +304,7 @@ def migrate_sqlcl_connection(old_name: str = "mcp_demo", new_name: str = "cymbal
 
     try:
         result = subprocess.run(
-            ["sql", "/nolog"],  # noqa: S607
-            check=False,
-            input=conn_cmd,
-            capture_output=True,
-            text=True,
-            timeout=10,
+            ["sql", "/nolog"], check=False, input=conn_cmd, capture_output=True, text=True, timeout=10
         )
 
         if result.returncode == 0:
@@ -330,13 +314,13 @@ def migrate_sqlcl_connection(old_name: str = "mcp_demo", new_name: str = "cymbal
 
     except subprocess.TimeoutExpired:
         return False, "SQLcl command timed out"
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return False, f"Error migrating connection: {e}"
     else:
         return False, "Failed to create new connection"
 
 
-def configure_sqlcl_connection_with_password(connection_name: str = "cymbal_coffee") -> tuple[bool, str]:  # noqa: C901, PLR0911
+def configure_sqlcl_connection_with_password(connection_name: str = "cymbal_coffee") -> tuple[bool, str]:
     """Configure SQLcl saved connection with password from .env.
 
     Args:
@@ -402,12 +386,7 @@ def configure_sqlcl_connection_with_password(connection_name: str = "cymbal_coff
 
     try:
         result = subprocess.run(
-            ["sql", "/nolog"],  # noqa: S607
-            check=False,
-            input=conn_cmd,
-            capture_output=True,
-            text=True,
-            timeout=10,
+            ["sql", "/nolog"], check=False, input=conn_cmd, capture_output=True, text=True, timeout=10
         )
 
         # Check if successful
@@ -417,7 +396,7 @@ def configure_sqlcl_connection_with_password(connection_name: str = "cymbal_coff
 
     except subprocess.TimeoutExpired:
         return False, "SQLcl command timed out"
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return False, f"Error running SQLcl: {e}"
     else:
         return False, f"Failed to save connection: {error_msg}"
@@ -450,7 +429,7 @@ def configure_gemini_mcp_sqlcl() -> bool:
     if not gemini_settings_path.parent.exists():
         try:
             gemini_settings_path.parent.mkdir(parents=True, exist_ok=True)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     # Read existing settings or create new
@@ -459,7 +438,7 @@ def configure_gemini_mcp_sqlcl() -> bool:
         try:
             with gemini_settings_path.open() as f:
                 settings = json.load(f)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
     # Ensure mcpServers key exists
@@ -473,13 +452,13 @@ def configure_gemini_mcp_sqlcl() -> bool:
     try:
         with gemini_settings_path.open("w") as f:
             json.dump(settings, f, indent=2)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return False
     else:
         return True
 
 
-def configure_gemini_mcp_extensions(interactive: bool = True) -> dict[str, bool]:  # noqa: C901
+def configure_gemini_mcp_extensions(interactive: bool = True) -> dict[str, bool]:
     """Configure popular Gemini MCP extensions.
 
     Args:
@@ -499,7 +478,7 @@ def configure_gemini_mcp_extensions(interactive: bool = True) -> dict[str, bool]
     if not gemini_settings_path.parent.exists():
         try:
             gemini_settings_path.parent.mkdir(parents=True, exist_ok=True)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return {"error": False}
 
     # Read existing settings or create new
@@ -508,7 +487,7 @@ def configure_gemini_mcp_extensions(interactive: bool = True) -> dict[str, bool]
         try:
             with gemini_settings_path.open() as f:
                 settings = json.load(f)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return {"error": False}
 
     # Ensure mcpServers key exists
@@ -560,7 +539,7 @@ def configure_gemini_mcp_extensions(interactive: bool = True) -> dict[str, bool]
     try:
         with gemini_settings_path.open("w") as f:
             json.dump(settings, f, indent=2)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return dict.fromkeys(extensions.keys(), False)
     else:
         return results
