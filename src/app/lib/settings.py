@@ -1,0 +1,444 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+
+from __future__ import annotations
+
+import binascii
+import json
+import logging
+import os
+from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Final
+
+from litestar.utils.module_loader import module_to_os_path
+from sqlspec.adapters.asyncpg import AsyncpgConfig
+
+if TYPE_CHECKING:
+    from litestar.data_extractors import RequestExtractorField, ResponseExtractorField
+    from litestar_vite import ViteConfig
+
+
+DEFAULT_MODULE_NAME = "app"
+BASE_DIR: Final[Path] = module_to_os_path(DEFAULT_MODULE_NAME)
+
+TRUE_VALUES = {"True", "true", "1", "yes", "Y", "T"}
+
+
+def _default_app_url() -> str:
+    """Return the single-port Litestar URL used by litestar-vite bridge metadata."""
+    return f"http://localhost:{os.getenv('LITESTAR_PORT', '8000')}"
+
+
+@dataclass
+class DatabaseSettings:
+    """PostgreSQL Database connection settings."""
+
+    # Database URL (optional, for connection string)
+    URL: str | None = field(default_factory=lambda: os.getenv("DATABASE_URL"))
+    """PostgreSQL Database URL. Format: postgresql://user:password@host:port/database"""
+
+    # Standard Database fields
+    USER: str = field(
+        default_factory=lambda: os.getenv("DATABASE_USER", "app"),
+    )
+    """PostgreSQL Database User."""
+    PASSWORD: str = field(
+        default_factory=lambda: os.getenv("DATABASE_PASSWORD", "super-secret"),
+    )
+    """PostgreSQL Database Password."""
+    HOST: str = field(
+        default_factory=lambda: os.getenv("DATABASE_HOST", "localhost"),
+    )
+    """PostgreSQL Database Host."""
+    PORT: int = field(
+        default_factory=lambda: int(os.getenv("DATABASE_PORT", "15433")),
+    )
+    """PostgreSQL Database Port."""
+    DATABASE: str = field(
+        default_factory=lambda: os.getenv("DATABASE_NAME", "app"),
+    )
+    """PostgreSQL Database Name."""
+    POOL_MIN_SIZE: int = field(default_factory=lambda: int(os.getenv("DATABASE_POOL_MIN_SIZE", "5")))
+    """Minimum pool size."""
+    POOL_MAX_SIZE: int = field(default_factory=lambda: int(os.getenv("DATABASE_POOL_MAX_SIZE", "20")))
+    """Maximum pool size."""
+    POOL_TIMEOUT: int = field(default_factory=lambda: int(os.getenv("DATABASE_POOL_TIMEOUT", "30")))
+    """Pool timeout in seconds."""
+    POOL_RECYCLE: int = field(default_factory=lambda: int(os.getenv("DATABASE_POOL_RECYCLE", "300")))
+    """Pool recycle time in seconds."""
+    MIGRATION_PATH: str = field(
+        default_factory=lambda: os.getenv("DATABASE_MIGRATION_PATH", str(BASE_DIR / "db" / "migrations"))
+    )
+    """Database migration path."""
+    FIXTURE_PATH: str = f"{BASE_DIR}/db/fixtures"
+    """The path to JSON fixture files to load into tables."""
+
+    def get_connection_params(self) -> dict[str, Any]:
+        """Extract connection parameters for PostgreSQL."""
+        if self.URL:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(self.URL)
+            return {
+                "user": parsed.username or self.USER,
+                "password": parsed.password or self.PASSWORD,
+                "host": parsed.hostname or self.HOST,
+                "port": parsed.port or self.PORT,
+                "database": parsed.path.lstrip("/") if parsed.path else self.DATABASE,
+            }
+        return {
+            "user": self.USER,
+            "password": self.PASSWORD,
+            "host": self.HOST,
+            "port": self.PORT,
+            "database": self.DATABASE,
+        }
+
+    def create_config(self) -> AsyncpgConfig:
+        """Create PostgreSQL database configuration using asyncpg."""
+        conn_params = self.get_connection_params()
+
+        connection_config = {
+            "user": conn_params["user"],
+            "password": conn_params["password"],
+            "host": conn_params["host"],
+            "port": conn_params["port"],
+            "database": conn_params["database"],
+            "min_size": self.POOL_MIN_SIZE,
+            "max_size": self.POOL_MAX_SIZE,
+            "timeout": self.POOL_TIMEOUT,
+            "command_timeout": 60,  # Command timeout in seconds
+            "max_queries": 50000,  # Max queries per connection before recycling
+            "max_inactive_connection_lifetime": float(self.POOL_RECYCLE),
+            "ssl": False,
+        }
+
+        return AsyncpgConfig(
+            connection_config=connection_config,
+            migration_config={
+                "version_table_name": "migrations",
+                "script_location": self.MIGRATION_PATH,
+                "project_root": BASE_DIR,
+                "include_extensions": ["adk", "litestar"],
+            },
+            extension_config={
+                "adk": {
+                    "session_table": "adk_sessions",
+                    "events_table": "adk_events",
+                },
+                "litestar": {
+                    "session_table": "app_session",
+                },
+            },
+        )
+
+
+@dataclass
+class ServerSettings:
+    """Server configurations."""
+
+    APP_LOC: str = "app.asgi:app"
+    """Path to app executable, or factory."""
+    HOST: str = field(default_factory=lambda: os.getenv("LITESTAR_HOST", "0.0.0.0"))  # noqa: S104
+    """Server network host."""
+    PORT: int = field(default_factory=lambda: int(os.getenv("LITESTAR_PORT", "8000")))
+    """Server port."""
+    KEEPALIVE: int = field(default_factory=lambda: int(os.getenv("LITESTAR_KEEPALIVE", "65")))
+    """Seconds to hold connections open (65 is > AWS lb idle timeout)."""
+    RELOAD: bool = field(
+        default_factory=lambda: os.getenv("LITESTAR_RELOAD", "False") in TRUE_VALUES,
+    )
+    """Turn on hot reloading."""
+    RELOAD_DIRS: list[str] = field(default_factory=lambda: [f"{BASE_DIR}"])
+    """Directories to watch for reloading."""
+    HTTP_WORKERS: int | None = field(
+        default_factory=lambda: int(os.getenv("WEB_CONCURRENCY")) if os.getenv("WEB_CONCURRENCY") is not None else None,  # type: ignore[arg-type]
+    )
+    """Number of HTTP Worker processes to be spawned by Uvicorn."""
+
+
+@dataclass
+class LogSettings:
+    """Logger configuration"""
+
+    # https://stackoverflow.com/a/1845097/6560549
+    EXCLUDE_PATHS: str = (
+        r"^/health|^/static/|^/assets/|^/favicon\.ico|^/@vite|^/@fs|^/node_modules|"
+        r"\.(?:js|css|ico|png|jpg|svg|woff2?)$"
+    )
+    """Regex to exclude paths from logging."""
+    HTTP_EVENT: str = "HTTP"
+    """Log event name for logs from Litestar handlers."""
+    INCLUDE_COMPRESSED_BODY: bool = False
+    """Include 'body' of compressed responses in log output."""
+    LEVEL: int = field(
+        default_factory=lambda: (
+            int(os.getenv("LOG_LEVEL", "0"))
+            if os.getenv("LOG_LEVEL", "").isdigit()
+            else logging.getLevelNamesMapping().get(os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+        ),
+    )
+    """Stdlib log level as int. Accepts numeric (e.g. '20') or named (e.g. 'INFO') via LOG_LEVEL env var."""
+    SQLSPEC_LEVEL: int = field(default_factory=lambda: int(os.getenv("SQLSPEC_LOG_LEVEL", "20")))
+    """SQLSpec driver log level (default: INFO=20)."""
+    OBFUSCATE_COOKIES: set[str] = field(default_factory=lambda: {"session", "XSRF-TOKEN"})
+    """Request cookie keys to obfuscate."""
+    OBFUSCATE_HEADERS: set[str] = field(default_factory=lambda: {"Authorization", "X-API-KEY", "X-XSRF-TOKEN"})
+    """Request header keys to obfuscate."""
+    REQUEST_FIELDS: list[RequestExtractorField] = field(
+        default_factory=lambda: [
+            "path",
+            "method",
+            "query",
+            "path_params",
+        ],
+    )
+    """Attributes of the [Request][litestar.connection.request.Request] to be
+    logged."""
+    RESPONSE_FIELDS: list[ResponseExtractorField] = field(
+        default_factory=lambda: [
+            "status_code",
+        ],
+    )
+    """Attributes of the [Response][litestar.response.Response] to be
+    logged."""
+    GRANIAN_ACCESS_LEVEL: int = 30
+    """Level to log ASGI access logs."""
+    GRANIAN_ERROR_LEVEL: int = 20
+    """Level to log ASGI error logs."""
+
+
+@dataclass
+class AppSettings:
+    """Application configuration"""
+
+    URL: str = field(default_factory=lambda: os.getenv("APP_URL") or _default_app_url())
+    """The frontend base URL."""
+    DEBUG: bool = field(default_factory=lambda: os.getenv("LITESTAR_DEBUG", "False") in TRUE_VALUES)
+    """Run `Litestar` with `debug=True`."""
+    SECRET_KEY: str = field(
+        default_factory=lambda: os.getenv("SECRET_KEY", binascii.hexlify(os.urandom(32)).decode(encoding="utf-8")),
+    )
+    """Application secret key."""
+    NAME: str = field(default_factory=lambda: "app")
+    """Application name."""
+    ALLOWED_CORS_ORIGINS: list[str] | str = field(default_factory=lambda: os.getenv("ALLOWED_CORS_ORIGINS", '["*"]'))
+    """Allowed CORS Origins"""
+    CSRF_COOKIE_NAME: str = field(default_factory=lambda: "XSRF-TOKEN")
+    """CSRF Cookie Name"""
+    CSRF_HEADER_NAME: str = field(default_factory=lambda: "X-CSRFToken")
+    """CSRF header name forwarded by HTMX requests; must match the JS helper default."""
+    CSRF_COOKIE_SECURE: bool = field(default_factory=lambda: False)
+    """CSRF Secure Cookie"""
+
+    def __post_init__(self) -> None:
+        # Check if the ALLOWED_CORS_ORIGINS is a string.
+        if isinstance(self.ALLOWED_CORS_ORIGINS, str):
+            # Check if the string starts with "[" and ends with "]", indicating a list.
+            if self.ALLOWED_CORS_ORIGINS.startswith("[") and self.ALLOWED_CORS_ORIGINS.endswith("]"):
+                try:
+                    # Safely evaluate the string as a Python list.
+                    self.ALLOWED_CORS_ORIGINS = json.loads(self.ALLOWED_CORS_ORIGINS)
+                except (SyntaxError, ValueError):
+                    # Handle potential errors if the string is not a valid Python literal.
+                    msg = "ALLOWED_CORS_ORIGINS is not a valid list representation."
+                    raise ValueError(msg) from None
+            else:
+                # Split the string by commas into a list if it is not meant to be a list representation.
+                self.ALLOWED_CORS_ORIGINS = [host.strip() for host in self.ALLOWED_CORS_ORIGINS.split(",")]
+
+
+@dataclass
+class MapsSettings:
+    """Google Maps integration settings."""
+
+    ENABLE_EMBED: bool = field(default_factory=lambda: os.getenv("MAPS_ENABLE_EMBED", "False") in TRUE_VALUES)
+    """Enable optional Google Maps Embed iframe rendering."""
+    EMBED_API_KEY: str = field(default_factory=lambda: os.getenv("GOOGLE_MAPS_EMBED_API_KEY", ""))
+    """Restricted Google Maps Embed API key. Do not reuse Gemini or Vertex keys."""
+
+    @property
+    def embed_enabled(self) -> bool:
+        """Return true only when embed rendering is explicitly enabled and keyed."""
+        return self.ENABLE_EMBED and bool(self.EMBED_API_KEY.strip())
+
+
+@dataclass
+class VertexAISettings:
+    """Vertex AI configuration settings."""
+
+    PROJECT_ID: str = field(
+        default_factory=lambda: os.getenv("VERTEX_AI_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT") or ""
+    )
+    """Google Cloud Project ID for Vertex AI."""
+    LOCATION: str = field(
+        default_factory=lambda: (
+            os.getenv("VERTEX_AI_LOCATION")
+            or os.getenv("GOOGLE_CLOUD_LOCATION")
+            or os.getenv("GOOGLE_LOCATION")
+            or "us-central1"
+        )
+    )
+    """Vertex AI location/region."""
+    API_KEY: str | None = field(default_factory=lambda: os.getenv("VERTEX_AI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
+    """Optional API key for Google AI clients."""
+    EMBEDDING_MODEL: str = field(default_factory=lambda: os.getenv("VERTEX_AI_EMBEDDING_MODEL", "gemini-embedding-001"))
+    """Vertex AI embedding model."""
+    EMBEDDING_DIMENSIONS: int = 3072
+    """Embedding vector dimensions (gemini-embedding-001 native output)."""
+    CHAT_MODEL: str = field(default_factory=lambda: os.getenv("VERTEX_AI_CHAT_MODEL", "gemini-2.5-flash-lite"))
+    """Vertex AI chat model."""
+    INTENT_MODEL: str = field(default_factory=lambda: os.getenv("VERTEX_AI_INTENT_MODEL", "gemini-2.5-flash-lite"))
+    """Vertex AI model for single-call intent classification with text/x.enum."""
+
+    def __post_init__(self) -> None:
+        """Handle environment variable synchronization and conflict resolution."""
+        if self.PROJECT_ID:
+            # When using Vertex AI (project-based), API key must NOT be set in environment
+            # as it causes mutual exclusivity errors in the genai client.
+            os.environ.pop("GOOGLE_API_KEY", None)
+            os.environ.pop("VERTEX_AI_API_KEY", None)
+            os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
+            os.environ["GOOGLE_CLOUD_PROJECT"] = self.PROJECT_ID
+            os.environ["GOOGLE_CLOUD_LOCATION"] = self.LOCATION
+            self.API_KEY = None
+
+    # Context Caching Settings
+    CACHE_TTL_SECONDS: int = field(default_factory=lambda: int(os.getenv("VERTEX_AI_CACHE_TTL_SECONDS", "3600")))
+    """Context cache TTL in seconds (default: 1 hour)."""
+    CACHE_PREFIX: str = field(default_factory=lambda: os.getenv("VERTEX_AI_CACHE_PREFIX", "cymbal-coffee"))
+    """Prefix for cache names."""
+
+    # Streaming Settings
+    STREAM_BUFFER_SIZE: int = field(default_factory=lambda: int(os.getenv("VERTEX_AI_STREAM_BUFFER_SIZE", "1024")))
+    """Buffer size for streaming responses."""
+    STREAM_TIMEOUT_SECONDS: int = field(
+        default_factory=lambda: int(os.getenv("VERTEX_AI_STREAM_TIMEOUT_SECONDS", "30"))
+    )
+    """Timeout for streaming responses."""
+
+
+@dataclass
+class AgentSettings:
+    """Agent system configuration."""
+
+    INTENT_THRESHOLD: float = field(default_factory=lambda: float(os.getenv("AGENT_INTENT_THRESHOLD", "0.8")))
+    """Intent detection confidence threshold."""
+    VECTOR_SEARCH_THRESHOLD: float = field(
+        default_factory=lambda: float(os.getenv("AGENT_VECTOR_SEARCH_THRESHOLD", "0.7"))
+    )
+    """Vector search similarity threshold."""
+    VECTOR_SEARCH_LIMIT: int = field(default_factory=lambda: int(os.getenv("AGENT_VECTOR_SEARCH_LIMIT", "5")))
+    """Maximum number of vector search results."""
+    CONVERSATION_HISTORY_LIMIT: int = field(
+        default_factory=lambda: int(os.getenv("AGENT_CONVERSATION_HISTORY_LIMIT", "10"))
+    )
+    """Maximum conversation history to maintain."""
+    SESSION_EXPIRE_HOURS: int = field(default_factory=lambda: int(os.getenv("AGENT_SESSION_EXPIRE_HOURS", "24")))
+    """Session expiration in hours."""
+
+
+@dataclass
+class CacheSettings:
+    """Caching configuration."""
+
+    RESPONSE_TTL_MINUTES: int = field(default_factory=lambda: int(os.getenv("CACHE_RESPONSE_TTL_MINUTES", "5")))
+    """Response cache TTL in minutes."""
+    EMBEDDING_CACHE_ENABLED: bool = field(
+        default_factory=lambda: os.getenv("CACHE_EMBEDDING_ENABLED", "True") in TRUE_VALUES
+    )
+    """Enable embedding caching."""
+
+
+@dataclass
+class ViteSettings:
+    """Vite configuration settings."""
+
+    DEV_MODE: bool = field(default_factory=lambda: os.getenv("VITE_DEV_MODE", "False") in TRUE_VALUES)
+    """Enable Vite dev server mode."""
+    BUNDLE_DIR: Path = field(
+        default_factory=lambda: Path(
+            os.getenv("VITE_BUNDLE_DIR", str(BASE_DIR / "domain" / "web" / "static")),
+        ),
+    )
+    """Vite bundle directory."""
+
+    def get_config(self) -> ViteConfig:
+        """Build the Vite plugin configuration.
+
+        Returns:
+            A ``ViteConfig`` whose paths match ``src/resources/vite.config.ts``.
+        """
+        from litestar_vite import PathConfig, TypeGenConfig, ViteConfig
+
+        return ViteConfig(
+            mode="htmx",
+            dev_mode=self.DEV_MODE,
+            types=TypeGenConfig(
+                output=Path("generated"),
+                generate_sdk=False,
+                generate_routes=False,
+                generate_schemas=False,
+                generate_page_props=False,
+            ),
+            paths=PathConfig(
+                root=BASE_DIR.parent / "resources",
+                resource_dir=Path(),
+                bundle_dir=self.BUNDLE_DIR,
+                static_dir=Path("public"),
+                asset_url="/static/",
+            ),
+        )
+
+
+@dataclass
+class Settings:
+    app: AppSettings = field(default_factory=AppSettings)
+    db: DatabaseSettings = field(default_factory=DatabaseSettings)
+    server: ServerSettings = field(default_factory=ServerSettings)
+    log: LogSettings = field(default_factory=LogSettings)
+    vertex_ai: VertexAISettings = field(default_factory=VertexAISettings)
+    agent: AgentSettings = field(default_factory=AgentSettings)
+    cache: CacheSettings = field(default_factory=CacheSettings)
+    vite: ViteSettings = field(default_factory=ViteSettings)
+    maps: MapsSettings = field(default_factory=MapsSettings)
+
+    def setup_litestar_env(self) -> None:
+        """Set Litestar and Granian defaults expected by the app server."""
+        os.environ.setdefault("APP_URL", self.app.URL)
+        os.environ.setdefault("LITESTAR_APP", "app.server.asgi:create_app")
+        os.environ.setdefault("LITESTAR_APP_NAME", self.app.NAME)
+        os.environ.setdefault("LITESTAR_GRANIAN_IN_SUBPROCESS", "false")
+        os.environ.setdefault("LITESTAR_GRANIAN_USE_LITESTAR_LOGGER", "true")
+
+    @classmethod
+    @lru_cache(maxsize=1, typed=True)
+    def from_env(cls, dotenv_filename: str = ".env") -> Settings:
+        from litestar.cli._utils import console
+
+        env_file = Path(dotenv_filename)
+        if not env_file.is_absolute():
+            env_file = Path(os.curdir) / env_file
+        if env_file.is_file():
+            from dotenv import load_dotenv
+
+            console.print(f"[yellow]Loading environment configuration from {dotenv_filename}[/]")
+
+            # override=True so the .env is the source of truth — otherwise stale
+            # shell exports (e.g. LITESTAR_PORT lingering in an interactive shell)
+            # silently win over what the user just edited in .env.
+            load_dotenv(env_file, override=True)
+
+        for k, v in list(os.environ.items()):
+            if "$" in v:
+                os.environ[k] = os.path.expandvars(v)
+
+        settings = Settings()
+        settings.setup_litestar_env()
+        return settings
+
+
+def get_settings() -> Settings:
+    return Settings.from_env()

@@ -26,7 +26,7 @@ class DatabaseConfig:
     hostname: str = "db"
 
     # Port mapping
-    host_port: int = 15432
+    host_port: int = 15433
     container_port: int = 5432
 
     # Environment variables
@@ -63,7 +63,7 @@ class DatabaseConfig:
             DatabaseConfig: Configuration instance
         """
         return cls(
-            host_port=int(os.getenv("DATABASE_PORT", "15432")),
+            host_port=int(os.getenv("DATABASE_PORT", "15433")),
             postgres_password=os.getenv("DATABASE_PASSWORD", "super-secret"),
             postgres_user=os.getenv("DATABASE_USER", "app"),
             postgres_db=os.getenv("DATABASE_NAME", "app"),

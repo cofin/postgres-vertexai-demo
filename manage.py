@@ -1,134 +1,147 @@
 #!/usr/bin/env python3
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#     "httpx>=0.28.1",
-#     "rich-click>=1.8.0",
-#     "asyncpg>=0.30.0",
-#     "python-dotenv>=1.0.0",
-# ]
-# ///
-"""Unified project management CLI for PostgreSQL + Vertex AI demo.
+# SPDX-FileCopyrightText: 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+"""Cymbal Coffee Infrastructure and Database Lifecycle Management.
 
-This tool provides a single interface for:
-- Project initialization and environment setup
-- Prerequisite installation (UV, etc.)
-- PostgreSQL/AlloyDB connection testing
+Unified DevOps CLI for the Oracle 26ai + Vertex AI demo. Mirrors the
+``dma/accelerator`` layout: six top-level groups (``init``, ``install``,
+``doctor``, ``infra``, ``database``, ``assets``).
 
-IMPORTANT: This is a development tool and should not be shipped with production code.
+Examples::
 
-Usage:
-    python manage.py init                  # Initialize project
-    python manage.py install all          # Install all prerequisites
-    python manage.py doctor               # Verify setup
-    python manage.py --help               # Show all commands
+    python manage.py init
+    python manage.py install all
+    python manage.py doctor
+    python manage.py infra start
+    python manage.py database upgrade
+    python manage.py database wallet locate
+    python manage.py assets build
 """
 
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 import rich_click as click
 from rich.console import Console
-
-# Ensure tools package is importable
-sys.path.insert(0, str(Path(__file__).parent))
-
-# Import project management CLI commands
 from tools.cli import doctor_command, init_command, install_group
-from tools.postgres import database_group as postgres_database_group
+from tools.postgres import (
+    connect_group as postgres_connect_group,
+    database_group as postgres_container_group,
+    health_command as postgres_health_command,
+)
 
-console = Console()
+from app.__metadata__ import __version__
 
-# Configure rich-click
+# rich-click config
 click.rich_click.USE_RICH_MARKUP = True
 click.rich_click.SHOW_ARGUMENTS = True
 click.rich_click.GROUP_ARGUMENTS_OPTIONS = True
 click.rich_click.STYLE_ERRORS_SUGGESTION = "yellow italic"
 click.rich_click.ERRORS_SUGGESTION = "Try running the '--help' flag for more information."
 
-
-# ============================================================================
-# Main CLI Group
-# ============================================================================
+console = Console()
 
 
-@click.group()
-@click.version_option(version="0.2.0", prog_name="manage")
+@click.group(
+    help="""
+    [bold cyan]Cymbal Coffee Infrastructure and Database Management[/bold cyan]
+
+    Unified DevOps CLI for the Oracle 26ai + Vertex AI demo.
+    """,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+@click.version_option(version=__version__, prog_name="manage")
 def cli() -> None:
-    """Unified DevOps CLI for PostgreSQL + Vertex AI Demo.
-
-    This tool manages project initialization, prerequisites, and database setup
-    for PostgreSQL/AlloyDB connections.
-
-    Common workflow:
-      1. python manage.py init              # Set up .env
-      2. python manage.py install all       # Install prerequisites
-      3. python manage.py doctor            # Verify setup
-      4. make start-infra                   # Start AlloyDB Omni container (via Makefile)
-
-    For help on any command:
-      python manage.py <command> --help
-    """
+    """Top-level entry point."""
 
 
-# ============================================================================
-# Register Project Management Commands
-# ============================================================================
-
-# Register init command
+# Project lifecycle
 cli.add_command(init_command, name="init")
-
-# Register install group
 cli.add_command(install_group, name="install")
-
-# Register doctor command
 cli.add_command(doctor_command, name="doctor")
 
 
-# ============================================================================
-# Register PostgreSQL Database Commands
-# ============================================================================
+# =============================================================================
+# Infrastructure (flat — start/stop/restart/status/logs/wipe)
+# =============================================================================
 
 
-@cli.group(name="database")
-def database_cli_group() -> None:
-    """Manage database operations.
-
-    Commands for database management across different providers.
-    """
+@cli.group(name="infra", help="Manage development infrastructure (Oracle 26ai container).")
+def infra_group() -> None:
+    """Oracle 26ai container lifecycle — flat namespace, accelerator-style."""
 
 
-@database_cli_group.group(name="postgres")
-def postgres_cli_group() -> None:
-    """Manage PostgreSQL/AlloyDB database operations.
+_INFRA_RENAME = {
+    "start": "start",
+    "stop": "stop",
+    "restart": "restart",
+    "status": "status",
+    "logs": "logs",
+    "remove": "wipe",
+}
+for src_name, dst_name in _INFRA_RENAME.items():
+    cmd = postgres_container_group.commands.get(src_name)
+    if cmd is not None:
+        infra_group.add_command(cmd, name=dst_name)
 
-    Commands for deploying and managing PostgreSQL/AlloyDB containers.
-    Requires Docker for managed mode.
-    """
+
+# =============================================================================
+# Database (sqlspec migrations + wallet + connect)
+# =============================================================================
 
 
-# Register database commands under postgres_cli_group
-for command_name, command in postgres_database_group.commands.items():
-    postgres_cli_group.add_command(command, name=command_name)
+@cli.group(name="database", help="Database management — migrations, wallet, and connection tests.")
+@click.pass_context
+def database_group(ctx: click.Context) -> None:
+    """Database administration. Migration commands work against ``app.config.db``."""
+    import app.config as app_config  # mypy needs explicit submodule import (not `from app import config`).
+
+    ctx.ensure_object(dict)
+    ctx.obj["configs"] = [app_config.db]
 
 
-# ============================================================================
-# Main Entry Point
-# ============================================================================
+database_group.add_command(postgres_connect_group, name="connect")
+database_group.add_command(postgres_health_command, name="health")
+
+
+# =============================================================================
+# Assets (litestar-vite passthrough)
+# =============================================================================
+
+
+@cli.group(name="assets", help="Frontend asset pipeline (Vite via litestar-vite).")
+@click.pass_context
+def assets_group(ctx: click.Context) -> None:
+    """Wire a LitestarEnv factory onto ctx.obj for the Vite subcommands."""
+    from litestar.cli._utils import LitestarEnv
+
+    def _get_env() -> LitestarEnv:
+        return LitestarEnv.from_env("app.server.asgi:create_app")
+
+    ctx.obj = _get_env
+
+
+# =============================================================================
+# Main
+# =============================================================================
 
 
 def main() -> None:
-    """Main entry point."""
+    """Bootstrap migration + Vite subcommands then dispatch."""
+    from litestar_vite.cli import vite_group
+    from sqlspec.cli import add_migration_commands
+
+    add_migration_commands(database_group)
+    for name, command in vite_group.commands.items():
+        if name in {"install", "generate-types", "build", "serve"}:
+            assets_group.add_command(command, name=name)
+
     try:
         cli()
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted by user[/yellow]")
         sys.exit(130)
-    except Exception as e:  # noqa: BLE001
-        console.print(f"[red]Error: {e}[/red]")
-        sys.exit(1)
 
 
 if __name__ == "__main__":

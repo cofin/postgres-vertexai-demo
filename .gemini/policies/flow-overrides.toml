@@ -1,0 +1,6 @@
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "^(bd|uv|pip|ruff|make|git|npx|bunx|pnpm|railway|bash|python3|cat|ls) .*"
+decision = "allow"
+priority = 100
+modes = ["plan"]

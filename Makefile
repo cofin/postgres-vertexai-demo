@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+
 SHELL := /bin/bash
 
 # =============================================================================
@@ -6,8 +9,19 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 .ONESHELL:
+.SHELLFLAGS := -e -o pipefail -c
 .EXPORT_ALL_VARIABLES:
 MAKEFLAGS += --no-print-directory
+PYAPP_BUILD_PYTHON ?= cpython-3.13.12-linux-x86_64-gnu
+PYAPP_BUILD_TARGET ?=
+FRONTEND_DIR := src/resources
+
+# Detect Rodete and configure public package indexes
+ifneq ($(shell grep -s -q "rodete" /etc/os-release && echo "yes"),)
+export NPM_CONFIG_REGISTRY=https://registry.npmjs.org
+export PIP_INDEX_URL=https://pypi.org/simple
+export UV_INDEX_URL=https://pypi.org/simple
+endif
 
 # ----------------------------------------------------------------------------
 # Display Formatting and Colors
@@ -32,8 +46,10 @@ help: ## Display this help text for Makefile
 # =============================================================================
 # Installation and Environment Setup
 # =============================================================================
+# removed install-sqlcl target
+
 .PHONY: install-uv
-install-uv: ## Install latest version of uv (idempotent)
+install-uv:                                         ## Install latest version of uv (idempotent)
 	@if command -v uv >/dev/null 2>&1; then \
 		echo "${OK} UV already installed: $$(uv --version)"; \
 	else \
@@ -42,47 +58,146 @@ install-uv: ## Install latest version of uv (idempotent)
 		echo "${OK} UV installed successfully"; \
 	fi
 
+.PHONY: setup-env
+setup-env:                                          ## Configure local environment (e.g. Rodete)
+	@./tools/scripts/setup-env.sh
+
 .PHONY: install
-install: destroy clean ## Install the project, dependencies, and pre-commit
+install: destroy clean setup-env install-uv ## Install the project and its dependencies (pre-commit / prek hooks are NOT auto-installed — run `uvx prek install` manually if you want commit-time checks).
+	@set -e
 	@echo "${INFO} Starting fresh installation..."
 	@uv python pin 3.12 >/dev/null 2>&1
 	@uv venv >/dev/null 2>&1
 	@uv sync --all-extras --dev
+	@echo "${INFO} Installing frontend packages... 📦"
+	@uv run python manage.py assets install >/dev/null 2>&1
+	@echo "${INFO} Building frontend assets... 📦"
+	@uv run python manage.py assets build
 	@echo "${OK} Installation complete! 🎉"
+	@echo "${INFO} Tip: run \`uvx prek install\` if you want pre-commit hooks active on git commit (not required — \`make lint\` runs the full check on demand)."
 
 .PHONY: destroy
-destroy: ## Remove venv and node_modules
+# Remove venv and node_modules
+
+destroy:
 	@echo "${INFO} Destroying virtual environment... 🗑️"
-	@uv run pre-commit clean >/dev/null 2>&1 || true
+	@uvx prek clean >/dev/null 2>&1 || true
 	@rm -rf .venv
 	@rm -rf node_modules
+	@rm -rf $(FRONTEND_DIR)/node_modules
 	@echo "${OK} Virtual environment destroyed 🗑️"
 
 # =============================================================================
 # Dependency Management
 # =============================================================================
 .PHONY: upgrade
-upgrade: ## Upgrade all dependencies to latest stable versions
+upgrade: setup-env ## Upgrade all dependencies to latest stable versions
 	@echo "${INFO} Updating all dependencies... 🔄"
 	@uv lock --upgrade
+	@echo "${INFO} Updating frontend dependencies... 🔄"
+	@cd $(FRONTEND_DIR) && npx --yes npm-check-updates@latest --target latest --upgrade
+	@cd $(FRONTEND_DIR) && npm install --no-fund
 	@echo "${OK} Dependencies updated 🔄"
-	@uv run pre-commit autoupdate
-	@echo "${OK} Updated Pre-commit hooks 🔄"
+	@uvx prek autoupdate
+	@echo "${OK} Updated prek hooks 🔄"
 
 .PHONY: lock
 lock: ## Rebuild lockfiles from scratch
 	@echo "${INFO} Rebuilding lockfiles... 🔄"
 	@uv lock --upgrade >/dev/null 2>&1
+	@cd $(FRONTEND_DIR) && npm install --package-lock-only >/dev/null 2>&1
 	@echo "${OK} Lockfiles updated"
 
 # =============================================================================
 # Build and Release
 # =============================================================================
 .PHONY: build
-build: ## Build the package
-	@echo "${INFO} Building package... 📦"
+build: ## Build the package (Python wheel + frontend assets)
+	@echo "${INFO} Building frontend assets... 📦"
+	@uv run python manage.py assets build >/dev/null 2>&1
+	@echo "${INFO} Building Python package... 📦"
 	@uv build >/dev/null 2>&1
 	@echo "${OK} Package build complete"
+
+.PHONY: release
+release: ## Bump version and refresh release lockfiles (bump=major|minor|patch|pre)
+	@if [ -z "$(bump)" ]; then \
+		echo "${ERROR} Usage: make release bump=major|minor|patch|pre"; \
+		exit 1; \
+	fi
+	@echo "${INFO} Preparing release bump ($(bump))... 📦"
+	@$(MAKE) clean
+	@uv run bump-my-version bump $(bump)
+	@uv lock --upgrade-package app >/dev/null 2>&1
+	@echo "${OK} Release bump complete 🎉"
+
+.PHONY: pre-release
+pre-release: ## Start a pre-release: make pre-release version=0.3.0-alpha.1
+	@if [ -z "$(version)" ]; then \
+		echo "${ERROR} Usage: make pre-release version=X.Y.Z-alpha.N"; \
+		echo ""; \
+		echo "Pre-release workflow:"; \
+		echo "  1. Start alpha:     make pre-release version=0.3.0-alpha.1"; \
+		echo "  2. Next alpha:      make pre-release version=0.3.0-alpha.2"; \
+		echo "  3. Move to beta:    make pre-release version=0.3.0-beta.1"; \
+		echo "  4. Move to rc:      make pre-release version=0.3.0-rc.1"; \
+		echo "  5. Final release:   make release bump=pre"; \
+		exit 1; \
+	fi
+	@echo "${INFO} Preparing pre-release $(version)... 🧪"
+	@$(MAKE) clean
+	@uv run bump-my-version bump --new-version $(version) pre
+	@uv lock --upgrade-package app >/dev/null 2>&1
+	@echo "${OK} Pre-release $(version) complete 🧪"
+
+.PHONY: build-wheel
+build-wheel: assets-build ## Build the Python wheel with bundled frontend assets
+	@echo "${INFO} Building Python wheel... 📦"
+	@uv build --wheel >/dev/null 2>&1
+	@echo "${OK} Wheel build complete"
+
+.PHONY: build-onefile
+build-onefile: ## Build the self-contained PyApp onefile
+	@set -e
+	UV_PYTHON="$(PYAPP_BUILD_PYTHON)" $(MAKE) build-wheel
+	echo "${INFO} Building onefile with Python $(PYAPP_BUILD_PYTHON)... 🔨"
+	PYAPP_BUILD_PYTHON="$(PYAPP_BUILD_PYTHON)" PYAPP_BUILD_TARGET="$(PYAPP_BUILD_TARGET)" UV_PYTHON="$(PYAPP_BUILD_PYTHON)" ./tools/scripts/build-onefile-package.sh
+	echo "${OK} Onefile build complete"
+
+.PHONY: build-onefile-container
+build-onefile-container: build-onefile ## Build the distroless container from the onefile binary
+	$(eval ARCH := $(shell uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/'))
+	@set -e
+	cp dist/coffee dist/coffee-$(ARCH)-linux-gnu
+	trap 'rm -f dist/coffee-$(ARCH)-linux-gnu' EXIT
+	echo "${INFO} Building distroless onefile container for $(ARCH)..."
+	docker build \
+		-f tools/deploy/docker/Dockerfile \
+		-t cymbal-coffee:latest \
+		-t cymbal-coffee:dev \
+		--build-arg TARGETARCH=$(ARCH) \
+		.
+	echo "${OK} Container image built: cymbal-coffee:latest"
+
+# =============================================================================
+# Documentation
+# =============================================================================
+.PHONY: docs
+docs: ## Build the Sphinx documentation site (warnings as errors)
+	@echo "${INFO} Building docs... 📚"
+	@uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html
+	@echo "${OK} Docs built at docs/_build/html/index.html"
+
+.PHONY: docs-serve
+docs-serve: ## Serve docs with hot reload on http://localhost:8002
+	@echo "${INFO} Serving docs on http://localhost:8002 (hot reload)... 📚"
+	@uv run --group docs sphinx-autobuild --port 8002 --watch src docs docs/_build/html
+
+.PHONY: docs-clean
+docs-clean: ## Remove built documentation
+	@echo "${INFO} Cleaning docs build... 🧹"
+	@rm -rf docs/_build
+	@echo "${OK} Docs build removed"
 
 # =============================================================================
 # Cleaning and Maintenance
@@ -90,7 +205,8 @@ build: ## Build the package
 .PHONY: clean
 clean: ## Cleanup temporary build artifacts
 	@echo "${INFO} Cleaning working directory... 🧹"
-	@rm -rf .pytest_cache .ruff_cache .hypothesis build/ -rf dist/ .eggs/ .coverage coverage.xml coverage.json htmlcov/ .pytest_cache tests/.pytest_cache tests/**/.pytest_cache .mypy_cache .unasyncd_cache/ .auto_pytabs_cache >/dev/null 2>&1
+	@rm -rf .pytest_cache .ruff_cache .hypothesis build/ -rf dist/ .eggs/ .coverage coverage.xml coverage.json htmlcov/ .pytest_cache src/tests/.pytest_cache src/tests/**/.pytest_cache .mypy_cache .unasyncd_cache/ .auto_pytabs_cache >/dev/null 2>&1
+	@rm -rf src/app/domain/web/static .litestar.json src/resources/.litestar.json node_modules/.vite tsconfig.tsbuildinfo $(FRONTEND_DIR)/.vite $(FRONTEND_DIR)/tsconfig.tsbuildinfo >/dev/null 2>&1
 	@find . -name '*.egg-info' -exec rm -rf {} + >/dev/null 2>&1
 	@find . -type f -name '*.egg' -exec rm -f {} + >/dev/null 2>&1
 	@find . -name '*.pyc' -exec rm -f {} + >/dev/null 2>&1
@@ -106,7 +222,7 @@ clean: ## Cleanup temporary build artifacts
 .PHONY: test
 test: ## Run the tests
 	@echo "${INFO} Running test cases... 🧪"
-	@uv run pytest -n 2 --dist=loadgroup tests
+	@set -e; uv run pytest -n 2 --dist=loadgroup src/tests
 	@echo "${OK} Tests complete ✨"
 
 .PHONY: coverage
@@ -118,13 +234,14 @@ coverage: ## Run tests with coverage report
 	@echo "${OK} Coverage report generated ✨"
 
 .PHONY: lint
-lint: ## Run all linting and type checking
-	@echo "${INFO} Running pre-commit checks... 🔎"
-	@uv run pre-commit run --color=always --all-files
-	@echo "${OK} Pre-commit checks passed ✨"
+lint: ## Run all linting and type checking (Python + frontend)
+	@echo "${INFO} Running prek (pre-commit) checks... 🔎"
+	@uvx prek run --color=always --all-files
+	@echo "${OK} prek checks passed ✨"
 	@echo "${INFO} Running type checkers... 🔍"
-	@uv run mypy app tools manage.py
-	@uv run pyright app tools manage.py
+	@uv run mypy src/app tools manage.py
+	@uv run pyright src/app tools manage.py
+	@$(MAKE) frontend-typecheck
 	@echo "${OK} All linting and type checks complete ✨"
 
 .PHONY: format
@@ -136,13 +253,13 @@ format: ## Run code formatters
 .PHONY: mypy
 mypy: ## Run mypy type checker using local packages
 	@echo "${INFO} Running mypy type checker... 🔍"
-	@uv run mypy app tools manage.py
+	@uv run mypy src/app tools manage.py
 	@echo "${OK} Mypy type checking complete ✨"
 
 .PHONY: pyright
 pyright: ## Run pyright type checker using local packages
 	@echo "${INFO} Running pyright type checker... 🔍"
-	@uv run pyright app tools manage.py
+	@uv run pyright src/app tools manage.py
 	@echo "${OK} Pyright type checking complete ✨"
 
 .PHONY: typecheck
@@ -150,93 +267,78 @@ typecheck: mypy pyright ## Run all type checkers
 	@echo "${OK} All type checks complete ✨"
 
 # =============================================================================
-# Local Infrastructure (PostgreSQL/AlloyDB Docker)
+# Frontend and Assets
+# =============================================================================
+.PHONY: assets-build
+assets-build: ## Build assets via Litestar assets CLI
+	@echo "${INFO} Building assets via manage.py... 📦"
+	@uv run python manage.py assets build
+	@echo "${OK} Assets build complete ✨"
+
+.PHONY: frontend-typecheck
+frontend-typecheck: ## Run frontend TypeScript type checks
+	@echo "${INFO} Running frontend type checks... 🔍"
+	@cd $(FRONTEND_DIR) && npx tsc --noEmit
+	@echo "${OK} Frontend type checks complete ✨"
+
+# =============================================================================
+# App Runtime
+# =============================================================================
+.PHONY: init
+init: ## Initialize local environment (.env)
+	@echo "${INFO} Initializing project environment..."
+	@uv run manage.py init
+	@echo "${OK} Initialization complete"
+
+.PHONY: doctor
+doctor: ## Verify local prerequisites and project health
+	@echo "${INFO} Running diagnostics..."
+	@uv run manage.py doctor
+	@echo "${OK} Diagnostics complete"
+
+.PHONY: migrate
+migrate: ## Run database migrations
+	@echo "${INFO} Running database migrations..."
+	@uv run python manage.py database upgrade --no-prompt
+	@echo "${OK} Migrations complete"
+
+.PHONY: load-fixtures
+load-fixtures: ## Load sample fixture data
+	@echo "${INFO} Loading sample fixtures..."
+	@uv run coffee load-fixtures
+	@echo "${OK} Fixtures loaded"
+
+.PHONY: run
+run: ## Start the application server
+	@echo "${INFO} Starting application..."
+	@uv run coffee run
+
+.PHONY: bootstrap
+bootstrap: install init doctor start-infra migrate load-fixtures ## One-shot local bootstrap (except app run)
+	@echo "${OK} Bootstrap complete. Run 'make run' to start the app."
+
+# =============================================================================
+# Local Infrastructure (Oracle 26ai Docker)
 # =============================================================================
 .PHONY: start-infra
-start-infra: ## Start local PostgreSQL/AlloyDB container
-	@echo "${INFO} Starting local PostgreSQL instance..."
-	@uv run python manage.py database postgres start
+start-infra: ## Start local containers
+	@echo "${INFO} Starting local PostgreSQL/AlloyDB Omni instance..."
+	@uv run python manage.py infra start --recreate
 	@echo "${OK} Infrastructure started"
 
 .PHONY: stop-infra
-stop-infra: ## Stop local PostgreSQL container
-	@echo "${INFO} Stopping local PostgreSQL instance..."
-	@uv run python manage.py database postgres stop
+stop-infra: ## Stop local containers
+	@echo "${INFO} Stopping local PostgreSQL/AlloyDB Omni instance..."
+	@uv run python manage.py infra stop
 	@echo "${OK} Infrastructure stopped"
 
-.PHONY: restart-infra
-restart-infra: ## Restart local PostgreSQL container
-	@echo "${INFO} Restarting local PostgreSQL instance..."
-	@uv run python manage.py database postgres restart
-	@echo "${OK} Infrastructure restarted"
-
-.PHONY: infra-status
-infra-status: ## Check PostgreSQL container status
-	@echo "${INFO} Checking PostgreSQL container status..."
-	@uv run python manage.py database postgres status
-
 .PHONY: wipe-infra
-wipe-infra: ## Remove local PostgreSQL container and data
-	@echo "${WARN} Wiping local PostgreSQL instance..."
-	@uv run python manage.py database postgres wipe
+wipe-infra: ## Remove local container info
+	@echo "${INFO} Wiping local PostgreSQL/AlloyDB Omni instance..."
+	@uv run python manage.py infra wipe
 	@echo "${OK} Infrastructure wiped"
 
 .PHONY: infra-logs
 infra-logs: ## Tail development infrastructure logs
-	@echo "${INFO} Tailing logs for local PostgreSQL instance..."
-	@uv run python manage.py database postgres logs --follow
-
-.PHONY: infra-health
-infra-health: ## Check health of PostgreSQL deployment
-	@echo "${INFO} Checking PostgreSQL health..."
-	@uv run python manage.py database postgres health
-
-# =============================================================================
-# Database Operations
-# =============================================================================
-.PHONY: db-migrate
-db-migrate: ## Create new migration
-	@echo "${INFO} Creating database migration... 📝"
-	@uv run litestar database make-migrations --message "$(message)"
-	@echo "${OK} Migration created"
-
-.PHONY: db-upgrade
-db-upgrade: ## Apply database migrations
-	@echo "${INFO} Applying database migrations... ⬆️"
-	@uv run app db upgrade head
-	@echo "${OK} Database migrations applied"
-
-.PHONY: db-downgrade
-db-downgrade: ## Rollback database migration
-	@echo "${INFO} Rolling back database migration... ⬇️"
-	@uv run app db downgrade -1
-	@echo "${OK} Database migration rolled back"
-
-.PHONY: db-reset
-db-reset: wipe-infra start-infra ## Reset database (wipe and recreate)
-	@echo "${INFO} Resetting database... 🔄"
-	@sleep 5
-	@uv run app db upgrade head
-	@echo "${OK} Database reset complete"
-
-.PHONY: db-connect-test
-db-connect-test: ## Test database connection
-	@echo "${INFO} Testing database connection..."
-	@uv run python manage.py database postgres connect test
-
-.PHONY: db-connect-info
-db-connect-info: ## Display database connection information
-	@uv run python manage.py database postgres connect info
-
-# =============================================================================
-# Application Operations
-# =============================================================================
-.PHONY: dev
-dev: ## Run development server
-	@echo "${INFO} Starting development server... 🚀"
-	@uv run app --reload
-
-.PHONY: shell
-shell: ## Open application shell
-	@echo "${INFO} Opening application shell... 💻"
-	@uv run python -c "from app.main import create_app; app = create_app(); import IPython; IPython.embed()"
+	@echo "${INFO} Tailing logs for local PostgreSQL/AlloyDB Omni instance..."
+	@uv run python manage.py infra logs --follow

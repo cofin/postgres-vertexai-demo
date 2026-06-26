@@ -156,7 +156,6 @@ class ContainerRuntime:
 
         Args:
             container_name: Name of the container
-
         Returns:
             bool: True if container exists
         """

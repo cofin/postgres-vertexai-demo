@@ -1,109 +1,80 @@
-# ☕ PostgreSQL + pgvector + Vertex AI Coffee Demo
+# Cymbal Coffee: Oracle 26ai + Vertex AI + ADK
 
-An intelligent coffee recommendation system showcasing PostgreSQL with pgvector for vector search and Google Vertex AI integration.
+Reference app for AI-powered product search on Oracle Database 26ai with Google
+ADK 2.0, Vertex AI, SQLSpec, Litestar, HTMX, and Vite.
 
-## 🚀 Quick Start
+<div align="center">
+  <img src="docs/screenshots/chat_snippet.png" alt="Cymbal Coffee Chat Snippet" style="background-color: #f9f9f9; padding: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+</div>
+
+## Quickstart
+
+Prerequisites: Python 3.12+, Docker or Podman-compatible local containers,
+`make`, and Google Vertex AI credentials.
 
 ```bash
-# Install dependencies with uv
-make install-uv # Installs Astral's UV Python manager
 make install
-
-# Setup environment
-cp .env.example .env  # Edit with your API keys
-
-# Start PostgreSQL
+uv run python manage.py init
 make start-infra
-uv run app load-fixtures
-
-# Start the application
-uv run app run
+uv run coffee upgrade
+uv run coffee run
 ```
 
-**Note: Embedding are included in the gzipped fixtures.**
-If you'd like to regenerate embeddings, you can use:
+`make install` bootstraps `uv` if it isn't already on your PATH, then
+installs Python and frontend dependencies and builds the Vite assets that
+Litestar serves. `manage.py init` walks you through `.env` (deployment mode,
+database connection, Vertex AI project) without re-running the install.
 
-```sh
-uv run app load-vectors
-```
+Open <http://localhost:5006>. The chat page is `/`; the Oracle vector explorer
+is `/explore`.
 
-Visit [http://localhost:5006](http://localhost:5006) to try the demo!
+If `.env` still has `VERTEX_AI_PROJECT_ID=demo-project`, chat returns a
+clean 503 until real Vertex AI credentials are configured. Use Application
+Default Credentials or set `GOOGLE_API_KEY` / `VERTEX_AI_API_KEY`.
 
-## 🖼️ Screenshots
+## What's Inside
 
-### Coffee Chat Interface
+- 122 Cymbal Coffee products, 16 stores, and committed `gemini-embedding-001` fixtures.
+- Oracle `VECTOR(3072, FLOAT32)` storage with HNSW INMEMORY indexes.
+- Deterministic product, store, and availability chat routes with an ADK 2.0 general-chat fallback.
+- HTMX + Tailwind + vanilla JavaScript pages for chat and vector-plan exploration.
+- Oracle-backed response cache, embedding cache, metrics, Litestar sessions, and ADK sessions.
 
-![Cymbal Coffee Chat Interface](docs/screenshots/cymbal_chat.png)
-_AI-powered coffee recommendations with real-time performance metrics_
+## End-user commands
 
-### Performance Dashboard
+| Command | Purpose |
+| --- | --- |
+| `uv run coffee run` | Start the Granian + Litestar dev server |
+| `uv run coffee upgrade` | Apply migrations and load committed demo data |
+| `uv run coffee clear-cache --force` | Clear response and embedding caches |
+| `uv run coffee model-info` | Check active model configuration |
 
-![Performance Dashboard](docs/screenshots/performance_dashboard.png)
-_Live monitoring of PostgreSQL pgvector search performance and system metrics_
+## Documentation
 
-## 📚 Documentation
+The published docs site is the home for the long-form material:
 
-For complete implementation and development guides, see the [`docs/system/`](docs/system/) directory:
+- **Walkthrough** — what one chat message actually does, end to end.
+- **Concepts** — vectors in Oracle, RAG, Google ADK, and map links.
+- **Reference** — quickstart, CLI reference, and a "for the curious" appendix.
+- **Developers** — raw migration entrypoint, fixture regeneration, and
+  verification commands. Start here if you intend to modify the demo.
 
-- **[Technical Overview](docs/system/01-technical-overview.md)** - High-level technical concepts
-- **[PostgreSQL Architecture](docs/system/02-postgresql-architecture.md)** - PostgreSQL with pgvector extension
-- **[Implementation Guide](docs/system/05-implementation-guide.md)** - Step-by-step build guide
+External references:
 
-### Recent Architecture Updates
+- Oracle vectors: <https://docs.oracle.com/en/database/oracle/oracle-database/23/vecse/>
+- Vertex AI: <https://cloud.google.com/vertex-ai/docs>
+- Litestar: <https://docs.litestar.dev/>
+- SQLSpec: <https://sqlspec.dev>
 
-- **[Architecture Updates](docs/architecture-updates.md)** - Recent improvements including:
-    - Native HTMX integration with Litestar
-    - Centralized exception handling system
-    - Unified cache information API
-    - Enhanced cache hit tracking
-- **[HTMX Events Reference](docs/htmx-events.md)** - Complete list of custom HTMX events
-- **[HTMX Migration Summary](docs/htmx-migration-summary.md)** - Details of the HTMX native integration
-- **[Demo Scenarios](docs/system/07-demo-scenarios.md)** - Live demonstration scripts
+## Troubleshooting
 
-## 🏗️ Architecture
+AI service returns 503:
+Replace placeholder Vertex settings in `.env` and confirm ADC or API-key auth.
+`uv run coffee model-info` shows the active model settings.
 
-This demo uses:
+HNSW migration fails with `ORA-51962`:
+Restart the local database after `vector_memory_size` is configured.
 
-- **PostgreSQL + pgvector** - Open-source database with vector similarity search extension
-- **Vertex AI** - Google's generative AI platform for embeddings and chat
-- **Minimal Abstractions** - Direct PostgreSQL database access for clarity (and performance). No ORM
-- **Litestar** - High-performance async Python framework
-- **HTMX** - Real-time UI updates without JavaScript complexity
-
-## 🎯 Key Features
-
-This implementation is designed for conference demonstration with:
-
-- **Real-time Chat Interface** - Personalized coffee recommendations with AI personas
-- **Live Performance Metrics** - PostgreSQL pgvector search timing and cache hit rates
-- **In-Memory Caching** - High-performance response caching using PostgreSQL
-- **Native Vector Search** - Semantic similarity search without external dependencies
-- **Intent Routing** - Natural language understanding via exemplar matching
-- **Performance Dashboard** - Real-time monitoring of all system components
-
-## 🔧 Development Commands
-
-```bash
-# Database operations
-uv run app load-fixtures        # Load sample data
-uv run app load-vectors         # Generate embeddings
-uv run app truncate-tables      # Reset all data
-uv run app clear-cache          # Clear response cache
-
-# Export/Import (for faster demo startup)
-uv run app dump-data           # Export all data with embeddings
-uv run app dump-data --table intent_exemplar  # Export specific table
-uv run app dump-data --path /tmp/backup --no-compress  # Custom options
-
-# Development
-uv run app run                 # Start the application
-uv run pytest                  # Run tests
-make lint                      # Code quality checks
-```
-
-## 📖 Additional Resources
-
-- **PostgreSQL pgvector** - Open-source vector similarity search for AI applications
-- [pgvector Documentation](https://github.com/pgvector/pgvector) - PostgreSQL extension for vector similarity search
-- [Litestar Documentation](https://docs.litestar.dev) - Framework documentation
-- [System Documentation](docs/system/) - Complete technical guides
+Chat feels slow:
+Use `/explore` to inspect Oracle timing and EXPLAIN PLAN output, then clear stale
+caches with `uv run coffee clear-cache --force` before re-testing.

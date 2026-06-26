@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+
 """Project initialization CLI command."""
 
 from __future__ import annotations
@@ -32,7 +35,7 @@ console = Console()
     is_flag=True,
     help="Skip interactive prompts (use defaults/env vars)",
 )
-def init_command(mode: str | None, run_install: bool, run_doctor: bool, non_interactive: bool) -> None:
+def init_command(mode: str | None, run_install: bool, run_doctor: bool, non_interactive: bool) -> None:  # noqa: C901
     """Initialize project environment from scratch.
 
     This command:
@@ -43,8 +46,8 @@ def init_command(mode: str | None, run_install: bool, run_doctor: bool, non_inte
     5. Optionally verifies setup
 
     Modes:
-    - managed: Deploy and manage a PostgreSQL/AlloyDB container (Docker)
-    - external: Connect to existing PostgreSQL/AlloyDB database
+    - managed: Deploy and manage an Oracle container (Docker/Podman)
+    - external: Connect to existing database (standard or wallet-based)
     """
     console.rule("[bold blue]Project Initialization", style="blue", align="left")
     console.print()
@@ -93,14 +96,17 @@ def init_command(mode: str | None, run_install: bool, run_doctor: bool, non_inte
     console.print()
 
     if mode == "managed":
-        console.print("  1. Run: [cyan]python manage.py install all[/cyan]")
-        console.print("  2. Run: [cyan]python manage.py database postgres start[/cyan]")
-        console.print("  3. Run: [cyan]uv run app db upgrade[/cyan]")
-        console.print("  4. Run: [cyan]uv run app db load-fixtures[/cyan]")
+        console.print("  1. Run: [cyan]make install[/cyan]")
+        console.print("  2. Run: [cyan]make start-infra[/cyan]")
+        console.print("  3. Run: [cyan]uv run coffee upgrade[/cyan]")
+        console.print("  4. Run: [cyan]uv run coffee run[/cyan]")
     else:  # external
-        console.print("  2. Run: [cyan]python manage.py database postgres connect test[/cyan]")
-        console.print("  3. Run: [cyan]uv run app db upgrade[/cyan]")
-        console.print("  4. Run: [cyan]uv run app db load-fixtures[/cyan]")
+        console.print(
+            "  1. (If using wallet) Run: [cyan]uv run python manage.py database wallet extract Wallet_*.zip[/cyan]"
+        )
+        console.print("  2. Run: [cyan]uv run python manage.py database connect test[/cyan]")
+        console.print("  3. Run: [cyan]uv run coffee upgrade[/cyan]")
+        console.print("  4. Run: [cyan]uv run coffee run[/cyan]")
 
     console.print()
 
@@ -134,7 +140,7 @@ def init_command(mode: str | None, run_install: bool, run_doctor: bool, non_inte
     console.print()
     console.print("[bold]Next:[/bold]")
     if not run_install:
-        console.print("  • Run [cyan]python manage.py install all[/cyan] to install prerequisites")
+        console.print("  • Run [cyan]make install[/cyan] to install project dependencies and build assets")
     if not run_doctor:
         console.print("  • Run [cyan]python manage.py doctor[/cyan] to verify setup")
     console.print("  • Review and update [cyan].env[/cyan] if needed")
