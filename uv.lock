@@ -218,7 +218,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pgvector" },
     { name = "python-dotenv" },
-    { name = "sqlspec", extra = ["adk", "alloydb", "asyncpg", "mypyc", "performance"] },
+    { name = "sqlspec", extra = ["adk", "alloydb", "asyncpg", "litestar", "mypyc", "performance"] },
 ]
 
 [package.dev-dependencies]
@@ -302,7 +302,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.3.3" },
     { name = "pgvector", specifier = ">=0.2.0" },
     { name = "python-dotenv" },
-    { name = "sqlspec", extras = ["adk", "mypyc", "asyncpg", "alloydb", "performance"], specifier = ">=0.46.3" },
+    { name = "sqlspec", extras = ["adk", "mypyc", "asyncpg", "alloydb", "litestar", "performance"], specifier = ">=0.46.3" },
 ]
 
 [package.metadata.requires-dev]
@@ -4305,6 +4305,9 @@ alloydb = [
 ]
 asyncpg = [
     { name = "asyncpg" },
+]
+litestar = [
+    { name = "litestar" },
 ]
 mypyc = [
     { name = "sqlglot", extra = ["c"] },
