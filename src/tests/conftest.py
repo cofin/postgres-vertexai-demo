@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator
 
+if TYPE_CHECKING:
     from litestar import Litestar
     from litestar.testing import AsyncTestClient
 
@@ -32,35 +32,12 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture(autouse=True)
-def _patch_settings(monkeypatch: MonkeyPatch, tmp_path_factory: pytest.TempPathFactory) -> None:
+def _patch_settings(monkeypatch: MonkeyPatch) -> None:
     """Patch the settings with test configuration.
 
-    Creates a temporary test .env file with safe test values.
+    Loads the test settings from the project-root .env.testing.
     """
-    # Create temporary .env for testing
-    test_dir = tmp_path_factory.mktemp("test_env")
-    test_env = test_dir / ".env.testing"
-    test_env.write_text("""# Test Configuration
-DATABASE_USER=test_app
-DATABASE_PASSWORD=test-secret
-DATABASE_HOST=localhost
-DATABASE_PORT=15432
-DATABASE_NAME=test_app
-
-GOOGLE_CLOUD_PROJECT=test-project
-GOOGLE_API_KEY=test-api-key
-
-LITESTAR_DEBUG=true
-LITESTAR_HOST=127.0.0.1
-LITESTAR_PORT=5007
-LITESTAR_GRANIAN_IN_SUBPROCESS=false
-LITESTAR_GRANIAN_USE_LITESTAR_LOGGER=true
-SECRET_KEY=test-secret-key-32-characters-12
-
-VITE_DEV_MODE=False
-""")
-
-    settings = app_settings.Settings.from_env(str(test_env))
+    settings = app_settings.Settings.from_env(".env.testing")
 
     def get_settings(dotenv_filename: str = ".env.testing") -> app_settings.Settings:
         return settings
@@ -106,3 +83,22 @@ async def htmx_client(app: Litestar) -> AsyncIterator[AsyncTestClient]:
     async with AsyncTestClient(app=app, raise_server_exceptions=False) as test_client:
         test_client.headers["HX-Request"] = "true"
         yield test_client
+
+
+@pytest.fixture(autouse=True)
+async def _cleanup_db_pool() -> AsyncIterator[None]:
+    """Ensure database connection pool is closed and configuration is reset after each test."""
+    yield
+    from app.config import _reset, db_manager
+    try:
+        # Check if SQLSpec database manager has an active driver and close it.
+        if hasattr(db_manager, "driver") and db_manager.driver is not None:
+            # Check if the connection pool is open and close it.
+            # SQLSpec Asyncpg uses `connection_instance` to represent the driver pool connection
+            if hasattr(db_manager.driver, "connection_instance") and db_manager.driver.connection_instance is not None:
+                await db_manager.driver.close()
+    except Exception as e:  # noqa: BLE001
+        print(f"Warning: failed to close database driver during test cleanup: {e}")
+    finally:
+        # Discard cached configuration so next test re-initializes a fresh pool on the current loop
+        _reset()
