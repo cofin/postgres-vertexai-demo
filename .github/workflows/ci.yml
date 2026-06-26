@@ -11,6 +11,9 @@ jobs:
   test:
     name: Python ${{ matrix.python-label }}
     runs-on: ${{ matrix.runner }}
+    env:
+      LITESTAR_DEBUG: "true"
+      SECRET_KEY: "test-secret-key-at-least-32-characters-long!!!"
     strategy:
       fail-fast: false
       matrix:

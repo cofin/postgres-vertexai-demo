@@ -26,6 +26,7 @@ dependencies = [
     "dishka>=1.4.2",
     "litestar-vite>=0.23.2",
     "asyncpg>=0.31.0",
+    "pgvector>=0.2.0",
 ]
 description = "Reference application for Oracle 26ai and Vertex AI integration."
 keywords = ["litestar", "vertexai", "oracledb", "google"]
