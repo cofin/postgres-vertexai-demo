@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+
 SHELL := /bin/bash
 
 # =============================================================================
@@ -115,7 +118,7 @@ clean: ## Cleanup temporary build artifacts
 .PHONY: test
 test: ## Run the tests
 	@echo "${INFO} Running test cases... 🧪"
-	@uv run pytest -n 2 --dist=loadgroup tests
+	@uv run pytest -n 2 --dist=loadgroup src/tests
 	@echo "${OK} Tests complete ✨"
 
 .PHONY: coverage

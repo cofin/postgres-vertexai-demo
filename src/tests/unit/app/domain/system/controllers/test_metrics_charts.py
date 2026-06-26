@@ -27,15 +27,15 @@ class FakeMetricsService:
                 labels=["00:01", "00:02", "00:03"],
                 series=MetricsTimeSeriesPoints(
                     total_ms=[40.0, 55.0, 30.0],
-                    oracle_ms=[10.0, 15.0, 8.0],
+                    db_query_ms=[10.0, 15.0, 8.0],
                     embedding_ms=[25.0, 35.0, 18.0],
                 ),
             ),
             scatter=[
-                MetricsScatterPoint(similarity_score=0.91, total_ms=40.0, oracle_ms=10.0, embedding_ms=25.0)
+                MetricsScatterPoint(similarity_score=0.91, total_ms=40.0, db_query_ms=10.0, embedding_ms=25.0)
             ],
             breakdown=MetricsBreakdown(
-                labels=["Vertex AI Embedding", "Oracle Vector Search", "Application Logic"],
+                labels=["Vertex AI Embedding", "PostgreSQL Vector Search", "Application Logic"],
                 values=[25.0, 10.0, 5.0],
             ),
         )
@@ -50,4 +50,4 @@ async def test_get_chart_data_returns_dashboard_charts() -> None:
     assert result.time_series.labels == ["00:01", "00:02", "00:03"]
     assert result.time_series.series.total_ms == [40.0, 55.0, 30.0]
     assert result.scatter[0].similarity_score == 0.91
-    assert result.breakdown.labels == ["Vertex AI Embedding", "Oracle Vector Search", "Application Logic"]
+    assert result.breakdown.labels == ["Vertex AI Embedding", "PostgreSQL Vector Search", "Application Logic"]

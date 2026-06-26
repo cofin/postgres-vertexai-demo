@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+
 """PostgreSQL/AlloyDB database management tools.
 
 This package provides CLI commands and utilities for managing PostgreSQL/AlloyDB

@@ -12,7 +12,14 @@ import structlog
 from sqlspec import sql
 from sqlspec.adapters.asyncpg import AsyncpgDriver
 
-from app.config import db_manager
+
+class _DbManagerProxy:
+    def __getattr__(self, name: str) -> Any:
+        import app.config
+        return getattr(app.config.db_manager, name)
+
+
+db_manager = _DbManagerProxy()
 from app.domain.system.schemas import (
     CacheStats,
     CacheStatsRow,
@@ -265,7 +272,7 @@ class MetricsService(SQLSpecAsyncService[AsyncpgDriver]):
         return row or PerformanceStats(
             total_searches=0,
             avg_search_time_ms=0.0,
-            avg_oracle_time_ms=0.0,
+            avg_db_query_time_ms=0.0,
             avg_similarity_score=0.0,
         )
 
@@ -285,7 +292,7 @@ class MetricsService(SQLSpecAsyncService[AsyncpgDriver]):
             labels=[row.bucket for row in rows],
             series=MetricsTimeSeriesPoints(
                 total_ms=[row.total_ms for row in rows],
-                oracle_ms=[row.oracle_ms for row in rows],
+                db_query_ms=[row.db_query_ms for row in rows],
                 embedding_ms=[row.embedding_ms for row in rows],
             ),
         )
@@ -306,7 +313,7 @@ class MetricsService(SQLSpecAsyncService[AsyncpgDriver]):
         )
         breakdown = breakdown_row or MetricsBreakdownRow(
             embedding_ms=0.0,
-            oracle_ms=0.0,
+            db_query_ms=0.0,
             ai_ms=0.0,
             intent_ms=0.0,
             other_ms=0.0,
@@ -324,7 +331,7 @@ class MetricsService(SQLSpecAsyncService[AsyncpgDriver]):
                 ],
                 values=[
                     breakdown.embedding_ms,
-                    breakdown.oracle_ms,
+                    breakdown.db_query_ms,
                     breakdown.ai_ms,
                     breakdown.intent_ms,
                     breakdown.other_ms,

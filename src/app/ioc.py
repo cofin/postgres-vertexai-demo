@@ -20,7 +20,7 @@ from sqlspec.adapters.asyncpg import AsyncpgConfig, AsyncpgDriver
 from sqlspec.adapters.asyncpg.adk.store import AsyncpgADKStore
 from sqlspec.extensions.adk import SQLSpecSessionService
 
-from app.config import db, db_manager
+import app.config
 from app.domain.chat.services.adk import ADKRunner, AgentToolsService
 from app.domain.chat.services.classifier import FlashLiteIntentClassifier
 from app.domain.products.services.services import (
@@ -39,11 +39,11 @@ class LitestarPersistenceProvider(Provider):
 
     @provide(scope=Scope.APP)
     def provide_config(self) -> AsyncpgConfig:
-        return db
+        return app.config.db
 
     @provide(scope=Scope.REQUEST)
     async def provide_driver(self) -> AsyncIterator[AsyncpgDriver]:
-        async with db_manager.provide_session(db) as driver:
+        async with app.config.db_manager.provide_session(app.config.db) as driver:
             yield driver
 
 

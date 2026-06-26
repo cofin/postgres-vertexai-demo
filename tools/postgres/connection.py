@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+
 """Connection tester for PostgreSQL databases.
 
 This module tests database connectivity for both managed containers
@@ -242,10 +245,10 @@ class ConnectionTester:
         start_time = time.time()
 
         try:
-            import asyncpg
-
             # Test connection with asyncpg
             import asyncio
+
+            import asyncpg
 
             async def test_async() -> ConnectionTestResult:
                 try:
@@ -275,7 +278,7 @@ class ConnectionTester:
                                 "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'vector')"
                             )
                             db_info["pgvector_installed"] = bool(pgvector_check)
-                        except Exception:  # noqa: S110
+                        except Exception:
                             db_info["pgvector_installed"] = False
 
                         connection_time_ms = (time.time() - start_time) * 1000

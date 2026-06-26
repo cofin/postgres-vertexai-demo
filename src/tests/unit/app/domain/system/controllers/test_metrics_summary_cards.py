@@ -17,7 +17,7 @@ class FakeMetricsService:
         return PerformanceStats(
             total_searches=42,
             avg_search_time_ms=73.0,
-            avg_oracle_time_ms=12.0,
+            avg_db_query_time_ms=12.0,
             avg_similarity_score=0.91,
         )
 
@@ -40,6 +40,6 @@ async def test_get_metrics_summary_returns_cards_array() -> None:
     assert [card.label for card in result.cards] == [
         "Total Searches",
         "Avg Response Time",
-        "Oracle Vector Time",
+        "DB Query Time",
         "Cache Hit Rate",
     ]

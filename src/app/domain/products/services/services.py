@@ -13,7 +13,14 @@ from msgspec.structs import asdict
 from sqlspec import sql
 from sqlspec.adapters.asyncpg import AsyncpgDriver
 
-from app.config import db_manager
+
+class _DbManagerProxy:
+    def __getattr__(self, name: str) -> Any:
+        import app.config
+        return getattr(app.config.db_manager, name)
+
+
+db_manager = _DbManagerProxy()
 from app.domain.products.schemas import (
     ExplainPlan,
     ExplainPlanRow,
@@ -67,8 +74,7 @@ class ProductService(SQLSpecAsyncService[AsyncpgDriver]):
             sql.update("product").set(embedding=embedding).where_eq("id", product_id),
         )
         await self.driver.commit()
-        rowcount = getattr(result, "rowcount", None)
-        return bool(rowcount) if rowcount is not None else True
+        return bool(result.rows_affected)
 
     # docs:start-search-by-vector
     async def search_by_vector(
@@ -82,6 +88,32 @@ class ProductService(SQLSpecAsyncService[AsyncpgDriver]):
             schema_type=ProductMatch,
         )
     # docs:end-search-by-vector
+
+    async def backfill_embeddings(self) -> int:
+        """Batch generate embeddings for products with missing vectors in the database.
+
+        Returns:
+            Number of products updated
+        """
+        result = await self.driver.execute(db_manager.get_sql("backfill-product-embeddings"))
+        await self.driver.commit()
+        return result.rows_affected
+
+    async def search_by_text_in_db(
+        self, query_text: str, similarity_threshold: float = 0.5, limit: int = 10
+    ) -> list[ProductMatch]:
+        """Search products by vector similarity using in-database embedding generation.
+
+        Delegates embedding generation to AlloyDB Omni via google_ml.embedding().
+        """
+        return await self.driver.select(
+            db_manager.get_sql("search-products-by-vector-in-db"),
+            query_text=query_text,
+            similarity_threshold=similarity_threshold,
+            limit=limit,
+            schema_type=ProductMatch,
+        )
+
 
 # --- Store Service ---
 
@@ -282,11 +314,11 @@ class OracleVectorSearchService:
         )
         embedding_ms = (time.time() - start_time) * 1000
 
-        oracle_start = time.time()
+        db_start = time.time()
         results = await self.product_service.search_by_vector(embedding, similarity_threshold=threshold, limit=k)
-        oracle_ms = (time.time() - oracle_start) * 1000
+        db_ms = (time.time() - db_start) * 1000
 
-        return results, cache_hit, {"embedding_ms": embedding_ms, "oracle_ms": oracle_ms}
+        return results, cache_hit, {"embedding_ms": embedding_ms, "db_query_ms": db_ms}
 
     @staticmethod
     def parse_plan_rows(plan_lines: list[str]) -> list[ExplainPlanRow]:

@@ -45,10 +45,8 @@ from app.domain.chat.services._adk_telemetry import (
     _effective_intent,
     _record_tool_sql_phases,
     _response_cache_phase,
-    _sha256_text,
     _similarity_score,
     _sql_phase,
-    _summarize_vector,
 )
 from app.domain.chat.services.classifier import (
     FlashLiteIntentClassifier,
@@ -119,26 +117,27 @@ class AgentToolsService(SQLSpecAsyncService[AsyncpgDriver]):
     async def search_products_by_vector(
         self, query: str, limit: int = 5, similarity_threshold: float = 0.7
     ) -> dict[str, Any]:
-        embedding_start = time.time()
-        embedding, cache_hit = await self.vertex_ai_service.get_text_embedding(
-            query,
-            task_type="RETRIEVAL_QUERY",
-            return_cache_status=True,
-        )
-        embedding_ms = (time.time() - embedding_start) * 1000
+        start_time = time.time()
 
-        oracle_start = time.time()
-        products = await self.product_service.search_by_vector(embedding, similarity_threshold, limit)
-        oracle_ms = (time.time() - oracle_start) * 1000
-        tool_total_ms = embedding_ms + oracle_ms
-        model = str(getattr(self.vertex_ai_service, "embedding_model", "unknown"))
+        products = await self.product_service.search_by_text_in_db(
+            query_text=query,
+            similarity_threshold=similarity_threshold,
+            limit=limit,
+        )
+        db_ms = (time.time() - start_time) * 1000
+        tool_total_ms = db_ms
+
+        # Bypassed Python-side embedding call
+        embedding_ms = 0.0
+        cache_hit = False
+
         await self.metrics_service.record_search(
             SearchMetricsCreate(
                 query_id=str(uuid.uuid4()),
                 user_id="chat",
                 search_time_ms=tool_total_ms,
                 embedding_time_ms=embedding_ms,
-                oracle_time_ms=oracle_ms,
+                db_query_time_ms=db_ms,
                 similarity_score=_similarity_score(products),
                 result_count=len(products),
             )
@@ -151,30 +150,22 @@ class AgentToolsService(SQLSpecAsyncService[AsyncpgDriver]):
             "search_metrics": {
                 "vector_query": query,
                 "embedding_ms": round(embedding_ms, 2),
-                "oracle_ms": round(oracle_ms, 2),
+                "db_query_ms": round(db_ms, 2),
                 "tool_ms": round(tool_total_ms, 2),
             },
             "sql_phases": [
                 _sql_phase(
-                    label="Embedding cache lookup",
-                    sql_key="get-cached-embedding",
-                    binds={"hash": _sha256_text(query), "model": model},
-                    row_count=1 if cache_hit else 0,
-                    runtime_ms=embedding_ms,
-                    cache_status="hit" if cache_hit else "miss",
-                ),
-                _sql_phase(
-                    label="Oracle vector search",
-                    sql_key="vector-search-products",
+                    label="In-database vector search (with embedding generation)",
+                    sql_key="search-products-by-vector-in-db",
                     binds={
-                        "query_vector": _summarize_vector(embedding),
-                        "threshold": similarity_threshold,
+                        "query_text": query,
+                        "similarity_threshold": similarity_threshold,
                         "limit": limit,
                     },
                     row_count=len(products),
-                    runtime_ms=oracle_ms,
+                    runtime_ms=db_ms,
                     cache_status="miss",
-                ),
+                )
             ],
         }
 
@@ -203,7 +194,7 @@ class AgentToolsService(SQLSpecAsyncService[AsyncpgDriver]):
             user_id=session_id,
             search_time_ms=float(total_response_time_ms),
             embedding_time_ms=float(embedding_time_ms),
-            oracle_time_ms=float(vector_search_time_ms),
+            db_query_time_ms=float(vector_search_time_ms),
             result_count=len(vector_results),
         )
         await self.metrics_service.record_search(metrics)

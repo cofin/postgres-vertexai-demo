@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+
 """PostgreSQL/AlloyDB database container lifecycle management.
 
 This module manages PostgreSQL/AlloyDB Omni container deployment and operations.
@@ -55,6 +58,7 @@ class DatabaseConfig:
     enable_ml: bool = True
     private_key_path: str | None = None
     resolved_private_key_path: str | None = None
+    resolved_access_token_path: str | None = None
 
     @classmethod
     def from_env(cls) -> DatabaseConfig:
@@ -83,7 +87,7 @@ class DatabaseConfig:
             postgres_password=os.getenv("DATABASE_PASSWORD", "super-secret"),
             postgres_user=os.getenv("DATABASE_USER", "app"),
             postgres_db=os.getenv("DATABASE_NAME", "app"),
-            private_key_path=os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
+            private_key_path=os.getenv("DATABASE_ML_AGENT_PRIVATE_KEY_PATH") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
         )
 
 
@@ -177,6 +181,27 @@ class PostgreSQLDatabase:
             except Exception as e:  # noqa: BLE001
                 self.console.print(f"[yellow]Warning: Failed to prepare private key copy: {e}[/yellow]")
 
+        # Resolve and prepare access token copy
+        temp_token_path = Path(__file__).parent / "access-token-temp.txt"
+        try:
+            import subprocess
+            res = subprocess.run(
+                ["gcloud", "auth", "print-access-token"],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            if res.returncode == 0:
+                token = res.stdout.strip()
+                temp_token_path.write_text(token)
+                temp_token_path.chmod(0o644)
+                self.config.resolved_access_token_path = str(temp_token_path)
+                self.console.print(f"[cyan]Prepared access token copy at {temp_token_path}[/cyan]")
+            else:
+                self.console.print(f"[yellow]Warning: Failed to print access token via gcloud: {res.stderr.strip()}[/yellow]")
+        except Exception as e:  # noqa: BLE001
+            self.console.print(f"[yellow]Warning: Failed to prepare access token: {e}[/yellow]")
+
         # Build run command
         run_args = self._build_run_command()
 
@@ -241,6 +266,11 @@ class PostgreSQLDatabase:
             cmd.extend([
                 "-v",
                 f"{self.config.resolved_private_key_path}:/etc/postgresql/private-key.json:ro",
+            ])
+        if getattr(self.config, "resolved_access_token_path", None):
+            cmd.extend([
+                "-v",
+                f"{self.config.resolved_access_token_path}:/etc/postgresql/access-token.txt:ro",
             ])
         cmd.append(self.config.image)
         return cmd
@@ -399,6 +429,15 @@ class PostgreSQLDatabase:
                     self.console.print("[cyan]Cleaned up temporary private key file[/cyan]")
                 except Exception as e:  # noqa: BLE001
                     self.console.print(f"[yellow]Warning: Failed to delete temporary key file: {e}[/yellow]")
+
+            # Clean up temporary access token file on host
+            temp_token_path = Path(__file__).parent / "access-token-temp.txt"
+            if temp_token_path.exists():
+                try:
+                    temp_token_path.unlink()
+                    self.console.print("[cyan]Cleaned up temporary access token file[/cyan]")
+                except Exception as e:  # noqa: BLE001
+                    self.console.print(f"[yellow]Warning: Failed to delete temporary access token file: {e}[/yellow]")
 
         except ContainerNotFoundError:
             self.console.print("[yellow]Container does not exist[/yellow]")

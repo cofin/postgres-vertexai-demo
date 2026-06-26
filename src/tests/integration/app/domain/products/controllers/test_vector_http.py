@@ -41,7 +41,7 @@ def _mock_services() -> tuple[AsyncMock, AsyncMock]:
     mock_vector_search.similarity_search.return_value = (
         _matches(),
         False,
-        {"embedding_ms": 12.0, "oracle_ms": 4.0},
+        {"embedding_ms": 12.0, "db_query_ms": 4.0},
     )
     mock_metrics = AsyncMock()
     return mock_vector_search, mock_metrics
@@ -113,7 +113,7 @@ async def test_htmx_vector_search_route_through_test_client(
     ) -> tuple[list[ProductMatch], bool, dict[str, float]]:
         del self, k, threshold
         assert query == "dark roast"
-        return _matches(), True, {"embedding_ms": 12.0, "oracle_ms": 4.0}
+        return _matches(), True, {"embedding_ms": 12.0, "db_query_ms": 4.0}
 
     async def fake_record_search(self: MetricsService, metrics: Any) -> None:
         del self

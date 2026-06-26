@@ -39,7 +39,7 @@ def metrics_badges(result: dict, intent: str, from_cache: bool) -> dict:
     metrics = result.get("search_metrics") or {}
     return {
         "total_ms": metrics.get("total_ms"),
-        "oracle_ms": metrics.get("oracle_ms"),
+        "db_query_ms": metrics.get("db_query_ms"),
         "embedding_ms": metrics.get("embedding_ms"),
         "vector_query": metrics.get("vector_query"),
         "from_cache": from_cache,

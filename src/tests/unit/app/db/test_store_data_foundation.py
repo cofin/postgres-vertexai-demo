@@ -27,10 +27,10 @@ def test_store_data_foundation_stays_in_baseline_migration() -> None:
     assert migration_files == ["0001_cymball_coffee_products.sql"]
 
     migration = (MIGRATIONS_DIR / "0001_cymball_coffee_products.sql").read_text(encoding="utf-8")
-    assert "latitude DECIMAL(9, 6)" in migration
-    assert "longitude DECIMAL(9, 6)" in migration
+    assert "latitude NUMERIC(9, 6)" in migration
+    assert "longitude NUMERIC(9, 6)" in migration
     assert "CREATE TABLE store_product_inventory" in migration
-    assert "CONSTRAINT store_product_inventory_uk UNIQUE (store_id, product_id)" in migration
+    assert "CONSTRAINT store_product_uk UNIQUE (store_id, product_id)" in migration
 
 
 def test_fixture_table_order_loads_inventory_after_parents() -> None:

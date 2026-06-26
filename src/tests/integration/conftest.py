@@ -39,27 +39,6 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 # Removed _bootstrap_test_schema
 
 
-async def _seed_marker_product(session: AsyncpgDriver) -> None:
-    """Insert the deterministic marker product used by integration tests.
-
-    Runs after fixture loading + truncation so the marker survives the reset.
-    Tests reference it via ``WHERE sku = 'SEED-SKU-001'``.
-    """
-    await session.execute(
-        """
-        INSERT INTO product (name, description, price, category, sku, in_stock)
-        VALUES (:name, :description, :price, :category, :sku, TRUE)
-        ON CONFLICT (sku) DO NOTHING
-        """,
-        sku="SEED-SKU-001",
-        name="Seed Coffee Product",
-        description="Baseline product seeded for integration tests",
-        price=9.99,
-        category="Coffee",
-    )
-    await session.commit()
-
-
 async def _ensure_postgres_schema(session: AsyncpgDriver) -> None:
     """Idempotent schema check. Assumes migrations are applied externally."""
     global _ORACLE_SCHEMA_READY  # Keep name for now
@@ -69,7 +48,29 @@ async def _ensure_postgres_schema(session: AsyncpgDriver) -> None:
     _ORACLE_SCHEMA_READY = True
 
 
-async def _ensure_oracle_seed_data(session: OracleAsyncDriver) -> None:
+async def _mock_database_ml_functions(session: AsyncpgDriver) -> None:
+    """Mock the database-side ML functions for local testing without external calls."""
+    await session.execute("CREATE SCHEMA IF NOT EXISTS google_ml")
+    await session.execute(
+        """
+        CREATE OR REPLACE FUNCTION google_ml.embedding(model_id VARCHAR, content TEXT)
+        RETURNS REAL[]
+        LANGUAGE plpgsql
+        AS $$
+        DECLARE
+            dim INT := 3072;
+            arr REAL[];
+        BEGIN
+            SELECT array_agg(0.1::REAL) FROM generate_series(1, dim) INTO arr;
+            RETURN arr;
+        END;
+        $$;
+        """
+    )
+    await session.commit()
+
+
+async def _ensure_oracle_seed_data(session: AsyncpgDriver) -> None:
     """Load deterministic fixture data once per pytest worker."""
     global _ORACLE_SEED_DATA_READY  # noqa: PLW0603
 
@@ -77,7 +78,12 @@ async def _ensure_oracle_seed_data(session: OracleAsyncDriver) -> None:
         return
     await _truncate_fixture_tables(session)
     await _load_app_fixtures(session)
-    await _seed_marker_product(session)
+    await _mock_database_ml_functions(session)
+    for table in ("product", "store", "store_product_inventory"):
+        await session.execute(
+            f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), COALESCE(max(id), 1)) FROM {table}"
+        )
+    await session.commit()
     _ORACLE_SEED_DATA_READY = True
 
 
@@ -91,6 +97,10 @@ async def client(app: Litestar) -> AsyncGenerator[AsyncTestClient, None]:
 @pytest.fixture
 def app() -> Litestar:
     """Create test app instance."""
+    from app.config import _reset
+
+    _reset()
+
     from app.server.asgi import create_app
 
     return create_app()
@@ -99,13 +109,12 @@ def app() -> Litestar:
 async def _truncate_fixture_tables(session: AsyncpgDriver) -> None:
     """Wipe fixture-managed tables so each test session starts from a known state.
 
-    Mirrors the accelerator pattern: schema is durable, data is ephemeral. This
-    purges any zero-vector pollution left by prior ``coffee load-fixtures`` runs
-    against the dev container so vector-search assertions stay deterministic.
+    Uses DELETE FROM instead of TRUNCATE TABLE to avoid ScaNN index rebuild
+    precondition errors (which require 10k rows during TRUNCATE).
     """
-    for table in ("store_product_inventory", "product", "store"):
-        with contextlib.suppress(Exception):
-            await session.execute(f"TRUNCATE TABLE {table}")
+    await session.execute("DELETE FROM store_product_inventory")
+    await session.execute("DELETE FROM product")
+    await session.execute("DELETE FROM store")
     await session.commit()
 
 
@@ -141,7 +150,7 @@ async def oracle_seed_data() -> None:
 
     try:
         async with db_manager.provide_session(db) as session:
-            await _ensure_oracle_schema(session)
+            await _ensure_postgres_schema(session)
             await _ensure_oracle_seed_data(session)
     finally:
         # pytest-anyio creates a fresh event loop per test by default.
@@ -199,7 +208,7 @@ async def tracked_product_skus(driver: AsyncpgDriver) -> AsyncGenerator[Callable
 
 
 @pytest.fixture
-async def product_service(driver: OracleAsyncDriver) -> ProductService:
+async def product_service(driver: AsyncpgDriver) -> ProductService:
     """Provide ProductService for testing."""
     from app.domain.products.services import ProductService
 
@@ -207,8 +216,21 @@ async def product_service(driver: OracleAsyncDriver) -> ProductService:
 
 
 @pytest.fixture
-async def cache_service(driver: OracleAsyncDriver) -> CacheService:
+async def cache_service(driver: AsyncpgDriver) -> CacheService:
     """Provide CacheService for testing."""
     from app.domain.system.services import CacheService
 
     return CacheService(driver)
+
+
+@pytest.fixture(autouse=True)
+async def _cleanup_db_pool() -> AsyncIterator[None]:
+    """Ensure database connection pool is closed and configuration is reset after each test."""
+    yield
+    from app.config import _reset, db
+    try:
+        await db.close_pool()
+    except Exception as e:  # noqa: BLE001
+        print(f"Warning: failed to close database pool during test cleanup: {e}")  # noqa: T201
+    finally:
+        _reset()

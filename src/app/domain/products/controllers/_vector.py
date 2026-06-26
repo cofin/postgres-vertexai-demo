@@ -99,7 +99,7 @@ class VectorController(Controller):
                 user_id="demo_user",
                 search_time_ms=(time.time() - full_request_start) * 1000,
                 embedding_time_ms=vector_timings["embedding_ms"],
-                oracle_time_ms=vector_timings["oracle_ms"],
+                db_query_time_ms=vector_timings["db_query_ms"],
                 similarity_score=results[0].similarity_score if results else 0,
                 result_count=len(results),
             )
@@ -146,7 +146,7 @@ class VectorController(Controller):
                 results=matches,
                 search_time_ms=round(total_ms, 2),
                 embedding_time_ms=round(vector_timings["embedding_ms"], 2),
-                oracle_time_ms=round(vector_timings["oracle_ms"], 2),
+                db_query_time_ms=round(vector_timings["db_query_ms"], 2),
                 cache_hit=embedding_cache_hit,
                 performance_level=performance_level,
                 debug_timings={k: round(v, 2) for k, v in detailed_timings.items()},

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+
 """Health checker for PostgreSQL/AlloyDB deployment.
 
 This module checks the health and status of PostgreSQL deployment components.

@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
 
-
 def test_litestar_env_defaults_app_url_from_litestar_port(monkeypatch: MonkeyPatch) -> None:
     from app.lib.settings import Settings
 

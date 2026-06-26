@@ -1,3 +1,6 @@
+-- SPDX-FileCopyrightText: 2026 Google LLC
+-- SPDX-License-Identifier: Apache-2.0
+
 -- SQLSpec Migration
 -- Version: 0001
 -- Description: Cymball Coffee Products (PostgreSQL with pgvector)
@@ -102,21 +105,7 @@ COMMENT ON COLUMN embedding_cache.text_hash IS 'MD5 hash of input text';
 COMMENT ON COLUMN embedding_cache.embedding IS '3072-dimensional embedding vector';
 
 
--- Intent exemplars for vector-based intent classification
-CREATE TABLE intent_exemplar (
-    id BIGSERIAL PRIMARY KEY,
-    intent VARCHAR(100) NOT NULL,
-    phrase VARCHAR(1000) NOT NULL,
-    embedding vector(3072) NOT NULL,
-    confidence_threshold NUMERIC(3, 2) DEFAULT 0.7,
-    usage_count INTEGER DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT intent_exemplar_uk UNIQUE (intent, phrase)
-);
 
-COMMENT ON TABLE intent_exemplar IS 'Intent classification training examples with embeddings';
-COMMENT ON COLUMN intent_exemplar.confidence_threshold IS 'Minimum similarity score for this exemplar to match';
 
 
 -- Search metrics for performance tracking
@@ -150,7 +139,6 @@ COMMENT ON COLUMN search_metric.similarity_score IS 'Average similarity score of
 SET scann.enable_index_with_insufficient_data = true;
 
 CREATE INDEX product_embedding_idx ON product USING scann (embedding cosine);
-CREATE INDEX intent_exemplar_embedding_idx ON intent_exemplar USING scann (embedding cosine);
 CREATE INDEX embedding_cache_embedding_idx ON embedding_cache USING scann (embedding cosine);
 
 
@@ -183,9 +171,6 @@ CREATE INDEX embedding_cache_hit_count_idx ON embedding_cache (hit_count DESC);
 CREATE INDEX embedding_cache_last_accessed_idx ON embedding_cache (last_accessed DESC);
 
 
--- Intent exemplar indexes
-CREATE INDEX intent_exemplar_intent_idx ON intent_exemplar (intent);
-CREATE INDEX intent_exemplar_usage_count_idx ON intent_exemplar (usage_count DESC);
 
 
 -- Search metrics indexes
@@ -232,10 +217,7 @@ CREATE TRIGGER update_response_cache_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_intent_exemplar_updated_at
-    BEFORE UPDATE ON intent_exemplar
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+
 
 CREATE TRIGGER update_search_metric_updated_at
     BEFORE UPDATE ON search_metric
@@ -261,7 +243,6 @@ DROP TABLE IF EXISTS store_product_inventory CASCADE;
 
 -- Drop triggers
 DROP TRIGGER IF EXISTS update_search_metric_updated_at ON search_metric;
-DROP TRIGGER IF EXISTS update_intent_exemplar_updated_at ON intent_exemplar;
 DROP TRIGGER IF EXISTS update_response_cache_updated_at ON response_cache;
 DROP TRIGGER IF EXISTS update_store_updated_at ON store;
 DROP TRIGGER IF EXISTS update_product_updated_at ON product;
@@ -277,8 +258,7 @@ DROP INDEX IF EXISTS search_metric_similarity_idx;
 DROP INDEX IF EXISTS search_metric_created_at_idx;
 DROP INDEX IF EXISTS search_metric_user_id_idx;
 DROP INDEX IF EXISTS search_metric_query_id_idx;
-DROP INDEX IF EXISTS intent_exemplar_usage_count_idx;
-DROP INDEX IF EXISTS intent_exemplar_intent_idx;
+
 DROP INDEX IF EXISTS embedding_cache_last_accessed_idx;
 DROP INDEX IF EXISTS embedding_cache_hit_count_idx;
 DROP INDEX IF EXISTS embedding_cache_created_at_idx;
@@ -292,12 +272,10 @@ DROP INDEX IF EXISTS product_created_at_idx;
 DROP INDEX IF EXISTS product_in_stock_idx;
 DROP INDEX IF EXISTS product_category_idx;
 DROP INDEX IF EXISTS embedding_cache_embedding_idx;
-DROP INDEX IF EXISTS intent_exemplar_embedding_idx;
 DROP INDEX IF EXISTS product_embedding_idx;
 
 -- Drop tables
 DROP TABLE IF EXISTS search_metric CASCADE;
-DROP TABLE IF EXISTS intent_exemplar CASCADE;
 DROP TABLE IF EXISTS embedding_cache CASCADE;
 DROP TABLE IF EXISTS response_cache CASCADE;
 DROP TABLE IF EXISTS store CASCADE;

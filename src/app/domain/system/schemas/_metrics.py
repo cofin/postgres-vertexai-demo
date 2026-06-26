@@ -13,7 +13,7 @@ class SearchMetricsCreate(CamelizedBaseStruct, omit_defaults=True, kw_only=True)
     user_id: str | None = None
     search_time_ms: float
     embedding_time_ms: float
-    oracle_time_ms: float
+    db_query_time_ms: float
     ai_time_ms: float = 0.0
     intent_time_ms: float = 0.0
     similarity_score: float | None = None
@@ -25,7 +25,7 @@ class PerformanceStats(CamelizedBaseStruct, omit_defaults=True):
 
     total_searches: int
     avg_search_time_ms: float
-    avg_oracle_time_ms: float
+    avg_db_query_time_ms: float
     avg_similarity_score: float
 
 
@@ -63,7 +63,7 @@ class MetricsTimeSeriesPoints(CamelizedBaseStruct, omit_defaults=True):
     """Per-stage latency series for the latency chart."""
 
     total_ms: list[float]
-    oracle_ms: list[float]
+    db_query_ms: list[float]
     embedding_ms: list[float]
 
 
@@ -72,7 +72,7 @@ class MetricsTimeSeriesRow(CamelizedBaseStruct, omit_defaults=True):
 
     bucket: str
     total_ms: float
-    oracle_ms: float
+    db_query_ms: float
     embedding_ms: float
 
 
@@ -88,7 +88,7 @@ class MetricsScatterPoint(CamelizedBaseStruct, omit_defaults=True):
 
     similarity_score: float
     total_ms: float
-    oracle_ms: float
+    db_query_ms: float
     embedding_ms: float
 
 
@@ -96,7 +96,7 @@ class MetricsBreakdownRow(CamelizedBaseStruct, omit_defaults=True):
     """Aggregate component timing row projected from ``search_metric``."""
 
     embedding_ms: float
-    oracle_ms: float
+    db_query_ms: float
     ai_ms: float
     intent_ms: float
     other_ms: float

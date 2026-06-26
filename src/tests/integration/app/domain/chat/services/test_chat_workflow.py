@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from google.adk.workflow._function_node import FunctionNode
 from google.genai import types
-from sqlspec.adapters.oracledb.adk.store import OracleAsyncADKStore
+from sqlspec.adapters.asyncpg.adk.store import AsyncpgADKStore
 from sqlspec.extensions.adk import SQLSpecSessionService
 
 from app.config import db
@@ -24,7 +24,7 @@ from app.domain.system.services import CacheService, MetricsService, PersonaMana
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from sqlspec.adapters.oracledb import OracleAsyncDriver
+    from sqlspec.adapters.asyncpg import AsyncpgDriver
 
 pytestmark = pytest.mark.anyio
 
@@ -34,7 +34,7 @@ def _seed_embedding() -> list[float]:
     return [0.5] * 3072
 
 
-async def _seed_product_with_embedding(driver: OracleAsyncDriver, sku: str) -> None:
+async def _seed_product_with_embedding(driver: AsyncpgDriver, sku: str) -> None:
     """Insert a uniquely keyed embedded product for the workflow turn."""
     await driver.execute(
         """
@@ -102,7 +102,7 @@ def _fake_llm_agent(**kwargs: Any) -> FunctionNode:
 
 async def test_chat_workflow_populates_result_shape_with_oracle_backed_rag(
     monkeypatch: pytest.MonkeyPatch,
-    driver: OracleAsyncDriver,
+    driver: AsyncpgDriver,
     unique_test_id: str,
     tracked_product_skus: Callable[[str], None],
 ) -> None:
@@ -124,7 +124,7 @@ async def test_chat_workflow_populates_result_shape_with_oracle_backed_rag(
     )
     monkeypatch.setattr(adk_module, "get_settings", lambda: configured)
 
-    store = OracleAsyncADKStore(config=db)
+    store = AsyncpgADKStore(config=db)
     await store.ensure_tables()
     session_service = SQLSpecSessionService(store)
     classifier = FakeIntentClassifier()
@@ -170,19 +170,19 @@ async def test_chat_workflow_populates_result_shape_with_oracle_backed_rag(
     assert result["search_metrics"]["products_found"] >= 1
     assert result["search_metrics"]["results_count"] == result["search_metrics"]["products_found"]
     assert result["search_metrics"]["vector_query"] == query
-    assert {"embedding_ms", "oracle_ms", "tool_ms"} <= result["search_metrics"].keys()
+    assert {"embedding_ms", "db_query_ms", "tool_ms"} <= result["search_metrics"].keys()
     assert result["response_time_ms"] < 4000
     assert result["from_cache"] is False
-    assert result["embedding_cache_hit"] is True
+    assert result["embedding_cache_hit"] is False
     assert result["store_results"] == []
     assert result["inventory_results"] == []
     assert result["map_actions"] == []
     assert result["location_context"] == {}
     sql_keys = {phase["sql_key"] for phase in result["sql_phases"]}
-    assert {"get-cached-response", "get-cached-embedding", "vector-search-products"} <= sql_keys
-    vector_phase = next(phase for phase in result["sql_phases"] if phase["sql_key"] == "vector-search-products")
+    assert {"get-cached-response", "search-products-by-vector-in-db"} <= sql_keys
+    vector_phase = next(phase for phase in result["sql_phases"] if phase["sql_key"] == "search-products-by-vector-in-db")
     assert vector_phase["row_count"] >= 1
-    assert vector_phase["binds"]["query_vector"].startswith("<VECTOR[3072 FLOAT32], sha256=")
+    assert vector_phase["binds"]["query_text"] == query
     assert classifier.phrases == [query]
 
     persisted = await session_service.get_session(

@@ -21,12 +21,6 @@ async def test_vector_dimensions():
         )
         assert res[0]["type"] == "vector(3072)"
 
-        # Check intent_exemplar embedding
-        res = await driver.select(
-            "SELECT format_type(atttypid, atttypmod) as type FROM pg_attribute WHERE attrelid = 'intent_exemplar'::regclass AND attname = 'embedding'"
-        )
-        assert res[0]["type"] == "vector(3072)"
-
 
 async def test_store_columns():
     from app.config import db, db_manager
@@ -80,9 +74,9 @@ async def test_vector_indexes():
     from app.config import db, db_manager
     async with db_manager.provide_session(db) as driver:
         res = await driver.select(
-            "SELECT indexname, indexdef FROM pg_indexes WHERE tablename IN ('product', 'intent_exemplar', 'embedding_cache') AND indexname LIKE '%embedding_idx'"
+            "SELECT indexname, indexdef FROM pg_indexes WHERE tablename IN ('product', 'embedding_cache') AND indexname LIKE '%embedding_idx'"
         )
-        assert len(res) == 3
+        assert len(res) == 2
         for row in res:
             assert "USING scann" in row["indexdef"]
             assert "cosine" in row["indexdef"]

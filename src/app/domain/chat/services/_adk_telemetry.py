@@ -9,14 +9,14 @@ from hashlib import sha256
 from math import fsum, sqrt
 from typing import Any
 
-from app.config import db_manager
+import app.config
 from app.utils.serialization import sanitize_for_json
 
 _PRODUCT_RAG_INTENT = "PRODUCT_RAG"
 
 
 def _named_sql_text(sql_key: str) -> str:
-    return str(db_manager.get_sql(sql_key).sql)
+    return str(app.config.db_manager.get_sql(sql_key).sql)
 
 
 def _sha256_text(value: str) -> str:

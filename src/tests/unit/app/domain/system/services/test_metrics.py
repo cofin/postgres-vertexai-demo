@@ -36,7 +36,7 @@ async def test_record_search_uses_database_column_names() -> None:
             user_id="demo",
             search_time_ms=12.5,
             embedding_time_ms=3.0,
-            oracle_time_ms=4.0,
+            db_query_time_ms=4.0,
             similarity_score=0.91,
             result_count=2,
         )

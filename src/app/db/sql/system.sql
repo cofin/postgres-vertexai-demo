@@ -21,35 +21,35 @@ FROM embedding_cache;
 -- name: get-performance-stats
 SELECT COALESCE(COUNT(*), 0)              AS total_searches,
        COALESCE(AVG(search_time_ms), 0)   AS avg_search_time_ms,
-       COALESCE(AVG(oracle_time_ms), 0)   AS avg_oracle_time_ms,
+       COALESCE(AVG(db_query_time_ms), 0) AS avg_db_query_time_ms,
        COALESCE(AVG(similarity_score), 0) AS avg_similarity_score
 FROM search_metric
 WHERE created_at > :since;
 
 -- name: metrics-time-series
-SELECT TO_CHAR(TRUNC(created_at, 'MI'), 'HH24:MI') AS bucket,
+SELECT to_char(date_trunc('minute', created_at), 'HH24:MI') AS bucket,
        COALESCE(AVG(search_time_ms), 0)            AS total_ms,
-       COALESCE(AVG(oracle_time_ms), 0)            AS oracle_ms,
+       COALESCE(AVG(db_query_time_ms), 0)          AS db_query_ms,
        COALESCE(AVG(embedding_time_ms), 0)         AS embedding_ms
 FROM search_metric
 WHERE created_at > :since
-GROUP BY TRUNC(created_at, 'MI')
-ORDER BY TRUNC(created_at, 'MI');
+GROUP BY date_trunc('minute', created_at)
+ORDER BY date_trunc('minute', created_at);
 
 -- name: metrics-scatter-points
 SELECT similarity_score                    AS similarity_score,
        COALESCE(search_time_ms, 0)         AS total_ms,
-       COALESCE(oracle_time_ms, 0)         AS oracle_ms,
+       COALESCE(db_query_time_ms, 0)       AS db_query_ms,
        COALESCE(embedding_time_ms, 0)      AS embedding_ms
 FROM search_metric
 WHERE created_at > :since
   AND similarity_score IS NOT NULL
 ORDER BY created_at
-FETCH FIRST 80 ROWS ONLY;
+LIMIT 80;
 
 -- name: metrics-breakdown
 SELECT COALESCE(AVG(embedding_time_ms), 0) AS embedding_ms,
-       COALESCE(AVG(oracle_time_ms), 0)    AS oracle_ms,
+       COALESCE(AVG(db_query_time_ms), 0)  AS db_query_ms,
        COALESCE(AVG(ai_time_ms), 0)        AS ai_ms,
        COALESCE(AVG(intent_time_ms), 0)    AS intent_ms,
        COALESCE(
@@ -57,17 +57,13 @@ SELECT COALESCE(AVG(embedding_time_ms), 0) AS embedding_ms,
                GREATEST(
                    COALESCE(search_time_ms, 0)
                    - COALESCE(embedding_time_ms, 0)
-                   - COALESCE(oracle_time_ms, 0)
+                   - COALESCE(db_query_time_ms, 0)
                    - COALESCE(ai_time_ms, 0)
                    - COALESCE(intent_time_ms, 0),
                    0
                )
            ),
            0
-       ) AS other_ms
+         ) AS other_ms
 FROM search_metric
 WHERE created_at > :since;
-
--- name: explain-plan-display
-SELECT plan_table_output
-FROM TABLE(DBMS_XPLAN.DISPLAY(NULL, NULL, 'TYPICAL +PREDICATE +NOTE'));

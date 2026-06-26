@@ -3,11 +3,10 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
 import pytest
-
-from collections.abc import AsyncIterator
 
 if TYPE_CHECKING:
     from litestar import Litestar
@@ -83,22 +82,3 @@ async def htmx_client(app: Litestar) -> AsyncIterator[AsyncTestClient]:
     async with AsyncTestClient(app=app, raise_server_exceptions=False) as test_client:
         test_client.headers["HX-Request"] = "true"
         yield test_client
-
-
-@pytest.fixture(autouse=True)
-async def _cleanup_db_pool() -> AsyncIterator[None]:
-    """Ensure database connection pool is closed and configuration is reset after each test."""
-    yield
-    from app.config import _reset, db_manager
-    try:
-        # Check if SQLSpec database manager has an active driver and close it.
-        if hasattr(db_manager, "driver") and db_manager.driver is not None:
-            # Check if the connection pool is open and close it.
-            # SQLSpec Asyncpg uses `connection_instance` to represent the driver pool connection
-            if hasattr(db_manager.driver, "connection_instance") and db_manager.driver.connection_instance is not None:
-                await db_manager.driver.close()
-    except Exception as e:  # noqa: BLE001
-        print(f"Warning: failed to close database driver during test cleanup: {e}")
-    finally:
-        # Discard cached configuration so next test re-initializes a fresh pool on the current loop
-        _reset()

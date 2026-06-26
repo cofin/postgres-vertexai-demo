@@ -44,8 +44,8 @@ class MetricsController(Controller):
                     trend="down" if perf_stats.avg_search_time_ms < 50 else "up",  # noqa: PLR2004
                 ),
                 MetricCard(
-                    label="Oracle Vector Time",
-                    value=f"{perf_stats.avg_oracle_time_ms:.0f}ms",
+                    label="DB Query Time",
+                    value=f"{perf_stats.avg_db_query_time_ms:.0f}ms",
                 ),
                 MetricCard(
                     label="Cache Hit Rate",

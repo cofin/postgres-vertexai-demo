@@ -41,10 +41,10 @@
             {{ metrics_badges.embedding_ms }} ms
           </span>
         {% endif %}
-        {% if metrics_badges.oracle_ms is not none %}
-          <span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-strong/55 px-2 py-0.5 text-muted" title="Oracle vector phase: {{ metrics_badges.oracle_ms }} ms">
-            <span class="grid h-4 w-4 place-items-center rounded-full bg-surface text-[10px] font-semibold text-accent-strong" aria-hidden="true">O</span>
-            {{ metrics_badges.oracle_ms }} ms
+        {% if metrics_badges.db_query_ms is not none %}
+          <span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-strong/55 px-2 py-0.5 text-muted" title="DB vector phase: {{ metrics_badges.db_query_ms }} ms">
+            <span class="grid h-4 w-4 place-items-center rounded-full bg-surface text-[10px] font-semibold text-accent-strong" aria-hidden="true">D</span>
+            {{ metrics_badges.db_query_ms }} ms
           </span>
         {% endif %}
         {% if metrics_badges.embedding_cache_hit %}

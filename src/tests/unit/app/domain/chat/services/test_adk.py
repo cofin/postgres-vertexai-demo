@@ -89,7 +89,7 @@ async def test_search_products_closure_delegates_to_tools_service() -> None:
             "embedding_cache_hit": True,
             "results_count": 1,
             "vector_query": "dark roast",
-            "search_metrics": {"embedding_ms": 12.2, "oracle_ms": 4.4, "tool_ms": 16.6},
+            "search_metrics": {"embedding_ms": 12.2, "db_query_ms": 4.4, "tool_ms": 16.6},
         }
     )
     metric_state: dict[str, Any] = {}
@@ -104,7 +104,7 @@ async def test_search_products_closure_delegates_to_tools_service() -> None:
     assert metric_state["embedding_cache_hit"] is True
     assert metric_state["search_metrics"]["vector_query"] == "dark roast"
     assert metric_state["search_metrics"]["embedding_ms"] == 12.2
-    assert metric_state["search_metrics"]["oracle_ms"] == 4.4
+    assert metric_state["search_metrics"]["db_query_ms"] == 4.4
     assert metric_state["search_metrics"]["results_count"] == 1
     assert metric_state["rag_products"] == [{"id": 1, "name": "Midnight Brew"}]
 
@@ -147,7 +147,7 @@ async def test_agent_tools_vector_search_records_query_phase_metrics() -> None:
     from app.domain.chat.services.adk import AgentToolsService
 
     product_service = MagicMock()
-    product_service.search_by_vector = AsyncMock(return_value=[{"id": 1, "name": "Midnight Brew"}])
+    product_service.search_by_text_in_db = AsyncMock(return_value=[{"id": 1, "name": "Midnight Brew"}])
     vertex_ai_service = MagicMock()
     vertex_ai_service.embedding_model = "gemini-embedding-001"
     vertex_ai_service.get_text_embedding = AsyncMock(return_value=([0.1, 0.2], True))
@@ -165,30 +165,28 @@ async def test_agent_tools_vector_search_records_query_phase_metrics() -> None:
 
     result = await tools_service.search_products_by_vector("dark roast", limit=2, similarity_threshold=0.4)
 
-    vertex_ai_service.get_text_embedding.assert_awaited_once_with(
-        "dark roast",
-        task_type="RETRIEVAL_QUERY",
-        return_cache_status=True,
+    vertex_ai_service.get_text_embedding.assert_not_called()
+    product_service.search_by_text_in_db.assert_awaited_once_with(
+        query_text="dark roast",
+        similarity_threshold=0.4,
+        limit=2,
     )
-    product_service.search_by_vector.assert_awaited_once_with([0.1, 0.2], 0.4, 2)
     metrics_service.record_search.assert_awaited_once()
     metrics = metrics_service.record_search.await_args.args[0]
     assert metrics.user_id == "chat"
     assert metrics.result_count == 1
-    assert metrics.embedding_time_ms >= 0
-    assert metrics.oracle_time_ms >= 0
+    assert metrics.embedding_time_ms == 0.0
+    assert metrics.db_query_time_ms >= 0
     assert result["vector_query"] == "dark roast"
-    assert result["embedding_cache_hit"] is True
+    assert result["embedding_cache_hit"] is False
     assert result["search_metrics"]["vector_query"] == "dark roast"
-    assert {"embedding_ms", "oracle_ms", "tool_ms"} <= result["search_metrics"].keys()
-    assert result["sql_phases"][0]["sql_key"] == "get-cached-embedding"
-    assert result["sql_phases"][0]["binds"]["model"] == vertex_ai_service.embedding_model
-    assert result["sql_phases"][0]["cache_status"] == "hit"
-    assert result["sql_phases"][1]["sql_key"] == "vector-search-products"
-    assert result["sql_phases"][1]["row_count"] == 1
-    assert result["sql_phases"][1]["binds"]["query_vector"].startswith("<VECTOR[2 FLOAT32], sha256=")
-    assert result["sql_phases"][1]["binds"]["query_vector"].endswith(">")
-    assert result["sql_phases"][1]["binds"]["query_vector"] != str([0.1, 0.2])
+    assert {"embedding_ms", "db_query_ms", "tool_ms"} <= result["search_metrics"].keys()
+    assert len(result["sql_phases"]) == 1
+    assert result["sql_phases"][0]["sql_key"] == "search-products-by-vector-in-db"
+    assert result["sql_phases"][0]["row_count"] == 1
+    assert result["sql_phases"][0]["binds"]["query_text"] == "dark roast"
+    assert result["sql_phases"][0]["binds"]["similarity_threshold"] == 0.4
+    assert result["sql_phases"][0]["binds"]["limit"] == 2
 
 
 async def test_get_product_details_closure_delegates_to_tools_service() -> None:
@@ -410,7 +408,7 @@ async def test_process_request_returns_all_seven_keys(monkeypatch: Any) -> None:
             "embedding_cache_hit": False,
             "results_count": 1,
             "vector_query": "recommend something",
-            "search_metrics": {"embedding_ms": 10.0, "oracle_ms": 5.0, "tool_ms": 15.0},
+            "search_metrics": {"embedding_ms": 10.0, "db_query_ms": 5.0, "tool_ms": 15.0},
             "sql_phases": [
                 {
                     "label": "Oracle vector search",
@@ -681,7 +679,7 @@ async def test_process_request_prefers_workflow_output_intent(monkeypatch: Any) 
             "embedding_cache_hit": False,
             "results_count": 1,
             "vector_query": "something bold",
-            "search_metrics": {"embedding_ms": 10.0, "oracle_ms": 5.0, "tool_ms": 15.0},
+            "search_metrics": {"embedding_ms": 10.0, "db_query_ms": 5.0, "tool_ms": 15.0},
         }
     )
 
@@ -748,7 +746,7 @@ async def test_product_rag_response_is_grounded_to_menu_products(monkeypatch: An
             "embedding_cache_hit": False,
             "results_count": 1,
             "vector_query": "what's good for breakfast?",
-            "search_metrics": {"embedding_ms": 10.0, "oracle_ms": 5.0, "tool_ms": 15.0},
+            "search_metrics": {"embedding_ms": 10.0, "db_query_ms": 5.0, "tool_ms": 15.0},
         }
     )
 
@@ -814,7 +812,7 @@ async def test_product_rag_stream_does_not_emit_speculative_model_delta(monkeypa
             "embedding_cache_hit": False,
             "results_count": 1,
             "vector_query": "hey",
-            "search_metrics": {"embedding_ms": 10.0, "oracle_ms": 5.0, "tool_ms": 15.0},
+            "search_metrics": {"embedding_ms": 10.0, "db_query_ms": 5.0, "tool_ms": 15.0},
         }
     )
 

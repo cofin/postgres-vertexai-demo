@@ -21,7 +21,7 @@ pytestmark = pytest.mark.anyio
 
 _FAKE_REPLY: dict[str, Any] = {
     "answer": "A pour-over Ethiopian Yirgacheffe brews bright and floral.",
-    "search_metrics": {"total_ms": 42, "oracle_ms": 11, "embedding_ms": 30, "vector_query": "ethiopian"},
+    "search_metrics": {"total_ms": 42, "db_query_ms": 11, "embedding_ms": 30, "vector_query": "ethiopian"},
     "from_cache": False,
     "embedding_cache_hit": True,
     "intent_detected": "PRODUCT_RAG",
@@ -80,7 +80,7 @@ async def test_htmx_returns_partial(htmx_client: AsyncTestClient) -> None:
     assert "Intent: PRODUCT_RAG" in body
     assert "Vector query: ethiopian" in body
     assert "Embedding phase: 30 ms" in body
-    assert "Oracle vector phase: 11 ms" in body
+    assert "DB vector phase: 11 ms" in body
     assert "embedding cache hit" in body
     call_kwargs = ADKRunner.process_request.await_args.kwargs  # type: ignore[attr-defined]
     assert call_kwargs["session_id"] != "client-controlled"

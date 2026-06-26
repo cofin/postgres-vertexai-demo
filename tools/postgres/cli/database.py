@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+
 """CLI commands for PostgreSQL database container management."""
 
 from __future__ import annotations
@@ -322,3 +325,22 @@ def connection_info() -> None:
     except Exception as e:
         console.print(f"[red]Failed to get connection info: {e}[/red]")
         raise click.Abort from e
+
+
+@database_group.command(name="backfill-embeddings")
+def backfill_embeddings_cmd() -> None:
+    """Manually generate product embeddings via AlloyDB in-database ML."""
+    import asyncio
+
+    from app.config import db as db_config
+    from app.config import db_manager
+    from app.domain.products.services.services import ProductService
+
+    async def run() -> None:
+        async with db_manager.provide_session(db_config) as driver:
+            service = ProductService(driver)
+            console.print("[cyan]Backfilling missing product embeddings...[/cyan]")
+            updated = await service.backfill_embeddings()
+            console.print(f"[green]✓[/green] Successfully updated {updated} products.")
+
+    asyncio.run(run())

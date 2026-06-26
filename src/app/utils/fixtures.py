@@ -89,18 +89,12 @@ class FixtureProcessor:
                 continue
             if key == "embedding":
                 if isinstance(value, list):
-                    prepared[key] = str(value)
+                    prepared[key] = [float(x) for x in value]
                 elif isinstance(value, str):
-                    cleaned = value.replace("\n", " ")
-                    cleaned = re.sub(r"\s+", " ", cleaned).strip()
                     try:
-                        if cleaned.startswith("[") and cleaned.endswith("]"):
-                            numbers_str = cleaned[1:-1].strip()
-                            float_values = [float(x) for x in numbers_str.split() if x.strip()]
-                            prepared[key] = str(float_values)
-                        else:
-                            float_values = [float(x) for x in cleaned.split() if x.strip()]
-                            prepared[key] = str(float_values)
+                        # Normalize by removing brackets and replacing commas with spaces
+                        normalized = value.strip("[]").replace(",", " ")
+                        prepared[key] = [float(x) for x in normalized.split() if x.strip()]
                     except (ValueError, TypeError):
                         continue
             elif key in {"created_at", "updated_at", "last_activity", "expires_at", "last_accessed"} and isinstance(

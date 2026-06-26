@@ -65,6 +65,10 @@ async def test_vector_search_returns_typed_product_matches_with_price(
     tracked_product_skus(sku)
     seed_id = await _seed_product_with_embedding(driver, sku)
 
+    # Debug: Check if product is in the database and has embedding
+    rows = await driver.select("SELECT id, name, sku, embedding IS NULL as is_null, length(embedding::text) as text_len FROM product")
+    print(f"\nDEBUG: Products in database: {[dict(r) for r in rows if r['sku'].startswith('VECTOR')]}")
+
     matches = await product_service.search_by_vector(
         query_embedding=_seed_embedding(),
         similarity_threshold=0.5,

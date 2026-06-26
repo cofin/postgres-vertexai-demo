@@ -95,7 +95,7 @@ async def test_similarity_search_returns_typed_product_matches() -> None:
     results, cache_hit, timings = await service.similarity_search("dark roast", k=5)
 
     assert cache_hit is False
-    assert {"embedding_ms", "oracle_ms"} <= timings.keys()
+    assert {"embedding_ms", "db_query_ms"} <= timings.keys()
     assert len(results) == 2
 
     for row in results:
@@ -137,7 +137,7 @@ async def test_vector_demo_controller_surfaces_price_and_similarity_without_dist
             ),
         ],
         False,
-        {"embedding_ms": 12.0, "oracle_ms": 4.0},
+        {"embedding_ms": 12.0, "db_query_ms": 4.0},
     )
 
     mock_metrics = AsyncMock()
@@ -157,7 +157,7 @@ async def test_vector_demo_controller_surfaces_price_and_similarity_without_dist
     assert isinstance(payload, VectorDemo)
     assert payload.cache_hit is False
     assert payload.embedding_time_ms == pytest.approx(12.0)
-    assert payload.oracle_time_ms == pytest.approx(4.0)
+    assert payload.db_query_time_ms == pytest.approx(4.0)
 
     assert len(payload.results) == 2
     for row in payload.results:

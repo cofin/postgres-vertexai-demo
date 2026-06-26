@@ -12,10 +12,10 @@ import app.ioc as ioc_module
 
 def test_integrations_provider_builds_adk_store_from_injected_config(monkeypatch: Any) -> None:
     provider = ioc_module.IntegrationsProvider()
-    
+
     class MockConfig:
         extension_config = {"adk": {"session_table": "adk_sessions", "events_table": "adk_events"}}
-        
+
     sentinel_config = MockConfig()
     captured: dict[str, object] = {}
 

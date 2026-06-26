@@ -27,7 +27,11 @@ from rich.console import Console
 from tools.cli import doctor_command, init_command, install_group
 from tools.postgres import (
     connect_group as postgres_connect_group,
+)
+from tools.postgres import (
     database_group as postgres_container_group,
+)
+from tools.postgres import (
     health_command as postgres_health_command,
 )
 
@@ -103,6 +107,7 @@ def database_group(ctx: click.Context) -> None:
 
 database_group.add_command(postgres_connect_group, name="connect")
 database_group.add_command(postgres_health_command, name="health")
+database_group.add_command(postgres_container_group.commands["backfill-embeddings"])
 
 
 # =============================================================================

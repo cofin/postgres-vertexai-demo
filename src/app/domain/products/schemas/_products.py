@@ -141,7 +141,7 @@ class VectorDemo(CamelizedBaseStruct, omit_defaults=True):
     results: list[VectorDemoMatch]
     search_time_ms: float
     embedding_time_ms: float
-    oracle_time_ms: float
+    db_query_time_ms: float
     cache_hit: bool
     performance_level: str
     debug_timings: dict[str, float]
