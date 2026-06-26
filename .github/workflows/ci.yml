@@ -14,6 +14,7 @@ jobs:
     env:
       LITESTAR_DEBUG: "true"
       SECRET_KEY: "test-secret-key-at-least-32-characters-long!!!"
+      GOOGLE_API_KEY: "dummy-api-key-for-testing-purposes"
     strategy:
       fail-fast: false
       matrix:
