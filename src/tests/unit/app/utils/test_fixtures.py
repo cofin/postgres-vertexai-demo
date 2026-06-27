@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import pytest
 
@@ -14,10 +14,10 @@ from app.utils.fixtures import FixtureLoader, FixtureProcessor
 
 
 class _CaptureTransaction:
-    async def __aenter__(self) -> _CaptureTransaction:
+    async def __aenter__(self) -> Self:
         return self
 
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+    async def __aexit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
         pass
 
 
@@ -63,7 +63,7 @@ async def test_postgres_upsert_renders_on_conflict() -> None:
         loader.processor.load_fixture_data = original_load_data
 
     assert driver.statements, "FixtureLoader must execute a statement"
-    sql, data = driver.statements[0]
+    sql, _data = driver.statements[0]
 
     sql_lower = sql.strip().lower()
     assert 'insert into "product"' in sql_lower

@@ -55,14 +55,14 @@ def get_env(key: str, default: None, type_hint: UnsetType = _UNSET) -> Callable[
 
 
 @overload
-def get_env(key: str, default: ParseTypes | None, type_hint: type[T]) -> Callable[[], T]: ...
+def get_env[T](key: str, default: ParseTypes | None, type_hint: type[T]) -> Callable[[], T]: ...
 
 
 @overload
 def get_env(key: str, default: dict[str, Any], type_hint: UnsetType = _UNSET) -> Callable[[], dict[str, Any]]: ...
 
 
-def get_env(
+def get_env[T](
     key: str,
     default: ParseTypes | None,
     type_hint: type[T] | UnsetType = _UNSET,
@@ -71,7 +71,7 @@ def get_env(
     return lambda: get_config_val(key=key, default=default, type_hint=type_hint)
 
 
-def _determine_final_type(default: ParseTypes | None, type_hint: type[T] | UnsetType) -> type | None:
+def _determine_final_type[T](default: ParseTypes | None, type_hint: type[T] | UnsetType) -> type | None:
     """Determine the final type for parsing."""
     if type_hint != _UNSET and isinstance(type_hint, type):
         return type_hint
@@ -101,7 +101,7 @@ def _parse_basic_type(key: str, value: str, final_type: type | None, default: Pa
     return value
 
 
-def get_config_val(
+def get_config_val[T](
     key: str,
     default: ParseTypes | None,
     type_hint: type[T] | UnsetType = _UNSET,
@@ -146,7 +146,7 @@ def get_config_val(
     return _parse_basic_type(key, value, final_type, default)
 
 
-def _parse_list(key: str, value: str, item_constructor: type[T]) -> list[T]:
+def _parse_list[T](key: str, value: str, item_constructor: type[T]) -> list[T]:
     """Parse list from environment value."""
     if value.startswith("[") and value.endswith("]"):
         try:

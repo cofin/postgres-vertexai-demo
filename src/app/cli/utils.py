@@ -21,7 +21,7 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-def async_inject(func: Callable[P, Awaitable[R]]) -> Callable[P, R]:
+def async_inject[**P, R](func: Callable[P, Awaitable[R]]) -> Callable[P, R]:
     """Wrap an async click command so its annotated dependencies are injected.
 
     Resolves the container factory from ``ctx.obj["container_factory"]`` when

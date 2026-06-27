@@ -12,6 +12,9 @@ import structlog
 from sqlspec import sql
 from sqlspec.adapters.asyncpg import AsyncpgDriver
 
+from app.lib.service import SQLSpecAsyncService
+from app.utils.serialization import schema_dump
+
 
 class _DbManagerProxy:
     def __getattr__(self, name: str) -> Any:
@@ -20,6 +23,7 @@ class _DbManagerProxy:
 
 
 db_manager = _DbManagerProxy()
+
 from app.domain.system.schemas import (
     CacheStats,
     CacheStatsRow,
@@ -34,8 +38,6 @@ from app.domain.system.schemas import (
     ResponseCache,
     SearchMetricsCreate,
 )
-from app.lib.service import SQLSpecAsyncService
-from app.utils.serialization import schema_dump
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -126,7 +128,10 @@ class PersonaManager:
     @classmethod
     def get_system_prompt(cls, persona_key: str, base_prompt: str) -> str:
         persona = cls.PERSONAS.get(persona_key, cls.PERSONAS["enthusiast"])
-        return f"{base_prompt}\n\n## Persona Context: {persona.name}\n{persona.system_prompt_addon}"
+        return f"""{base_prompt}
+
+## Persona Context: {persona.name}
+{persona.system_prompt_addon}"""
 
     @classmethod
     def get_temperature(cls, persona_key: str) -> float:

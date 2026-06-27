@@ -3,12 +3,13 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
 import pytest
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from litestar import Litestar
     from litestar.testing import AsyncTestClient
 
@@ -37,6 +38,9 @@ def _patch_settings(monkeypatch: MonkeyPatch) -> None:
     Loads the test settings from the project-root .env.testing.
     """
     settings = app_settings.Settings.from_env(".env.testing")
+    # Ensure we have a dummy API key for testing if Vertex AI is not configured
+    if not settings.vertex_ai.PROJECT_ID and not settings.vertex_ai.API_KEY:
+        settings.vertex_ai.API_KEY = "dummy-api-key-for-testing"
 
     def get_settings(dotenv_filename: str = ".env.testing") -> app_settings.Settings:
         return settings

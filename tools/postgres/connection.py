@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from rich.console import Console
@@ -19,7 +19,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 
-class DeploymentMode(str, Enum):
+class DeploymentMode(StrEnum):
     """Database deployment modes."""
 
     MANAGED = "managed"  # We manage a Docker/Podman container
@@ -263,7 +263,7 @@ class ConnectionTester:
 
                     try:
                         # Execute test query
-                        result = await conn.fetchval("SELECT 'OK'")
+                        await conn.fetchval("SELECT 'OK'")
 
                         # Get server version
                         version_row = await conn.fetchrow("SELECT version()")

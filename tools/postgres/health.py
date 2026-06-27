@@ -11,7 +11,7 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from rich.console import Console
@@ -21,7 +21,7 @@ from rich.table import Table
 from tools.lib.container import ContainerRuntime
 
 
-class HealthStatus(str, Enum):
+class HealthStatus(StrEnum):
     """Health status levels."""
 
     HEALTHY = "healthy"
@@ -63,7 +63,7 @@ class SystemHealth:
     @property
     def unhealthy_components(self) -> list[ComponentHealth]:
         """Get list of unhealthy components."""
-        return [c for c in self.components if c.status in (HealthStatus.UNHEALTHY, HealthStatus.DEGRADED)]
+        return [c for c in self.components if c.status in {HealthStatus.UNHEALTHY, HealthStatus.DEGRADED}]
 
 
 class HealthChecker:
@@ -115,7 +115,7 @@ class HealthChecker:
             overall_status = HealthStatus.UNHEALTHY
         elif degraded:
             overall_status = HealthStatus.DEGRADED
-        elif all(c.status in (HealthStatus.HEALTHY, HealthStatus.NOT_APPLICABLE) for c in components):
+        elif all(c.status in {HealthStatus.HEALTHY, HealthStatus.NOT_APPLICABLE} for c in components):
             overall_status = HealthStatus.HEALTHY
         else:
             overall_status = HealthStatus.UNKNOWN

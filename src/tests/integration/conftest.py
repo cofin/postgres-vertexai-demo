@@ -13,7 +13,7 @@ import pytest
 from litestar.testing import AsyncTestClient
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Callable
+    from collections.abc import AsyncGenerator, AsyncIterator, Callable
 
     from litestar import Litestar
     from sqlspec.adapters.asyncpg import AsyncpgDriver

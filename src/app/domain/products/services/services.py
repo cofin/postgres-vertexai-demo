@@ -13,6 +13,9 @@ from msgspec.structs import asdict
 from sqlspec import sql
 from sqlspec.adapters.asyncpg import AsyncpgDriver
 
+from app.domain.products.services._location import haversine_miles, location_hint_matches
+from app.lib.service import FilterTypes, OffsetPagination, SQLSpecAsyncService
+
 
 class _DbManagerProxy:
     def __getattr__(self, name: str) -> Any:
@@ -21,6 +24,7 @@ class _DbManagerProxy:
 
 
 db_manager = _DbManagerProxy()
+
 from app.domain.products.schemas import (
     ExplainPlan,
     ExplainPlanRow,
@@ -32,8 +36,6 @@ from app.domain.products.schemas import (
     StoreHours,
     StoreInventoryItem,
 )
-from app.domain.products.services._location import haversine_miles, location_hint_matches
-from app.lib.service import FilterTypes, OffsetPagination, SQLSpecAsyncService
 
 if TYPE_CHECKING:
     from google.genai import Client
@@ -323,6 +325,7 @@ class OracleVectorSearchService:
     @staticmethod
     def parse_plan_rows(plan_lines: list[str]) -> list[ExplainPlanRow]:
         """Parse the operation table rows from ``DBMS_XPLAN.DISPLAY`` output."""
+
         def cell(cells: list[str], index: int) -> str:
             try:
                 return cells[index]
@@ -371,6 +374,6 @@ class OracleVectorSearchService:
             threshold=0.5,
             limit=5,
         )
-        plan_lines = [list(row.values())[0] for row in rows]
+        plan_lines = [next(iter(row.values())) for row in rows]
         plan_summary = plan_lines[0] if plan_lines else "No plan available"
         return ExplainPlan(plan_lines=plan_lines, plan_summary=plan_summary, plan_rows=[])

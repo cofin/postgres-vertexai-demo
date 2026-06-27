@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
-from app.domain.products.services import ProductService
 from sqlspec.adapters.asyncpg import AsyncpgDriver
+
+from app.domain.products.services import ProductService
 
 pytestmark = pytest.mark.anyio
 

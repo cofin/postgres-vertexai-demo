@@ -13,17 +13,17 @@ from tools.postgres.database import DatabaseConfig, PostgreSQLDatabase
 from tools.postgres.health import HealthChecker, HealthStatus, SystemHealth
 
 __all__ = [
-    # CLI commands
-    "database_group",
-    "connect_group",
-    "health_command",
-    # Core classes
-    "DatabaseConfig",
-    "PostgreSQLDatabase",
     "ConnectionConfig",
     "ConnectionTester",
+    # Core classes
+    "DatabaseConfig",
     "DeploymentMode",
     "HealthChecker",
     "HealthStatus",
+    "PostgreSQLDatabase",
     "SystemHealth",
+    "connect_group",
+    # CLI commands
+    "database_group",
+    "health_command",
 ]

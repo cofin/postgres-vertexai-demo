@@ -6,7 +6,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Natural Language :: English",
     "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -33,7 +32,7 @@ license = { text = "MIT" }
 maintainers = [{ name = "Cody Fincher", email = "cody.fincher@gmail.com" }]
 name = "app"
 readme = "README.md"
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.12,<3.15"
 version = "0.3.0"
 
 [project.scripts]
@@ -200,7 +199,7 @@ fix = true
 line-length = 120
 preview = true
 src = ["src", "tools"]
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 fixable = ["ALL"]
