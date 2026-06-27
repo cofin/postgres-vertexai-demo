@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+
 """PostgreSQL/AlloyDB database management tools.
 
 This package provides CLI commands and utilities for managing PostgreSQL/AlloyDB
@@ -10,17 +13,17 @@ from tools.postgres.database import DatabaseConfig, PostgreSQLDatabase
 from tools.postgres.health import HealthChecker, HealthStatus, SystemHealth
 
 __all__ = [
-    # CLI commands
-    "database_group",
-    "connect_group",
-    "health_command",
-    # Core classes
-    "DatabaseConfig",
-    "PostgreSQLDatabase",
     "ConnectionConfig",
     "ConnectionTester",
+    # Core classes
+    "DatabaseConfig",
     "DeploymentMode",
     "HealthChecker",
     "HealthStatus",
+    "PostgreSQLDatabase",
     "SystemHealth",
+    "connect_group",
+    # CLI commands
+    "database_group",
+    "health_command",
 ]

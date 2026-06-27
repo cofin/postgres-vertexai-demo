@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+
 """PostgreSQL/AlloyDB database container lifecycle management.
 
 This module manages PostgreSQL/AlloyDB Omni container deployment and operations.
@@ -8,6 +11,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from rich.console import Console
@@ -49,6 +53,13 @@ class DatabaseConfig:
     # Restart policy
     restart_policy: str = "unless-stopped"
 
+    # Shared memory and ML flags
+    shm_size: str = "1g"
+    enable_ml: bool = True
+    private_key_path: str | None = None
+    resolved_private_key_path: str | None = None
+    resolved_access_token_path: str | None = None
+
     @classmethod
     def from_env(cls) -> DatabaseConfig:
         """Create configuration from environment variables.
@@ -58,15 +69,25 @@ class DatabaseConfig:
         - DATABASE_PASSWORD (default: super-secret)
         - DATABASE_USER (default: app)
         - DATABASE_NAME (default: app)
+        - GOOGLE_APPLICATION_CREDENTIALS (default: None)
 
         Returns:
             DatabaseConfig: Configuration instance
         """
+        from dotenv import load_dotenv
+        load_dotenv()
+
+        # Expand nested environment variables containing '$'
+        for k, v in list(os.environ.items()):
+            if "$" in v:
+                os.environ[k] = os.path.expandvars(v)
+
         return cls(
             host_port=int(os.getenv("DATABASE_PORT", "15432")),
             postgres_password=os.getenv("DATABASE_PASSWORD", "super-secret"),
             postgres_user=os.getenv("DATABASE_USER", "app"),
             postgres_db=os.getenv("DATABASE_NAME", "app"),
+            private_key_path=os.getenv("DATABASE_ML_AGENT_PRIVATE_KEY_PATH") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
         )
 
 
@@ -115,7 +136,6 @@ class PostgreSQLDatabase:
             ContainerAlreadyRunningError: If container is already running
             ContainerStartError: If container fails to start
         """
-        from tools.lib.container import ContainerNotFoundError
 
         self.console.rule("[bold blue]Starting PostgreSQL Database Container")
 
@@ -149,6 +169,39 @@ class PostgreSQLDatabase:
             self.console.print(f"[cyan]Creating volume {self.config.data_volume_name}...[/cyan]")
             self.runtime.run_command(["volume", "create", self.config.data_volume_name])
 
+        # Resolve and prepare private key copy
+        if self.config.private_key_path and Path(self.config.private_key_path).exists():
+            temp_key_path = Path(__file__).parent / "private-key-temp.json"
+            try:
+                import shutil
+                shutil.copy2(self.config.private_key_path, temp_key_path)
+                temp_key_path.chmod(0o644)
+                self.config.resolved_private_key_path = str(temp_key_path)
+                self.console.print(f"[cyan]Prepared private key copy with 644 permissions at {temp_key_path}[/cyan]")
+            except Exception as e:  # noqa: BLE001
+                self.console.print(f"[yellow]Warning: Failed to prepare private key copy: {e}[/yellow]")
+
+        # Resolve and prepare access token copy
+        temp_token_path = Path(__file__).parent / "access-token-temp.txt"
+        try:
+            import subprocess
+            res = subprocess.run(
+                ["gcloud", "auth", "print-access-token"],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            if res.returncode == 0:
+                token = res.stdout.strip()
+                temp_token_path.write_text(token)
+                temp_token_path.chmod(0o644)
+                self.config.resolved_access_token_path = str(temp_token_path)
+                self.console.print(f"[cyan]Prepared access token copy at {temp_token_path}[/cyan]")
+            else:
+                self.console.print(f"[yellow]Warning: Failed to print access token via gcloud: {res.stderr.strip()}[/yellow]")
+        except Exception as e:  # noqa: BLE001
+            self.console.print(f"[yellow]Warning: Failed to prepare access token: {e}[/yellow]")
+
         # Build run command
         run_args = self._build_run_command()
 
@@ -159,6 +212,9 @@ class PostgreSQLDatabase:
         # Wait for health
         self._wait_for_health()
 
+        # Align system configurations
+        self._align_system_configurations()
+
         # Display connection info
         self._display_connection_info()
 
@@ -168,7 +224,7 @@ class PostgreSQLDatabase:
         Returns:
             list: Command arguments for container run
         """
-        return [
+        cmd = [
             "run",
             "-d",
             "--name",
@@ -185,6 +241,10 @@ class PostgreSQLDatabase:
             f"POSTGRES_DB={self.config.postgres_db}",
             "-v",
             f"{self.config.data_volume_name}:/var/lib/postgresql/data",
+            "-v",
+            "/dev/shm:/dev/shm",  # noqa: S108
+            "--shm-size",
+            self.config.shm_size,
             "--restart",
             self.config.restart_policy,
             "--log-driver",
@@ -201,8 +261,19 @@ class PostgreSQLDatabase:
             f"{self.config.health_timeout}s",
             "--health-retries",
             str(self.config.health_retries),
-            self.config.image,
         ]
+        if getattr(self.config, "resolved_private_key_path", None):
+            cmd.extend([
+                "-v",
+                f"{self.config.resolved_private_key_path}:/etc/postgresql/private-key.json:ro",
+            ])
+        if getattr(self.config, "resolved_access_token_path", None):
+            cmd.extend([
+                "-v",
+                f"{self.config.resolved_access_token_path}:/etc/postgresql/access-token.txt:ro",
+            ])
+        cmd.append(self.config.image)
+        return cmd
 
     def _pull_image(self) -> None:
         """Pull container image."""
@@ -234,7 +305,7 @@ class PostgreSQLDatabase:
                     if health_status == "unhealthy":
                         raise ContainerStartError("Container became unhealthy")
 
-            except Exception:  # noqa: S110
+            except Exception:  # noqa: S110, BLE001
                 pass
 
             time.sleep(2)
@@ -246,7 +317,7 @@ class PostgreSQLDatabase:
         """Display connection information."""
         self.console.print("\n[bold green]✓ Database Started Successfully[/bold green]")
         self.console.print("\n[bold]Connection Details:[/bold]")
-        self.console.print(f"  Host: [cyan]localhost[/cyan]")
+        self.console.print("  Host: [cyan]localhost[/cyan]")
         self.console.print(f"  Port: [cyan]{self.config.host_port}[/cyan]")
         self.console.print(f"  Database: [cyan]{self.config.postgres_db}[/cyan]")
         self.console.print(f"  User: [cyan]{self.config.postgres_user}[/cyan]")
@@ -350,8 +421,100 @@ class PostgreSQLDatabase:
             self.runtime.run_command(args, check=True)
             self.console.print("[green]✓[/green] Container removed")
 
+            # Clean up temporary private key file on host
+            temp_key_path = Path(__file__).parent / "private-key-temp.json"
+            if temp_key_path.exists():
+                try:
+                    temp_key_path.unlink()
+                    self.console.print("[cyan]Cleaned up temporary private key file[/cyan]")
+                except Exception as e:  # noqa: BLE001
+                    self.console.print(f"[yellow]Warning: Failed to delete temporary key file: {e}[/yellow]")
+
+            # Clean up temporary access token file on host
+            temp_token_path = Path(__file__).parent / "access-token-temp.txt"
+            if temp_token_path.exists():
+                try:
+                    temp_token_path.unlink()
+                    self.console.print("[cyan]Cleaned up temporary access token file[/cyan]")
+                except Exception as e:  # noqa: BLE001
+                    self.console.print(f"[yellow]Warning: Failed to delete temporary access token file: {e}[/yellow]")
+
         except ContainerNotFoundError:
             self.console.print("[yellow]Container does not exist[/yellow]")
+
+    def exec_sql(self, sql: str, *, user: str | None = None, check: bool = True) -> str:
+        """Execute a SQL statement inside the database container."""
+        conn_user = user or self.config.postgres_user
+        args = [
+            "exec",
+            "-i",
+            self.config.container_name,
+            "psql",
+            "-U",
+            conn_user,
+            "-d",
+            self.config.postgres_db,
+            "-t",  # Tuple only / quiet mode
+            "-c",
+            sql,
+        ]
+        _, stdout, stderr = self.runtime.run_command(args, check=check)
+        if stderr.strip():
+            self.console.print(f"[yellow]SQL Warning: {stderr.strip()}[/yellow]")
+        return stdout.strip()
+
+    def _align_system_configurations(self) -> None:
+        """Align AlloyDB Omni features including extensions and Columnar Engine."""
+        self.console.print("[cyan]Aligning AlloyDB Omni features...[/cyan]")
+
+        # 1. Enable extensions as superuser alloydbadmin
+        self.exec_sql("CREATE EXTENSION IF NOT EXISTS alloydb_scann CASCADE;", user="alloydbadmin")
+        self.exec_sql("CREATE EXTENSION IF NOT EXISTS google_ml_integration CASCADE;", user="alloydbadmin")
+
+        # 2. Check Columnar Engine
+        columnar_status = self.exec_sql("SHOW google_columnar_engine.enabled;", user="alloydbadmin")
+
+        needs_restart = False
+        if columnar_status.strip() != "on":
+            self.console.print("[yellow]Enabling AlloyDB Columnar Engine...[/yellow]")
+            self.exec_sql("ALTER SYSTEM SET google_columnar_engine.enabled = 'on';", user="alloydbadmin")
+            self.exec_sql("ALTER SYSTEM SET google_columnar_engine.memory_size_in_mb = 2048;", user="alloydbadmin")
+            needs_restart = True
+
+        # 3. Check ML Agent Process (if credentials provided)
+        if self.config.private_key_path:
+            # We don't need to change key owner or permissions here because we prepare a 644 readable key copy on the host before mount.
+            ml_agent_status = self.exec_sql("SHOW omni_enable_ml_agent_process;", user="alloydbadmin")
+            if ml_agent_status.strip() != "on":
+                self.console.print("[yellow]Enabling ML agent process...[/yellow]")
+                self.exec_sql("ALTER SYSTEM SET omni_enable_ml_agent_process = 'on';", user="alloydbadmin")
+                self.exec_sql("ALTER SYSTEM SET omni_google_cloud_private_key_file_path = '/etc/postgresql/private-key.json';", user="alloydbadmin")
+                needs_restart = True
+
+        if needs_restart:
+            self.console.print("[yellow]Restarting container to apply system parameters...[/yellow]")
+            # Call docker/podman restart directly to preserve volume state
+            self.runtime.run_command(["restart", self.config.container_name])
+            time.sleep(5)
+            self._wait_for_health()
+            # Re-execute extensions install verification
+            self.exec_sql("CREATE EXTENSION IF NOT EXISTS alloydb_scann CASCADE;", user="alloydbadmin")
+            self.exec_sql("CREATE EXTENSION IF NOT EXISTS google_ml_integration CASCADE;", user="alloydbadmin")
+
+        # 4. Register gemini-embedding-2 model endpoint if needed
+        model_exists = self.exec_sql("SELECT EXISTS (SELECT 1 FROM google_ml.models WHERE id = 'gemini-embedding-2');", user="alloydbadmin")
+        if model_exists.strip() != "t":
+            self.console.print("[yellow]Registering gemini-embedding-2 model endpoint...[/yellow]")
+            self.exec_sql(
+                "CALL google_ml.create_model("
+                "  model_id => 'gemini-embedding-2',"
+                "  model_provider => 'google',"
+                "  model_type => 'text_embedding',"
+                "  model_qualified_name => 'gemini-embedding-2',"
+                "  model_auth_type => 'alloydb_service_agent_iam'"
+                ");",
+                user="alloydbadmin"
+            )
 
 
 class DatabaseError(Exception):

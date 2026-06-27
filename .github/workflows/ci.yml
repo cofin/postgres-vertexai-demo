@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-label }}
+    runs-on: ${{ matrix.runner }}
+    env:
+      LITESTAR_DEBUG: "true"
+      SECRET_KEY: "test-secret-key-at-least-32-characters-long!!!"
+      GOOGLE_API_KEY: "dummy-api-key-for-testing-purposes"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-label: "3.12 x86_64"
+            runner: ubuntu-24.04
+            python-version: "3.12"
+          - python-label: "3.13 x86_64"
+            runner: ubuntu-24.04
+            python-version: "cpython-3.13.12-linux-x86_64-gnu"
+          - python-label: "3.14 x86_64"
+            runner: ubuntu-24.04
+            python-version: "cpython-3.14.3-linux-x86_64-gnu"
+          - python-label: "3.13 arm64"
+            runner: ubuntu-24.04-arm
+            python-version: "cpython-3.13.12-linux-aarch64-gnu"
+          - python-label: "3.14 arm64"
+            runner: ubuntu-24.04-arm
+            python-version: "cpython-3.14.3-linux-aarch64-gnu"
+
+    services:
+      postgres:
+        image: google/alloydbomni:latest
+        ports:
+          - 15432:5432
+        env:
+          POSTGRES_PASSWORD: super-secret
+          POSTGRES_USER: app
+          POSTGRES_DB: app
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: |
+          uv python install "${{ matrix.python-version }}"
+          uv sync --python "${{ matrix.python-version }}" --group lint --group test --group build
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/resources/package-lock.json
+
+      - name: Install frontend dependencies
+        run: uv run python manage.py assets install
+
+      - name: Build frontend assets
+        run: uv run python manage.py assets build
+
+      - name: Run unit tests
+        run: uv run pytest src/tests/unit
+
+      - name: Run database migrations
+        run: uv run python manage.py database upgrade --no-prompt
+        env:
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 15432
+          DATABASE_USER: app
+          DATABASE_PASSWORD: super-secret
+          DATABASE_NAME: app
+
+      - name: Run integration tests
+        run: uv run pytest src/tests/integration
+        env:
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 15432
+          DATABASE_USER: app
+          DATABASE_PASSWORD: super-secret
+          DATABASE_NAME: app
+
+      - name: Build Python package
+        run: uv build

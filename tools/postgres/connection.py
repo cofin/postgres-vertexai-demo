@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+
 """Connection tester for PostgreSQL databases.
 
 This module tests database connectivity for both managed containers
@@ -8,7 +11,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from rich.console import Console
@@ -16,7 +19,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 
-class DeploymentMode(str, Enum):
+class DeploymentMode(StrEnum):
     """Database deployment modes."""
 
     MANAGED = "managed"  # We manage a Docker/Podman container
@@ -242,10 +245,10 @@ class ConnectionTester:
         start_time = time.time()
 
         try:
-            import asyncpg
-
             # Test connection with asyncpg
             import asyncio
+
+            import asyncpg
 
             async def test_async() -> ConnectionTestResult:
                 try:
@@ -260,7 +263,7 @@ class ConnectionTester:
 
                     try:
                         # Execute test query
-                        result = await conn.fetchval("SELECT 'OK'")
+                        await conn.fetchval("SELECT 'OK'")
 
                         # Get server version
                         version_row = await conn.fetchrow("SELECT version()")
@@ -275,7 +278,7 @@ class ConnectionTester:
                                 "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'vector')"
                             )
                             db_info["pgvector_installed"] = bool(pgvector_check)
-                        except Exception:  # noqa: S110
+                        except Exception:
                             db_info["pgvector_installed"] = False
 
                         connection_time_ms = (time.time() - start_time) * 1000

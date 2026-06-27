@@ -22,7 +22,7 @@
     ".unasyncd_cache": true,
     ".coverage": true,
     "node_modules": true,
-    ".terraform": true, 
+    ".terraform": true
   },
   "mypy-type-checker.importStrategy": "fromEnvironment",
   "pylint.importStrategy": "fromEnvironment",
@@ -90,27 +90,11 @@
   ],
   "explorer.fileNesting.patterns": {
     "pyproject.toml": "pyproject.toml,poetry.lock,poetry.toml,mkdocs.yaml,.gcloudignore,.gitignore,.editorconfig,.bumpversion.cfg,.pylintrc,.pre-commit-config.yaml,LICENSE,mkdocs.yml,service_account.json,.pdm-python,pdm.lock,uv.lock,requirements.txt",
-    ".env": ".env*,.*.env",
+    ".env": ".env*,.*.env,.envs",
+    "AGENTS.md": "AGENTS.md,CLAUDE.md,GEMINI.md,.claude/, .gemini/",
     "docker-compose.yml": "docker-compose.yml, .dockerignore, docker-compose.*.yml, docker-compose.*.yaml",
     "package.json": "package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb, tsconfig.*.json, tsconfig.json, .stylelintrc.json,angular.json,proxy.conf.json,cypress.*.ts,extra-webpack*.cjs,.eslintrc.json, tailwind.config.*, vite.config.ts, postcss.config.*, components.json, .prettierignore, .prettierrc.json, .eslintrc.cjs"
   },
   "sqltools.useNodeRuntime": true,
-  "python.analysis.extraPaths": ["${workspaceFolder}"],
-  "geminicodeassist.enable": true,
-  "sqltools.format": {
-
-    "linesBetweenQueries": 2,
-    "reservedWordCase": "null",
-    "language": "pl/sql"
-  },
-  "SQL-Formatter-VSCode.linesBetweenQueries": 2,
-  "SQL-Formatter-VSCode.expressionWidth": 180,
-  "SQL-Formatter-VSCode.indentStyle": "standard",
-  "SQL-Formatter-VSCode.dialect": "postgresql",
-  "SQL-Formatter-VSCode.paramTypes": {
-    "positional":true, "numbered":[":","$"], "named": [":", "$"]
-  },
-  "SQL-Formatter-VSCode.functionCase": "lower",
-  "SQL-Formatter-VSCode.identifierCase": "lower",
-  "SQL-Formatter-VSCode.dataTypeCase": "lower"
+  "geminicodeassist.enable": true
 }

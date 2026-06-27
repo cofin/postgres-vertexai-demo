@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Google LLC
+# SPDX-License-Identifier: Apache-2.0
+
 SHELL := /bin/bash
 
 # =============================================================================
@@ -8,6 +11,15 @@ SHELL := /bin/bash
 .ONESHELL:
 .EXPORT_ALL_VARIABLES:
 MAKEFLAGS += --no-print-directory
+FRONTEND_DIR := src/resources
+
+# Detect Rodete and configure public package indexes
+ifneq ($(shell grep -s -q "rodete" /etc/os-release && echo "yes"),)
+export NPM_CONFIG_REGISTRY=https://registry.npmjs.org
+export PIP_INDEX_URL=https://pypi.org/simple
+export UV_INDEX_URL=https://pypi.org/simple
+export UV_NO_CONFIG=1
+endif
 
 # ----------------------------------------------------------------------------
 # Display Formatting and Colors
@@ -106,7 +118,7 @@ clean: ## Cleanup temporary build artifacts
 .PHONY: test
 test: ## Run the tests
 	@echo "${INFO} Running test cases... 🧪"
-	@uv run pytest -n 2 --dist=loadgroup tests
+	@uv run pytest -n 2 --dist=loadgroup src/tests
 	@echo "${OK} Tests complete ✨"
 
 .PHONY: coverage
@@ -123,8 +135,9 @@ lint: ## Run all linting and type checking
 	@uv run pre-commit run --color=always --all-files
 	@echo "${OK} Pre-commit checks passed ✨"
 	@echo "${INFO} Running type checkers... 🔍"
-	@uv run mypy app tools manage.py
-	@uv run pyright app tools manage.py
+	@uv run mypy src/app tools manage.py
+	@uv run pyright src/app tools manage.py
+	@$(MAKE) frontend-typecheck
 	@echo "${OK} All linting and type checks complete ✨"
 
 .PHONY: format
@@ -136,13 +149,13 @@ format: ## Run code formatters
 .PHONY: mypy
 mypy: ## Run mypy type checker using local packages
 	@echo "${INFO} Running mypy type checker... 🔍"
-	@uv run mypy app tools manage.py
+	@uv run mypy src/app tools manage.py
 	@echo "${OK} Mypy type checking complete ✨"
 
 .PHONY: pyright
 pyright: ## Run pyright type checker using local packages
 	@echo "${INFO} Running pyright type checker... 🔍"
-	@uv run pyright app tools manage.py
+	@uv run pyright src/app tools manage.py
 	@echo "${OK} Pyright type checking complete ✨"
 
 .PHONY: typecheck
@@ -155,41 +168,52 @@ typecheck: mypy pyright ## Run all type checkers
 .PHONY: start-infra
 start-infra: ## Start local PostgreSQL/AlloyDB container
 	@echo "${INFO} Starting local PostgreSQL instance..."
-	@uv run python manage.py database postgres start
+	@uv run python manage.py infra start --recreate
 	@echo "${OK} Infrastructure started"
 
 .PHONY: stop-infra
 stop-infra: ## Stop local PostgreSQL container
 	@echo "${INFO} Stopping local PostgreSQL instance..."
-	@uv run python manage.py database postgres stop
+	@uv run python manage.py infra stop
 	@echo "${OK} Infrastructure stopped"
 
 .PHONY: restart-infra
 restart-infra: ## Restart local PostgreSQL container
 	@echo "${INFO} Restarting local PostgreSQL instance..."
-	@uv run python manage.py database postgres restart
+	@uv run python manage.py infra restart
 	@echo "${OK} Infrastructure restarted"
 
 .PHONY: infra-status
 infra-status: ## Check PostgreSQL container status
 	@echo "${INFO} Checking PostgreSQL container status..."
-	@uv run python manage.py database postgres status
+	@uv run python manage.py infra status
 
 .PHONY: wipe-infra
 wipe-infra: ## Remove local PostgreSQL container and data
 	@echo "${WARN} Wiping local PostgreSQL instance..."
-	@uv run python manage.py database postgres wipe
+	@uv run python manage.py infra wipe
 	@echo "${OK} Infrastructure wiped"
 
 .PHONY: infra-logs
 infra-logs: ## Tail development infrastructure logs
 	@echo "${INFO} Tailing logs for local PostgreSQL instance..."
-	@uv run python manage.py database postgres logs --follow
+	@uv run python manage.py infra logs --follow
 
 .PHONY: infra-health
 infra-health: ## Check health of PostgreSQL deployment
 	@echo "${INFO} Checking PostgreSQL health..."
-	@uv run python manage.py database postgres health
+	@uv run python manage.py database health
+
+.PHONY: infra-verify
+infra-verify: ## Verify AlloyDB extensions and engine parameters
+	@echo "${INFO} Checking extensions..."
+	@docker exec -i cymbal_coffee_pg-db-1 psql -U app -d app -c "\dx" | grep -E "scann|vector|google_ml"
+	@echo "${INFO} Checking columnar engine..."
+	@docker exec -i cymbal_coffee_pg-db-1 psql -U app -d app -c "SHOW google_columnar_engine.enabled;"
+	@echo "${INFO} Checking ML Agent process..."
+	@docker exec -i cymbal_coffee_pg-db-1 psql -U app -d app -c "SHOW omni_enable_ml_agent_process;"
+	@echo "${INFO} Checking registered models..."
+	@docker exec -i cymbal_coffee_pg-db-1 psql -U app -d app -c "SELECT id, provider, model_type FROM google_ml.models;"
 
 # =============================================================================
 # Database Operations
@@ -197,36 +221,51 @@ infra-health: ## Check health of PostgreSQL deployment
 .PHONY: db-migrate
 db-migrate: ## Create new migration
 	@echo "${INFO} Creating database migration... 📝"
-	@uv run litestar database make-migrations --message "$(message)"
+	@uv run python manage.py database create-migration --message "$(message)"
 	@echo "${OK} Migration created"
 
 .PHONY: db-upgrade
 db-upgrade: ## Apply database migrations
 	@echo "${INFO} Applying database migrations... ⬆️"
-	@uv run app db upgrade head
+	@uv run python manage.py database upgrade --no-prompt
 	@echo "${OK} Database migrations applied"
 
 .PHONY: db-downgrade
 db-downgrade: ## Rollback database migration
 	@echo "${INFO} Rolling back database migration... ⬇️"
-	@uv run app db downgrade -1
+	@uv run python manage.py database downgrade -1
 	@echo "${OK} Database migration rolled back"
 
 .PHONY: db-reset
 db-reset: wipe-infra start-infra ## Reset database (wipe and recreate)
 	@echo "${INFO} Resetting database... 🔄"
 	@sleep 5
-	@uv run app db upgrade head
+	@uv run python manage.py database upgrade --no-prompt
 	@echo "${OK} Database reset complete"
 
 .PHONY: db-connect-test
 db-connect-test: ## Test database connection
 	@echo "${INFO} Testing database connection..."
-	@uv run python manage.py database postgres connect test
+	@uv run python manage.py database connect test
 
 .PHONY: db-connect-info
 db-connect-info: ## Display database connection information
-	@uv run python manage.py database postgres connect info
+	@uv run python manage.py database connect info
+
+# =============================================================================
+# Frontend and Assets
+# =============================================================================
+.PHONY: assets-build
+assets-build: ## Build assets via Litestar assets CLI
+	@echo "${INFO} Building assets via manage.py... 📦"
+	@uv run python manage.py assets build
+	@echo "${OK} Assets build complete ✨"
+
+.PHONY: frontend-typecheck
+frontend-typecheck: ## Run frontend TypeScript type checks
+	@echo "${INFO} Running frontend type checks... 🔍"
+	@cd $(FRONTEND_DIR) && npx tsc --noEmit
+	@echo "${OK} Frontend type checks complete ✨"
 
 # =============================================================================
 # Application Operations
